@@ -1,10 +1,11 @@
 import { LayoutDashboard, Columns3, BarChart3, Settings } from "lucide-react";
+import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Kanban", icon: Columns3, active: false },
-  { label: "Team Metrics", icon: BarChart3, active: false },
-  { label: "Settings", icon: Settings, active: false },
+  { label: "Dashboard", icon: LayoutDashboard, path: "/" },
+  { label: "Kanban", icon: Columns3, path: "/kanban" },
+  { label: "Team Metrics", icon: BarChart3, path: "/team-metrics" },
+  { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
 export default function Sidebar() {
@@ -22,18 +23,20 @@ export default function Sidebar() {
       </div>
       <nav className="flex flex-col gap-1 p-4">
         {navItems.map((item) => (
-          <a
+          <NavLink
             key={item.label}
-            href="#"
-            className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
-              item.active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-            }`}
+            to={item.path}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+              }`
+            }
           >
             <item.icon className="h-5 w-5" />
             {item.label}
-          </a>
+          </NavLink>
         ))}
       </nav>
       <div className="mt-auto p-4">
