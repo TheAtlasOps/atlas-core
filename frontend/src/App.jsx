@@ -1,46 +1,11 @@
 import {
-  LayoutDashboard,
-  Columns3,
-  BarChart3,
-  Settings,
-  Search,
-  Bell,
-  FolderKanban,
-  ListTodo,
-  Activity,
   Sparkles,
   ArrowUpRight,
   Plus,
-  TrendingUp,
 } from "lucide-react";
-
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Kanban", icon: Columns3, active: false },
-  { label: "Team Metrics", icon: BarChart3, active: false },
-  { label: "Settings", icon: Settings, active: false },
-];
-
-const kpis = [
-  {
-    label: "Active Projects",
-    value: "24",
-    delta: "+3 this week",
-    icon: FolderKanban,
-  },
-  {
-    label: "Tasks Pending",
-    value: "128",
-    delta: "-12 vs last week",
-    icon: ListTodo,
-  },
-  {
-    label: "System Health",
-    value: "99.8%",
-    delta: "All systems operational",
-    icon: Activity,
-  },
-];
+import Sidebar from "./components/layout/Sidebar";
+import Header from "./components/layout/Header";
+import KpiGrid from "./components/layout/KpiGrid";
 
 const columns = [
   {
@@ -99,104 +64,7 @@ const insights = [
   },
 ];
 
-function Sidebar() {
-  return (
-    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center gap-2 px-6 h-16 border-b border-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-          <span className="text-primary-foreground font-bold text-lg leading-none">
-            A
-          </span>
-        </div>
-        <span className="text-lg font-semibold tracking-tight text-foreground">
-          Atlas
-        </span>
-      </div>
-      <nav className="flex flex-col gap-1 p-4">
-        {navItems.map((item) => (
-          <a
-            key={item.label}
-            href="#"
-            className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
-              item.active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-            }`}
-          >
-            <item.icon className="h-5 w-5" />
-            {item.label}
-          </a>
-        ))}
-      </nav>
-      <div className="mt-auto p-4">
-        <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm font-medium text-foreground">Pro Plan</p>
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            Unlock advanced metrics and unlimited AI insights.
-          </p>
-          <button className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity">
-            Upgrade
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
 
-function Header() {
-  return (
-    <header className="flex items-center gap-4 h-16 shrink-0 border-b border-border px-4 md:px-6">
-      <div className="lg:hidden flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-        <span className="text-primary-foreground font-bold leading-none">
-          A
-        </span>
-      </div>
-      <div className="relative flex-1 max-w-xl mx-auto">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="search"
-          placeholder="Search projects, tasks, or people..."
-          aria-label="Search"
-          className="w-full rounded-md border border-border bg-secondary py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-      <div className="flex items-center gap-3">
-        <button
-          aria-label="Notifications"
-          className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Bell className="h-4 w-4" />
-          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
-        </button>
-        <img
-          src="/professional-avatar.png"
-          alt="Your profile"
-          className="h-9 w-9 rounded-full border border-border object-cover"
-        />
-      </div>
-    </header>
-  );
-}
-
-function KpiCard({ kpi }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{kpi.label}</span>
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-primary">
-          <kpi.icon className="h-4 w-4" />
-        </div>
-      </div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
-        {kpi.value}
-      </p>
-      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-        <TrendingUp className="h-3 w-3 text-primary" />
-        {kpi.delta}
-      </p>
-    </div>
-  );
-}
 
 function ProjectsBoard() {
   return (
@@ -323,11 +191,7 @@ export default function AtlasDashboard() {
                 </button>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {kpis.map((kpi) => (
-                  <KpiCard key={kpi.label} kpi={kpi} />
-                ))}
-              </div>
+              <KpiGrid />
 
               <ProjectsBoard />
             </div>
