@@ -1,0 +1,52 @@
+import { FolderKanban, ListTodo, Activity, TrendingUp } from "lucide-react";
+
+const kpis = [
+  {
+    label: "Active Projects",
+    value: "24",
+    delta: "+3 this week",
+    icon: FolderKanban,
+  },
+  {
+    label: "Tasks Pending",
+    value: "128",
+    delta: "-12 vs last week",
+    icon: ListTodo,
+  },
+  {
+    label: "System Health",
+    value: "99.8%",
+    delta: "All systems operational",
+    icon: Activity,
+  },
+];
+
+function KpiCard({ kpi }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">{kpi.label}</span>
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-primary">
+          <kpi.icon className="h-4 w-4" />
+        </div>
+      </div>
+      <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
+        {kpi.value}
+      </p>
+      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+        <TrendingUp className="h-3 w-3 text-primary" />
+        {kpi.delta}
+      </p>
+    </div>
+  );
+}
+
+export default function KpiGrid() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {kpis.map((kpi) => (
+        <KpiCard key={kpi.label} kpi={kpi} />
+      ))}
+    </div>
+  );
+}
