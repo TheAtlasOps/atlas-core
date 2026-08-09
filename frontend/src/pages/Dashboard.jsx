@@ -1,5 +1,33 @@
-import { Sparkles, ArrowUpRight, Plus } from "lucide-react";
+import {
+  Sparkles,
+  ArrowUpRight,
+  Plus,
+  FolderKanban,
+  ListTodo,
+  Activity,
+} from "lucide-react";
 import KpiGrid from "../components/layout/KpiGrid";
+
+const kpiData = [
+  {
+    label: "Active Projects",
+    value: "32",
+    delta: "+3 this week",
+    icon: FolderKanban,
+  },
+  {
+    label: "Tasks Pending",
+    value: "128",
+    delta: "-12 vs last week",
+    icon: ListTodo,
+  },
+  {
+    label: "System Health",
+    value: "99.8%",
+    delta: "All systems operational",
+    icon: Activity,
+  },
+];
 
 const columns = [
   {
@@ -178,7 +206,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        <KpiGrid />
+        <KpiGrid metrics={kpiData} />
 
         <ProjectsBoard />
       </div>
