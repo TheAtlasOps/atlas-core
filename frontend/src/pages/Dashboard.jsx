@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Sparkles,
   ArrowUpRight,
@@ -5,6 +6,8 @@ import {
   FolderKanban,
   ListTodo,
   Activity,
+  X,
+  FolderPlus,
 } from "lucide-react";
 import KpiGrid from "../components/layout/KpiGrid";
 
@@ -188,7 +191,88 @@ function AiInsights() {
 }
 
 export default function Dashboard() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
+    <>
+    {/* New Project Modal */}
+    {isModalOpen && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        onClick={() => setIsModalOpen(false)}
+      >
+        <div
+          className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <FolderPlus className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 id="modal-title" className="text-base font-semibold text-foreground">
+                  Crear Nuevo Proyecto
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Completa los detalles para comenzar
+                </p>
+              </div>
+            </div>
+            <button
+              aria-label="Cerrar modal"
+              onClick={() => setIsModalOpen(false)}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Fields */}
+          <div className="mt-5 flex flex-col gap-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Nombre del Proyecto</label>
+              <input
+                type="text"
+                placeholder="Ej: Rediseño de producto Q3"
+                className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Descripción</label>
+              <textarea
+                rows={3}
+                placeholder="Describe el objetivo del proyecto..."
+                className="w-full resize-none rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              id="btn-cancel-modal"
+              onClick={() => setIsModalOpen(false)}
+              className="rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              id="btn-create-project"
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              <Plus className="h-4 w-4" />
+              Crear Proyecto
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="flex-1 flex flex-col gap-6">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -200,10 +284,15 @@ export default function Dashboard() {
               Here&apos;s what&apos;s happening across your organization.
             </p>
           </div>
-          <button className="mt-3 sm:mt-0 flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity">
+          <button
+            id="btn-new-project"
+            onClick={() => setIsModalOpen(true)}
+            className="mt-3 sm:mt-0 flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+          >
             <Plus className="h-4 w-4" />
             New Project
           </button>
+
         </div>
 
         <KpiGrid metrics={kpiData} />
@@ -215,5 +304,6 @@ export default function Dashboard() {
         <AiInsights />
       </div>
     </div>
+    </>
   );
 }
