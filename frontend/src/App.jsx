@@ -1,8 +1,10 @@
-import { Routes, Route } from "react-router-dom";
+﻿import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
-import Dashboard from "./pages/Dashboard";
-import Kanban from "./pages/Kanban";
+import DispatchBoard from "./pages/DispatchBoard";
+import WorkOrders from "./pages/WorkOrders";
+import SimInventory from "./pages/SimInventory";
+import MagicLinks from "./pages/MagicLinks";
 import Settings from "./pages/Settings";
 
 export default function AtlasDashboard() {
@@ -13,8 +15,10 @@ export default function AtlasDashboard() {
         <Header />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/kanban" element={<Kanban />} />
+            <Route path="/" element={<DispatchBoard />} />
+            <Route path="/work-orders" element={<WorkOrders />} />
+            <Route path="/sim-inventory" element={<SimInventory />} />
+            <Route path="/magic-links" element={<MagicLinks />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
