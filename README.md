@@ -2,7 +2,7 @@
 
 **Atlas** es una plataforma integral de gestión de servicios en terreno diseñada específicamente para optimizar las operaciones de conectividad, instalación y mantenimiento de dispositivos IoT y routers con SIM cards. 
 
-Proyecto desarrollado para **Enaxmos Technology** como parte de la asignatura Portafolio de Título.
+Proyecto desarrollado para Entel como parte de la asignatura Portafolio de Título.
 
 ---
 
@@ -42,9 +42,6 @@ Atlas digitaliza y automatiza el flujo completo de atención en terreno a travé
 ## 👥 Equipo de Desarrollo
 
 - **Diego Jiménez:** Frontend Web, Cloud e Infraestructura CI/CD.
-- **Joaquín [Apellido]:** Backend, APIs y Automatización de Correos.
-- **Alexander [Apellido]:** Modelado y Gestión de Base de Datos.
-- **[Nombre 4to Integrante]:** Desarrollo de Aplicación Móvil (PWA).
-
----
-*Documentación inicial - Sprint 1*
+- **Joaquín Mendoza:** Backend, APIs y Automatización de Correos.
+- **Alexander Sáez:** Modelado y Gestión de Base de Datos.
+- **Matías Abarca:** Desarrollo de Aplicación Móvil (PWA).
