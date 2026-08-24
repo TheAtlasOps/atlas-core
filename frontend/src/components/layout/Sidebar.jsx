@@ -1,10 +1,11 @@
-import { LayoutDashboard, Columns3, BarChart3, Settings } from "lucide-react";
+﻿import { LayoutDashboard, ClipboardList, Database, Link2, Settings } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/" },
-  { label: "Kanban", icon: Columns3, path: "/kanban" },
-  { label: "Team Metrics", icon: BarChart3, path: "/team-metrics" },
+  { label: "Dispatch Board", icon: LayoutDashboard, path: "/" },
+  { label: "Work Orders", icon: ClipboardList, path: "/work-orders" },
+  { label: "SIM Inventory", icon: Database, path: "/sim-inventory" },
+  { label: "Magic Links", icon: Link2, path: "/magic-links" },
   { label: "Settings", icon: Settings, path: "/settings" },
 ];
 
@@ -26,6 +27,7 @@ export default function Sidebar() {
           <NavLink
             key={item.label}
             to={item.path}
+            end={item.path === "/"}
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
@@ -41,13 +43,10 @@ export default function Sidebar() {
       </nav>
       <div className="mt-auto p-4">
         <div className="rounded-lg border border-border bg-card p-4">
-          <p className="text-sm font-medium text-foreground">Pro Plan</p>
+          <p className="text-sm font-medium text-foreground">Entel FSM</p>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            Unlock advanced metrics and unlimited AI insights.
+            Plataforma de Field Service Management.
           </p>
-          <button className="mt-3 w-full rounded-md bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity">
-            Upgrade
-          </button>
         </div>
       </div>
     </aside>

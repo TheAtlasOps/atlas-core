@@ -41,7 +41,7 @@ export default function TaskCard({ title, priority = "Baja", assignee = "U", tag
         transition-all duration-200 ease-in-out
         cursor-grab active:cursor-grabbing
       "
-      aria-label={`Tarea: ${title}`}
+      aria-label={`OT: ${title}`}
     >
       {/* Tag de categoría (opcional) */}
       {tag && (
@@ -66,8 +66,8 @@ export default function TaskCard({ title, priority = "Baja", assignee = "U", tag
             ring-2 ${styles.ring}
             select-none
           `}
-          title={`Asignado a: ${assignee}`}
-          aria-label={`Asignado a: ${assignee}`}
+          title={`Tecnico: ${assignee}`}
+          aria-label={`Tecnico: ${assignee}`}
         >
           {assignee.charAt(0)}
         </div>

@@ -18,7 +18,7 @@ export default function Header() {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           type="search"
-          placeholder="Search projects, tasks, or people..."
+          placeholder="Buscar ordenes, tecnicos o SIMs..."
           aria-label="Search"
           className="w-full rounded-md border border-border bg-secondary py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
