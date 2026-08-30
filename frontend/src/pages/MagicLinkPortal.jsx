@@ -1,5 +1,6 @@
 import { useParams } from "react-router-dom";
-import { MapPin, Clock, CheckCircle2, Truck, Wrench, Phone } from "lucide-react";
+import { MapPin, Clock, Phone, CheckCircle2, Truck, Wrench } from "lucide-react";
+import Timeline, { MOCK_TIMELINE_STEPS } from "../components/ui/Timeline";
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 const MOCK_ORDER = {
@@ -51,19 +52,6 @@ const STATUS_CONFIG = {
   },
 };
 
-// ─── Progress Steps ─────────────────────────────────────────────────────────
-const STEPS = [
-  { key: "confirmada", label: "Confirmada" },
-  { key: "en_ruta", label: "En ruta" },
-  { key: "en_sitio", label: "En sitio" },
-  { key: "completada", label: "Completada" },
-];
-
-const STEP_ORDER = ["idle", "confirmada", "en_ruta", "en_sitio", "completada"];
-
-function getStepIndex(key) {
-  return STEP_ORDER.indexOf(key);
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function MagicLinkPortal() {
@@ -71,7 +59,7 @@ export default function MagicLinkPortal() {
   const order = MOCK_ORDER;
   const statusCfg = STATUS_CONFIG[order.statusKey] ?? STATUS_CONFIG.idle;
   const StatusIcon = statusCfg.icon;
-  const currentStepIdx = getStepIndex(order.statusKey);
+
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-orange-50 to-white flex flex-col items-center px-4 py-8">
@@ -127,54 +115,8 @@ export default function MagicLinkPortal() {
           </div>
         </div>
 
-        {/* Progress Tracker */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-4">
-            Progreso de la visita
-          </p>
-          <div className="flex items-start gap-0">
-            {STEPS.map((step, idx) => {
-              const stepIdx = getStepIndex(step.key);
-              const isDone = stepIdx < currentStepIdx;
-              const isActive = stepIdx === currentStepIdx;
-              const isLast = idx === STEPS.length - 1;
-
-              return (
-                <div key={step.key} className="flex-1 flex flex-col items-center gap-1.5">
-                  {/* Connector row */}
-                  <div className="w-full flex items-center">
-                    {/* Left bar */}
-                    <div
-                      className={`flex-1 h-0.5 ${idx === 0 ? "invisible" : isDone || isActive ? "bg-primary" : "bg-gray-200"}`}
-                    />
-                    {/* Dot */}
-                    <div
-                      className={`w-3 h-3 rounded-full shrink-0 border-2 transition-all ${
-                        isDone
-                          ? "bg-primary border-primary"
-                          : isActive
-                          ? "bg-white border-primary ring-2 ring-orange-200"
-                          : "bg-white border-gray-300"
-                      }`}
-                    />
-                    {/* Right bar */}
-                    <div
-                      className={`flex-1 h-0.5 ${isLast ? "invisible" : isDone ? "bg-primary" : "bg-gray-200"}`}
-                    />
-                  </div>
-                  {/* Label */}
-                  <span
-                    className={`text-[10px] text-center leading-tight ${
-                      isActive ? "text-primary font-semibold" : isDone ? "text-gray-800" : "text-gray-400"
-                    }`}
-                  >
-                    {step.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* Timeline vertical de historial */}
+        <Timeline steps={MOCK_TIMELINE_STEPS} currentKey={order.statusKey} />
 
         {/* Technician Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5">
