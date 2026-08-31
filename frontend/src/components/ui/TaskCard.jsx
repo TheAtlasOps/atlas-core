@@ -1,88 +1,110 @@
+import { MapPin, Grip } from "lucide-react";
+
 /**
- * TaskCard — Tarjeta individual para el tablero Kanban.
+ * TaskCard — Tarjeta Kanban estilo Jira/Linear.
  *
  * Props:
- *  - title    {string}  Título de la tarea
+ *  - orderId  {string}  ID de la orden (ej. "#OT-08491")
+ *  - title    {string}  Nombre del servicio
+ *  - location {string}  Dirección / descripción de la ubicación
  *  - priority {string}  'Alta' | 'Media' | 'Baja'
- *  - assignee {string}  Iniciales del asignado (opcional, default 'U')
- *  - tag      {string}  Etiqueta de categoría (opcional)
+ *  - assignee {string}  Iniciales del técnico asignado (default 'U')
+ *  - tag      {string}  Etiqueta de categoría (Fibra / SIM / Red / etc.)
  */
 
-const PRIORITY_STYLES = {
+// ─── Config de prioridad ──────────────────────────────────────────────────────
+const PRIORITY_CONFIG = {
   Alta: {
-    badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400",
+    pill: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30",
     dot: "bg-red-500",
-    ring: "ring-red-200 dark:ring-red-800",
   },
   Media: {
-    badge: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400",
-    dot: "bg-yellow-400",
-    ring: "ring-yellow-200 dark:ring-yellow-800",
+    pill: "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
+    dot: "bg-amber-400",
   },
   Baja: {
-    badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400",
-    dot: "bg-green-500",
-    ring: "ring-green-200 dark:ring-green-800",
+    pill: "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
+    dot: "bg-emerald-500",
   },
 };
 
-export default function TaskCard({ title, priority = "Baja", assignee = "U", tag }) {
-  const styles = PRIORITY_STYLES[priority] ?? PRIORITY_STYLES["Baja"];
+// ─── Componente ───────────────────────────────────────────────────────────────
+export default function TaskCard({
+  orderId = "#OT-00000",
+  title,
+  location,
+  priority = "Baja",
+  assignee = "U",
+  tag,
+}) {
+  const p = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG["Baja"];
 
   return (
     <article
       className="
         group relative flex flex-col gap-3 rounded-xl
-        bg-white dark:bg-[hsl(240_10%_10%)]
-        border border-border
-        p-4 shadow-sm
-        ring-1 ring-transparent
-        hover:shadow-md hover:ring-2 hover:border-primary/30
-        transition-all duration-200 ease-in-out
+        bg-[#1c1d24] border border-gray-800
+        p-4
+        hover:border-gray-600 hover:bg-[#21222a]
+        transition-colors duration-150
         cursor-grab active:cursor-grabbing
+        select-none
       "
       aria-label={`OT: ${title}`}
     >
-      {/* Tag de categoría (opcional) */}
-      {tag && (
-        <span className="self-start rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-          {tag}
-        </span>
-      )}
+      {/* ── Ícono de arrastre (visible on hover) ── */}
+      <Grip
+        className="absolute top-3 right-3 w-3.5 h-3.5 text-gray-700 group-hover:text-gray-500 transition-colors"
+        aria-hidden="true"
+      />
 
-      {/* Título */}
-      <h3 className="text-sm font-semibold leading-snug text-foreground group-hover:text-primary transition-colors duration-150">
+      {/* ── Cabecera: ID + Pill de prioridad ── */}
+      <div className="flex items-center justify-between gap-2 pr-5">
+        <span className="text-[11px] font-mono text-gray-500">{orderId}</span>
+        <span
+          className={`
+            inline-flex items-center gap-1.5 rounded-full px-2 py-0.5
+            text-[10px] font-bold uppercase tracking-wide shrink-0
+            ${p.pill}
+          `}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${p.dot}`} aria-hidden="true" />
+          {priority}
+        </span>
+      </div>
+
+      {/* ── Título ── */}
+      <h3 className="text-sm font-semibold leading-snug text-white">
         {title}
       </h3>
 
-      {/* Footer: avatar + badge de prioridad */}
+      {/* ── Ubicación ── */}
+      {location && (
+        <div className="flex items-start gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="text-xs text-gray-400 leading-snug">{location}</span>
+        </div>
+      )}
+
+      {/* ── Footer: tag + avatar ── */}
       <div className="flex items-center justify-between mt-auto pt-1">
-        {/* Avatar placeholder */}
+        {/* Etiqueta de categoría */}
+        {tag ? (
+          <span className="rounded-md bg-gray-800 border border-gray-700 px-2 py-0.5 text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+            {tag}
+          </span>
+        ) : (
+          <span />
+        )}
+
+        {/* Avatar del técnico */}
         <div
-          className={`
-            flex h-7 w-7 items-center justify-center
-            rounded-full bg-primary/20 text-primary
-            text-xs font-bold uppercase
-            ring-2 ${styles.ring}
-            select-none
-          `}
-          title={`Tecnico: ${assignee}`}
-          aria-label={`Tecnico: ${assignee}`}
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-primary text-xs font-bold uppercase ring-1 ring-primary/30"
+          title={`Técnico: ${assignee}`}
+          aria-label={`Técnico: ${assignee}`}
         >
           {assignee.charAt(0)}
         </div>
-
-        {/* Badge de prioridad */}
-        <span
-          className={`
-            inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5
-            text-[10px] font-bold uppercase tracking-wide
-            ${styles.badge}
-          `}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} aria-hidden="true" />
-          {priority}
-        </span>
       </div>
     </article>
   );
