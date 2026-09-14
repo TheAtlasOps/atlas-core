@@ -49,7 +49,7 @@ INSERT INTO clients (id, rut, business_name, contact_person, contact_phone, cont
 ('c0000000-0000-0000-0000-000000000004', '78.999.111-2', 'Empresas Vitacura SpA', 'Felipe Castro', '+56 9 7444 5555', 'felipe@vitacuraspas.cl', 'Av. Vitacura 2939, Vitacura', 'Vitacura', -33.4020, -70.5950),
 ('c0000000-0000-0000-0000-000000000005', '76.444.333-8', 'Comercial Ñuñoa Ltda.', 'Daniela Rojas', '+56 9 7555 6666', 'daniela@nunoaltda.cl', 'Calle Irarrázaval 890, Ñuñoa', 'Ñuñoa', -33.4540, -70.6120),
 ('c0000000-0000-0000-0000-000000000006', '69.070.100-5', 'Municipalidad de Maipú', 'Álvaro Bravo', '+56 9 7666 7777', 'infra@maipu.cl', 'Av. Pajaritos 2024, Maipú', 'Maipú', -33.5100, -70.7600),
-('c0000000-0000-0000-0000-000000000007', '97.036.000-K', 'BancoEstado Casa Matriz', 'Gonzalo Vidal', '+56 9 7777 8888', 'gvidal@bancoestado.cl', 'Av. Libertador B. O'Higgins 1111, Santiago', 'Santiago', -33.4445, -70.6540),
+('c0000000-0000-0000-0000-000000000007', '97.036.000-K', 'BancoEstado Casa Matriz', 'Gonzalo Vidal', '+56 9 7777 8888', 'gvidal@bancoestado.cl', 'Av. Libertador B. O''Higgins 1111, Santiago', 'Santiago', -33.4445, -70.6540),
 ('c0000000-0000-0000-0000-000000000008', '79.123.789-0', 'Servicios Los Aromos', 'Patricia Fuentes', '+56 9 7888 9999', 'pfuentes@losaromos.cl', 'Calle Los Aromos 52, Peñalolén', 'Peñalolén', -33.4750, -70.5500),
 ('c0000000-0000-0000-0000-000000000009', '77.333.222-4', 'Edificio Apoquindo Prime', 'Jorge Tapia', '+56 9 7999 0000', 'jtapia@apoquindoprime.cl', 'Av. Apoquindo 6100, Las Condes', 'Las Condes', -33.4110, -70.5650);
 
