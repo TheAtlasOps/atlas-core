@@ -1,4 +1,4 @@
-name: Database CI/CD - Schema & Migrations
+name: Database CI/CD - Multi-Environment Deploy
 
 on:
   push:
@@ -8,10 +8,19 @@ on:
     paths:
       - 'Database/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de despliegue'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - production
 
 jobs:
   deploy-database:
-    name: Apply Schema to Neon PostgreSQL
+    name: Deploy to ${{ github.ref_name == 'main' && 'Production' || 'Development' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -30,57 +39,82 @@ jobs:
 
       - name: Deploy Schema and Seed Data
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_DEV: ${{ secrets.DATABASE_URL_DEV }}
+          DATABASE_URL_PROD: ${{ secrets.DATABASE_URL_PROD }}
+          DATABASE_URL_FALLBACK: ${{ secrets.DATABASE_URL }}
+          GIT_BRANCH: ${{ github.ref_name }}
+          MANUAL_ENV: ${{ inputs.environment }}
         run: |
           python - << 'EOF'
           import os
           import sys
           import psycopg2
 
-          db_url = os.environ.get('DATABASE_URL')
+          git_branch = os.environ.get('GIT_BRANCH', 'base-datos')
+          manual_env = os.environ.get('MANUAL_ENV')
+
+          # 1. Determinar el ambiente según la rama o selección manual
+          is_production = (git_branch == 'main') or (manual_env == 'production')
+          env_name = "PRODUCCIÓN (Clean Schema)" if is_production else "DESARROLLO (Schema + Mock Data)"
+
+          print(f"==================================================")
+          print(f"🚀 INICIANDO DESPLIEGUE EN: {env_name}")
+          print(f"🌿 Rama Git activa: {git_branch}")
+          print(f"==================================================")
+
+          # 2. Seleccionar la URL correspondiente (con fallback automático)
+          if is_production:
+              db_url = os.environ.get('DATABASE_URL_PROD') or os.environ.get('DATABASE_URL_FALLBACK')
+              target_secret = "DATABASE_URL_PROD (o DATABASE_URL)"
+          else:
+              db_url = os.environ.get('DATABASE_URL_DEV') or os.environ.get('DATABASE_URL_FALLBACK')
+              target_secret = "DATABASE_URL_DEV (o DATABASE_URL)"
+
           if not db_url:
-              print("::error::La variable secreta DATABASE_URL no esta configurada en GitHub Secrets.")
+              print(f"::error::No se encontró cadena de conexión para {target_secret} en GitHub Secrets.")
               sys.exit(1)
 
-          print("🚀 Conectando a Neon Serverless PostgreSQL con SSL...")
+          print("🔒 Conectando a Neon Serverless PostgreSQL con SSL...")
           try:
               conn = psycopg2.connect(db_url)
               conn.autocommit = True
               cur = conn.cursor()
               print("✅ Conexión establecida exitosamente.")
           except Exception as e:
-              print(f"::error::Error al conectar con la base de datos: {e}")
+              print(f"::error::Error conectando a la base de datos: {e}")
               sys.exit(1)
 
-          # 1. Aplicar Esquema DDL
+          # 3. Aplicar Esquema DDL (Tanto en DEV como en PROD)
           schema_path = 'Database/schema.sql'
           if os.path.exists(schema_path):
-              print(f"📄 Ejecutando {schema_path}...")
+              print(f"📄 Aplicando estructura DDL desde {schema_path}...")
               with open(schema_path, 'r', encoding='utf-8') as f:
                   schema_sql = f.read()
               try:
                   cur.execute(schema_sql)
-                  print("✅ Esquema DDL aplicado con éxito (tablas, tipos, índices y triggers).")
+                  print("✅ Esquema DDL aplicado con éxito (tablas, enums, triggers e índices).")
               except Exception as e:
                   print(f"::error::Error ejecutando {schema_path}: {e}")
                   sys.exit(1)
+
+          # 4. Datos Semilla: ÚNICAMENTE en Desarrollo
+          if not is_production:
+              seed_path = 'Database/seed.sql'
+              if os.path.exists(seed_path):
+                  print(f"🌱 Ambiente de DESARROLLO detectado. Inyectando datos semilla ({seed_path})...")
+                  with open(seed_path, 'r', encoding='utf-8') as f:
+                      seed_sql = f.read()
+                  try:
+                      cur.execute(seed_sql)
+                      print("✅ Datos semilla de prueba inyectados exitosamente.")
+                  except Exception as e:
+                      print(f"::error::Error ejecutando {seed_path}: {e}")
+                      sys.exit(1)
           else:
-              print(f"::warning::{schema_path} no encontrado.")
+              print("🛡️ Ambiente de PRODUCCIÓN detectado.")
+              print("🛡️ Regla de seguridad aplicada: Se omite seed.sql. La base de datos de producción permanece limpia.")
 
-          # 2. Inyectar Datos Semilla
-          seed_path = 'Database/seed.sql'
-          if os.path.exists(seed_path):
-              print(f"🌱 Ejecutando {seed_path}...")
-              with open(seed_path, 'r', encoding='utf-8') as f:
-                  seed_sql = f.read()
-              try:
-                  cur.execute(seed_sql)
-                  print("✅ Datos semilla inyectados con éxito.")
-              except Exception as e:
-                  print(f"::error::Error ejecutando {seed_path}: {e}")
-                  sys.exit(1)
-
-          # 3. Smoke Test de Verificación
+          # 5. Smoke Test de Verificación
           print("🔍 Ejecutando verificación de integridad (Smoke Test)...")
           tables = ['users', 'technicians', 'clients', 'work_orders', 'sim_cards', 'equipment', 'magic_links']
           results = {}
@@ -90,12 +124,14 @@ jobs:
               results[table] = count
               print(f"   • Tabla '{table}': {count} registros")
 
-          # Generar resumen en Markdown para GitHub Step Summary
+          # 6. Generar resumen Markdown en GitHub Step Summary
           summary_file = os.environ.get('GITHUB_STEP_SUMMARY')
           if summary_file:
               with open(summary_file, 'a', encoding='utf-8') as f:
-                  f.write("## 🚀 Despliegue de Base de Datos - Atlas FSM\n\n")
-                  f.write("El esquema y los datos semilla se aplicaron exitosamente en **Neon PostgreSQL**.\n\n")
+                  f.write(f"## 🚀 Despliegue de Base de Datos: {env_name}\n\n")
+                  f.write(f"- **Rama Git:** `{git_branch}`\n")
+                  f.write(f"- **Ambiente:** `{ 'production' if is_production else 'development' }`\n")
+                  f.write(f"- **Datos Semilla Inyectados:** { '❌ No (Producción Limpia)' if is_production else '✅ Sí (Mock Data)' }\n\n")
                   f.write("| Tabla | Registros Verificados | Estado |\n")
                   f.write("| :--- | :---: | :---: |\n")
                   for t, c in results.items():
@@ -103,5 +139,5 @@ jobs:
 
           cur.close()
           conn.close()
-          print("🎉 Despliegue completado al 100% con éxito.")
+          print(f"🎉 Despliegue completado al 100% en {env_name}.")
           EOF
