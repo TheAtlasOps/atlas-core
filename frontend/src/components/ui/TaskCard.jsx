@@ -15,15 +15,15 @@ import { MapPin, Grip } from "lucide-react";
 // ─── Config de prioridad ──────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
   Alta: {
-    pill: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30",
+    pill: "bg-red-500/15 text-red-600 dark:text-red-400 ring-1 ring-red-500/30",
     dot: "bg-red-500",
   },
   Media: {
-    pill: "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
+    pill: "bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30",
     dot: "bg-amber-400",
   },
   Baja: {
-    pill: "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
+    pill: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30",
     dot: "bg-emerald-500",
   },
 };
@@ -43,9 +43,9 @@ export default function TaskCard({
     <article
       className="
         group relative flex flex-col gap-3 rounded-xl
-        bg-[#1c1d24] border border-gray-800
+        bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-gray-700
         p-4
-        hover:border-gray-600 hover:bg-[#21222a]
+        hover:border-slate-300 dark:hover:border-gray-600 hover:bg-slate-50 dark:hover:bg-[#262626]
         transition-colors duration-150
         cursor-grab active:cursor-grabbing
         select-none
@@ -54,13 +54,13 @@ export default function TaskCard({
     >
       {/* ── Ícono de arrastre (visible on hover) ── */}
       <Grip
-        className="absolute top-3 right-3 w-3.5 h-3.5 text-gray-700 group-hover:text-gray-500 transition-colors"
+        className="absolute top-3 right-3 w-3.5 h-3.5 text-slate-300 dark:text-gray-700 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors"
         aria-hidden="true"
       />
 
       {/* ── Cabecera: ID + Pill de prioridad ── */}
       <div className="flex items-center justify-between gap-2 pr-5">
-        <span className="text-[11px] font-mono text-gray-500">{orderId}</span>
+        <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400">{orderId}</span>
         <span
           className={`
             inline-flex items-center gap-1.5 rounded-full px-2 py-0.5
@@ -74,15 +74,15 @@ export default function TaskCard({
       </div>
 
       {/* ── Título ── */}
-      <h3 className="text-sm font-semibold leading-snug text-white">
+      <h3 className="text-sm font-semibold leading-snug text-slate-900 dark:text-white">
         {title}
       </h3>
 
       {/* ── Ubicación ── */}
       {location && (
         <div className="flex items-start gap-1.5">
-          <MapPin className="w-3.5 h-3.5 text-gray-500 mt-0.5 shrink-0" aria-hidden="true" />
-          <span className="text-xs text-gray-400 leading-snug">{location}</span>
+          <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-gray-400 mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="text-xs text-slate-500 dark:text-gray-400 leading-snug">{location}</span>
         </div>
       )}
 
@@ -90,7 +90,7 @@ export default function TaskCard({
       <div className="flex items-center justify-between mt-auto pt-1">
         {/* Etiqueta de categoría */}
         {tag ? (
-          <span className="rounded-md bg-gray-800 border border-gray-700 px-2 py-0.5 text-[10px] font-medium text-gray-400 uppercase tracking-wide">
+          <span className="rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
             {tag}
           </span>
         ) : (

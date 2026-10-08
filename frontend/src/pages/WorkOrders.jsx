@@ -46,21 +46,21 @@ const TOTAL = COLUMNS.reduce((acc, col) => acc + col.tasks.length, 0);
 // ---------------------------------------------------------------------------
 function KanbanCardSkeleton() {
   return (
-    <div className="bg-gray-800 animate-pulse rounded-xl p-4 mb-4">
+    <div className="bg-slate-200 dark:bg-gray-800 animate-pulse rounded-xl p-4 mb-4">
       {/* Fila superior: ID + pill de estado */}
       <div className="flex items-center justify-between">
-        <div className="h-4 w-16 rounded bg-gray-700" />
-        <div className="h-5 w-12 rounded-full bg-gray-700" />
+        <div className="h-4 w-16 rounded bg-slate-200 dark:bg-gray-700" />
+        <div className="h-5 w-12 rounded-full bg-slate-200 dark:bg-gray-700" />
       </div>
 
       {/* Fila media: Título + Ubicación */}
-      <div className="mt-3 h-5 w-3/4 rounded bg-gray-700" />
-      <div className="mt-2 h-4 w-1/2 rounded bg-gray-700" />
+      <div className="mt-3 h-5 w-3/4 rounded bg-slate-200 dark:bg-gray-700" />
+      <div className="mt-2 h-4 w-1/2 rounded bg-slate-200 dark:bg-gray-700" />
 
       {/* Fila inferior: Tag + Avatar */}
       <div className="mt-4 flex items-center justify-between">
-        <div className="h-6 w-14 rounded-md bg-gray-700" />
-        <div className="h-8 w-8 rounded-full bg-gray-700" />
+        <div className="h-6 w-14 rounded-md bg-slate-200 dark:bg-gray-700" />
+        <div className="h-8 w-8 rounded-full bg-slate-200 dark:bg-gray-700" />
       </div>
     </div>
   );
@@ -72,21 +72,21 @@ function KanbanCardSkeleton() {
 function WorkOrderColumn({ id, label, accentColor, tasks, isLoading }) {
   return (
     <section
-      className="flex flex-col rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden"
+      className="flex flex-col rounded-2xl border border-slate-200 dark:border-gray-700 bg-slate-50/40 dark:bg-gray-900/40 overflow-hidden"
       aria-labelledby={`col-${id}-title`}
     >
       {/* Header — siempre visible */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-gray-700">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${accentColor}`} aria-hidden="true" />
           <h2
             id={`col-${id}-title`}
-            className="text-xs font-bold uppercase tracking-widest text-gray-400"
+            className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400"
           >
             {label}
           </h2>
         </div>
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-gray-800 border border-gray-700 px-1.5 text-[11px] font-bold text-gray-500">
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-1.5 text-[11px] font-bold text-slate-500 dark:text-gray-400">
           {isLoading ? "—" : tasks.length}
         </span>
       </header>
@@ -117,8 +117,8 @@ function WorkOrderColumn({ id, label, accentColor, tasks, isLoading }) {
 function KanbanEmptyState() {
   return (
     <div className="col-span-3 flex flex-col items-center justify-center py-32 gap-4">
-      <Inbox className="h-12 w-12 text-gray-600" aria-hidden="true" />
-      <p className="text-gray-400 text-sm text-center">
+      <Inbox className="h-12 w-12 text-slate-400 dark:text-gray-600" aria-hidden="true" />
+      <p className="text-slate-500 dark:text-gray-400 text-sm text-center">
         No hay órdenes de trabajo activas en este momento.
       </p>
     </div>
@@ -152,7 +152,7 @@ export default function WorkOrders() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-400 hover:border-gray-600 hover:text-gray-200 transition-colors duration-150"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-gray-400 hover:border-slate-300 dark:hover:border-gray-600 hover:text-slate-900 dark:hover:text-white transition-colors duration-150"
             aria-label="Filtrar órdenes"
           >
             <Filter className="h-3.5 w-3.5" aria-hidden="true" />
@@ -160,7 +160,7 @@ export default function WorkOrders() {
           </button>
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 active:scale-95 transition-all duration-150 shadow-sm"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white active:scale-95 transition-all duration-150 shadow-sm"
             aria-label="Nueva OT"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden="true" />

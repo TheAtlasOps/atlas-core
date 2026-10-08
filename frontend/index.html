@@ -6,6 +6,18 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>frontend</title>
+  <script>
+    // Aplica el tema persistido antes del primer render (evita parpadeo).
+    // Debe mantenerse en sincronía con src/context/ThemeContext.jsx
+    (function () {
+      try {
+        var t = localStorage.getItem("atlas-theme");
+        var dark = t ? t === "dark" : true; // por defecto: oscuro
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch (e) { }
+    })();
+  </script>
 </head>
 
 <body>

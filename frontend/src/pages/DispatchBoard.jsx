@@ -16,6 +16,7 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import KpiGrid from "../components/layout/KpiGrid";
+import { useTheme } from "../hooks/useTheme";
 
 // ─── KPI Data ─────────────────────────────────────────────────────────────────
 const kpiData = [
@@ -112,6 +113,7 @@ function makeIcon(hex) {
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
 function ActiveZonesCard({ isLoading }) {
+  const { isDark } = useTheme();
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
       {/* Header — siempre visible */}
@@ -133,7 +135,7 @@ function ActiveZonesCard({ isLoading }) {
         <button
           type="button"
           aria-label="Expandir mapa"
-          className="flex items-center justify-center rounded-md p-1 text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
+          className="flex items-center justify-center rounded-md p-1 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
         >
           <Maximize2 className="h-4 w-4" />
         </button>
@@ -141,8 +143,8 @@ function ActiveZonesCard({ isLoading }) {
 
       {isLoading ? (
         /* ── Skeleton del mapa ── */
-        <div className="relative flex h-75 items-center justify-center rounded-lg bg-gray-800 animate-pulse">
-          <Map className="h-8 w-8 text-gray-700" />
+        <div className="relative flex h-75 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+          <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
         </div>
       ) : (
         <>
@@ -155,13 +157,14 @@ function ActiveZonesCard({ isLoading }) {
               center={[-33.4489, -70.6693]}
               zoom={12}
               scrollWheelZoom={false}
-              style={{ height: "100%", width: "100%", background: "#0d0d0d" }}
+              style={{ height: "100%", width: "100%", background: isDark ? "#0d0d0d" : "#e2e8f0" }}
               zoomControl={false}
               attributionControl={false}
             >
-              {/* TileLayer dark mode — CartoDB rastertiles (libre, sin API key, sin marca de agua) */}
+              {/* TileLayer según tema — CartoDB rastertiles (libre, sin API key, sin marca de agua) */}
               <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png"
+                key={isDark ? "dark" : "light"}
+                url={`https://{s}.basemaps.cartocdn.com/rastertiles/${isDark ? "dark_all" : "light_all"}/{z}/{x}/{y}.png`}
                 subdomains="abcd"
                 maxZoom={19}
               />
@@ -226,35 +229,35 @@ const UPCOMING_VISITS = [
     service: "Instalación fibra óptica",
     client: "Sr. Ramírez — Providencia",
     status: "En camino",
-    statusStyle: "bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25",
+    statusStyle: "bg-orange-500/15 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25",
   },
   {
     time: "14:30",
     service: "Cambio de SIM corporativa",
     client: "Entel HQ — Santiago Centro",
     status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/25",
+    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
   },
   {
     time: "15:15",
     service: "Diagnóstico router empresarial",
     client: "Banco Estado — Las Condes",
     status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/25",
+    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
   },
   {
     time: "16:00",
     service: "Revisión antena 4G",
     client: "Torre Entel — Las Condes",
     status: "Reagendada",
-    statusStyle: "bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/25",
+    statusStyle: "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25",
   },
   {
     time: "17:30",
     service: "Activación Magic Link",
     client: "PYME Clientes — Ñuñoa",
     status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/25",
+    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
   },
 ];
 
@@ -289,19 +292,19 @@ function DonutChartCard({ isLoading }) {
         /* ── Skeleton del donut ── */
         <>
           <div className="flex items-center justify-center py-2">
-            <div className="w-40 h-40 rounded-full bg-gray-800 animate-pulse" />
+            <div className="w-40 h-40 rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
           </div>
           <div className="flex flex-col gap-2.5">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-gray-700 animate-pulse shrink-0" />
+                  <div className="h-2 w-2 rounded-full bg-slate-200 dark:bg-gray-700 animate-pulse shrink-0" />
                   <div
-                    className="h-3 animate-pulse rounded bg-gray-800"
+                    className="h-3 animate-pulse rounded bg-slate-200 dark:bg-gray-800"
                     style={{ width: `${60 + i * 12}px` }}
                   />
                 </div>
-                <div className="h-3 w-8 animate-pulse rounded bg-gray-800/70" />
+                <div className="h-3 w-8 animate-pulse rounded bg-slate-100/70 dark:bg-gray-800/70" />
               </div>
             ))}
           </div>
@@ -327,7 +330,7 @@ function DonutChartCard({ isLoading }) {
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="12"
-                  className="text-white/5"
+                  className="text-slate-900/10 dark:text-white/5"
                 />
                 {/* Segmentos */}
                 {segments.map((seg) => (
@@ -417,14 +420,14 @@ function UpcomingVisitsCard({ isLoading }) {
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
               {/* Skeleton hora */}
-              <div className="w-12 h-4 rounded bg-gray-800 animate-pulse shrink-0" />
+              <div className="w-12 h-4 rounded bg-slate-200 dark:bg-gray-800 animate-pulse shrink-0" />
               {/* Skeleton detalle + pill */}
               <div className="flex flex-1 items-center justify-between gap-3 min-w-0">
                 <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                  <div className="h-4 w-3/4 rounded bg-gray-800 animate-pulse" />
-                  <div className="h-3 w-1/2 rounded bg-gray-800/70 animate-pulse" />
+                  <div className="h-4 w-3/4 rounded bg-slate-200 dark:bg-gray-800 animate-pulse" />
+                  <div className="h-3 w-1/2 rounded bg-slate-100/70 dark:bg-gray-800/70 animate-pulse" />
                 </div>
-                <div className="h-5 w-16 rounded-full bg-gray-800/70 animate-pulse shrink-0" />
+                <div className="h-5 w-16 rounded-full bg-slate-100/70 dark:bg-gray-800/70 animate-pulse shrink-0" />
               </div>
             </div>
           ))}
@@ -432,7 +435,7 @@ function UpcomingVisitsCard({ isLoading }) {
       ) : isEmpty ? (
         /* ── Empty State ── */
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-          <CheckCircle2 className="h-8 w-8 text-gray-500" />
+          <CheckCircle2 className="h-8 w-8 text-slate-500 dark:text-gray-400" />
           <p className="text-xs text-muted-foreground leading-relaxed">
             Agenda al día.
             <br />
@@ -525,22 +528,22 @@ function ActivityTableSkeleton() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Encabezado idéntico al real */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
         <div className="flex flex-col gap-2">
-          <div className="h-4 w-52 animate-pulse rounded bg-gray-800" />
-          <div className="h-3 w-72 animate-pulse rounded bg-gray-800/80" />
+          <div className="h-4 w-52 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
+          <div className="h-3 w-72 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
         </div>
-        <div className="h-3 w-24 animate-pulse rounded bg-gray-800/60" />
+        <div className="h-3 w-24 animate-pulse rounded bg-slate-100/60 dark:bg-gray-800/60" />
       </div>
 
       {/* Filas skeleton */}
-      <div className="divide-y divide-gray-800/60">
+      <div className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="grid grid-cols-4 gap-4 px-5 py-4">
-            <div className="h-4 w-20 animate-pulse rounded bg-gray-800/80" />
-            <div className="h-4 w-28 animate-pulse rounded bg-gray-800/80" />
-            <div className="h-4 w-48 animate-pulse rounded bg-gray-800/80" />
-            <div className="h-4 w-10 animate-pulse rounded bg-gray-800/60 ml-auto" />
+            <div className="h-4 w-20 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
+            <div className="h-4 w-28 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
+            <div className="h-4 w-48 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
+            <div className="h-4 w-10 animate-pulse rounded bg-slate-100/60 dark:bg-gray-800/60 ml-auto" />
           </div>
         ))}
       </div>
@@ -555,7 +558,7 @@ function ActivityTable() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Encabezado de la sección */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
             Registro de actividad reciente
@@ -573,34 +576,34 @@ function ActivityTable() {
       <div className="overflow-x-auto scrollbar-kanban">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-gray-800">
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-500 w-28">
+            <tr className="border-b border-slate-200 dark:border-gray-700">
+              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 w-28">
                 ID Orden
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
                 Técnico
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
                 Acción
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-gray-500 text-right w-20">
+              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right w-20">
                 Hora
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/60">
+          <tbody className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
             {ACTIVITY_LOG.map((row, idx) => (
-              <tr key={idx} className="transition-colors hover:bg-white/2">
-                <td className="px-5 py-3 font-mono text-xs text-gray-400 whitespace-nowrap">
+              <tr key={idx} className="transition-colors hover:bg-slate-50 dark:hover:bg-white/2">
+                <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-gray-400 whitespace-nowrap">
                   {row.id}
                 </td>
-                <td className="px-5 py-3 text-sm text-gray-200 font-medium whitespace-nowrap">
+                <td className="px-5 py-3 text-sm text-slate-900 dark:text-white font-medium whitespace-nowrap">
                   {row.technician}
                 </td>
-                <td className="px-5 py-3 text-sm text-gray-400">
+                <td className="px-5 py-3 text-sm text-slate-500 dark:text-gray-400">
                   {row.action}
                 </td>
-                <td className="px-5 py-3 text-xs text-gray-500 font-mono tabular-nums text-right whitespace-nowrap">
+                <td className="px-5 py-3 text-xs text-slate-500 dark:text-gray-400 font-mono tabular-nums text-right whitespace-nowrap">
                   {row.time}
                 </td>
               </tr>
@@ -639,7 +642,7 @@ function AiInsights({ isLoading }) {
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-24 rounded-md bg-gray-800 animate-pulse"
+              className="h-24 rounded-md bg-slate-200 dark:bg-gray-800 animate-pulse"
             />
           ))}
         </div>

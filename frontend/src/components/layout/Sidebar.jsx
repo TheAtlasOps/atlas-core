@@ -1,4 +1,4 @@
-﻿import { LayoutDashboard, ClipboardList, Database, Link2, Settings } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Database, Link2, Settings } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const navItems = [
@@ -11,7 +11,7 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-gray-700 dark:bg-[#1e1e1e]">
       <div className="flex items-center gap-2 px-6 h-16 border-b border-border">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
           <span className="text-primary-foreground font-bold text-lg leading-none">
