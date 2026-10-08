@@ -36,14 +36,14 @@ const MOCK_SIMS = [
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const styles = {
-    Disponible: "bg-green-500/15 text-green-400 ring-1 ring-green-500/30",
-    Asignada: "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30",
-    Defectuosa: "bg-red-500/15 text-red-400 ring-1 ring-red-500/30",
+    Disponible: "bg-green-500/15 text-green-600 dark:text-green-400 ring-1 ring-green-500/30",
+    Asignada: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30",
+    Defectuosa: "bg-red-500/15 text-red-600 dark:text-red-400 ring-1 ring-red-500/30",
   };
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        styles[status] ?? "bg-gray-700 text-gray-300"
+        styles[status] ?? "bg-slate-200 dark:bg-gray-700 text-slate-700 dark:text-gray-300"
       }`}
     >
       {status}
@@ -54,7 +54,7 @@ function StatusBadge({ status }) {
 // ─── Type Badge ───────────────────────────────────────────────────────────────
 function TypeBadge({ type }) {
   return (
-    <span className="inline-flex items-center rounded-md bg-gray-700/60 px-2 py-0.5 text-xs font-semibold text-gray-300 ring-1 ring-gray-600/50">
+    <span className="inline-flex items-center rounded-md bg-slate-200/60 dark:bg-gray-700/60 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-gray-300 ring-1 ring-gray-600/50">
       {type}
     </span>
   );
@@ -73,13 +73,13 @@ function SimInventorySkeleton() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4 gap-3">
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-4 gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-gray-400 pointer-events-none" />
           <input
             disabled
             placeholder="Buscar por ICCID o técnico..."
-            className="w-full rounded-lg border border-gray-700 bg-gray-800/60 py-2 pl-9 pr-4 text-sm text-gray-400 placeholder:text-gray-600 outline-none cursor-not-allowed"
+            className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-100/60 dark:bg-gray-800/60 py-2 pl-9 pr-4 text-sm text-slate-500 dark:text-gray-400 placeholder:text-slate-400 dark:placeholder:text-gray-600 outline-none cursor-not-allowed"
           />
         </div>
         <button
@@ -92,22 +92,22 @@ function SimInventorySkeleton() {
       </div>
 
       {/* Table header + skeleton rows */}
-      <div className="overflow-x-auto rounded-xl border border-gray-800">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-800 bg-gray-900/50">
-              <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">ICCID</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Tipo</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Estado</th>
-              <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Asignado A</th>
-              <th className="px-4 py-3 text-right font-semibold text-gray-400 tracking-wide text-xs uppercase">Acciones</th>
+            <tr className="border-b border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-900/50">
+              <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">ICCID</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Tipo</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Estado</th>
+              <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Asignado A</th>
+              <th className="px-4 py-3 text-right font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {Array.from({ length: 4 }).map((_, i) => (
-              <tr key={i} className="border-b border-gray-800/60 last:border-0">
+              <tr key={i} className="border-b border-slate-200/60 dark:border-gray-700/60 last:border-0">
                 <td colSpan={5} className="px-4 py-3">
-                  <div className="h-12 rounded-lg bg-gray-800 animate-pulse" />
+                  <div className="h-12 rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse" />
                 </td>
               </tr>
             ))}
@@ -122,8 +122,8 @@ function SimInventorySkeleton() {
 function EmptyState() {
   return (
     <div className="min-h-[400px] flex flex-col items-center justify-center gap-4">
-      <Database className="h-12 w-12 text-gray-600" />
-      <p className="text-gray-400 text-sm text-center max-w-xs">
+      <Database className="h-12 w-12 text-slate-400 dark:text-gray-600" />
+      <p className="text-slate-500 dark:text-gray-400 text-sm text-center max-w-xs">
         No hay tarjetas SIM registradas en el inventario
       </p>
     </div>
@@ -162,21 +162,21 @@ export default function SimInventory() {
       </div>
 
       {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between border-b border-gray-800 pb-4 gap-3 flex-wrap">
+      <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-4 gap-3 flex-wrap">
         {/* Search */}
         <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-gray-400 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por ICCID o técnico..."
-            className="w-full rounded-lg border border-gray-700 bg-gray-800/60 py-2 pl-9 pr-4 text-sm text-gray-200 placeholder:text-gray-600 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition"
+            className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-100/60 dark:bg-gray-800/60 py-2 pl-9 pr-4 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-gray-600 outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/40 transition"
           />
         </div>
 
         {/* Register button */}
-        <button className="inline-flex items-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-400 active:bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors shadow-sm shadow-orange-500/20">
+        <button className="inline-flex items-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition-colors shadow-sm shadow-orange-500/20">
           <Plus className="h-4 w-4" />
           Registrar SIM
         </button>
@@ -188,26 +188,26 @@ export default function SimInventory() {
       ) : (
         <>
           {/* Table */}
-          <div className="overflow-x-auto rounded-xl border border-gray-800">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-700">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-800 bg-gray-900/50">
-                  <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">ICCID</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Tipo</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Estado</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-400 tracking-wide text-xs uppercase">Asignado A</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-400 tracking-wide text-xs uppercase">Acciones</th>
+                <tr className="border-b border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-900/50">
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">ICCID</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Tipo</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Estado</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Asignado A</th>
+                  <th className="px-4 py-3 text-right font-semibold text-slate-500 dark:text-gray-400 tracking-wide text-xs uppercase">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredSims.map((sim) => (
                   <tr
                     key={sim.id}
-                    className="border-b border-gray-800/60 last:border-0 hover:bg-gray-800/30 transition-colors"
+                    className="border-b border-slate-200/60 dark:border-gray-700/60 last:border-0 hover:bg-slate-100/30 dark:hover:bg-gray-800/30 transition-colors"
                   >
                     {/* ICCID */}
                     <td className="px-4 py-3">
-                      <span className="font-mono text-gray-200 text-xs tracking-wider">
+                      <span className="font-mono text-slate-900 dark:text-white text-xs tracking-wider">
                         {sim.iccid}
                       </span>
                     </td>
@@ -223,8 +223,8 @@ export default function SimInventory() {
                     </td>
 
                     {/* Asignado A */}
-                    <td className="px-4 py-3 text-gray-300">
-                      {sim.assignedTo ?? <span className="text-gray-600">—</span>}
+                    <td className="px-4 py-3 text-slate-700 dark:text-gray-300">
+                      {sim.assignedTo ?? <span className="text-slate-400 dark:text-gray-600">—</span>}
                     </td>
 
                     {/* Acciones */}
@@ -232,13 +232,13 @@ export default function SimInventory() {
                       <div className="flex items-center justify-end gap-2">
                         <button
                           title="Editar"
-                          className="rounded-md p-1.5 text-gray-500 hover:bg-gray-700 hover:text-gray-200 transition-colors"
+                          className="rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-gray-700 hover:text-slate-900 dark:hover:text-white transition-colors"
                         >
                           <Edit className="h-4 w-4" />
                         </button>
                         <button
                           title="Eliminar"
-                          className="rounded-md p-1.5 text-gray-500 hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                          className="rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -252,21 +252,21 @@ export default function SimInventory() {
 
           {/* ── Footer / Pagination ── */}
           <div className="flex items-center justify-between pt-1 flex-wrap gap-3">
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-slate-500 dark:text-gray-400">
               Mostrando{" "}
-              <span className="text-gray-300 font-medium">1</span> a{" "}
-              <span className="text-gray-300 font-medium">4</span> de{" "}
-              <span className="text-gray-300 font-medium">156</span> SIMs
+              <span className="text-slate-700 dark:text-gray-300 font-medium">1</span> a{" "}
+              <span className="text-slate-700 dark:text-gray-300 font-medium">4</span> de{" "}
+              <span className="text-slate-700 dark:text-gray-300 font-medium">156</span> SIMs
             </p>
             <div className="flex items-center gap-2">
               <button
                 disabled
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800/40 px-3 py-1.5 text-xs font-medium text-gray-500 cursor-not-allowed select-none"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-100/40 dark:bg-gray-800/40 px-3 py-1.5 text-xs font-medium text-slate-500 dark:text-gray-400 cursor-not-allowed select-none"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
                 Anterior
               </button>
-              <button className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-800/40 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 hover:border-gray-600 transition-colors">
+              <button className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-100/40 dark:bg-gray-800/40 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-gray-700 hover:border-slate-300 dark:hover:border-gray-600 transition-colors">
                 Siguiente
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>

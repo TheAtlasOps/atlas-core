@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { User, Bell, Lock, CheckCircle2, Shield, Server, ChevronRight } from "lucide-react";
+import { User, Bell, Lock, CheckCircle2, Shield, Server, ChevronRight, Palette } from "lucide-react";
+import ThemeToggle from "../components/ui/ThemeToggle";
+import { useTheme } from "../hooks/useTheme";
 
 // ─── Skeleton ──────────────────────────────────────────────────────────────────
 function SettingsSkeleton() {
@@ -15,10 +17,11 @@ function SettingsSkeleton() {
 
       {/* Grid skeletons */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        <div className="h-[300px] rounded-xl bg-gray-800 animate-pulse" />
-        <div className="h-[300px] rounded-xl bg-gray-800 animate-pulse" />
-        <div className="h-[240px] rounded-xl bg-gray-800 animate-pulse" />
-        <div className="h-[240px] rounded-xl bg-gray-800 animate-pulse" />
+        <div className="h-[300px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse" />
+        <div className="h-[300px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse" />
+        <div className="h-[240px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse" />
+        <div className="h-[240px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse" />
+        <div className="h-[110px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse lg:col-span-2" />
       </div>
 
     </div>
@@ -28,11 +31,11 @@ function SettingsSkeleton() {
 // ─── Toggle Row ────────────────────────────────────────────────────────────────
 function ToggleRow({ label, description, enabled, onToggle }) {
   return (
-    <div className="flex items-center justify-between py-3.5 border-b border-gray-800/70 last:border-0">
+    <div className="flex items-center justify-between py-3.5 border-b border-slate-200/70 dark:border-gray-700/70 last:border-0">
       <div className="flex flex-col gap-0.5">
-        <span className="text-sm font-medium text-gray-200">{label}</span>
+        <span className="text-sm font-medium text-slate-900 dark:text-white">{label}</span>
         {description && (
-          <span className="text-xs text-gray-500">{description}</span>
+          <span className="text-xs text-slate-500 dark:text-gray-400">{description}</span>
         )}
       </div>
       {/* Toggle button */}
@@ -40,7 +43,7 @@ function ToggleRow({ label, description, enabled, onToggle }) {
         onClick={onToggle}
         aria-pressed={enabled}
         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 ${
-          enabled ? "bg-green-500" : "bg-gray-700"
+          enabled ? "bg-green-500" : "bg-slate-300 dark:bg-gray-700"
         }`}
       >
         <span
@@ -54,9 +57,9 @@ function ToggleRow({ label, description, enabled, onToggle }) {
 }
 
 // ─── Card wrapper ──────────────────────────────────────────────────────────────
-function Card({ children }) {
+function Card({ children, className = "" }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-[#13151A] p-6 flex flex-col gap-5">
+    <div className={`rounded-xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] p-6 flex flex-col gap-5 ${className}`}>
       {children}
     </div>
   );
@@ -65,11 +68,11 @@ function Card({ children }) {
 // ─── Card Header ──────────────────────────────────────────────────────────────
 function CardHeader({ icon: Icon, title }) {
   return (
-    <div className="flex items-center gap-3 pb-1 border-b border-gray-800">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-800 text-gray-400">
+    <div className="flex items-center gap-3 pb-1 border-b border-slate-200 dark:border-gray-700">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-400">
         <Icon className="h-4 w-4" />
       </div>
-      <h2 className="text-sm font-semibold text-gray-100">{title}</h2>
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h2>
     </div>
   );
 }
@@ -78,7 +81,7 @@ function CardHeader({ icon: Icon, title }) {
 function Field({ label, value, onChange, disabled = false, type = "text", placeholder }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+      <label className="text-xs font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
         {label}
       </label>
       <div className="relative">
@@ -88,13 +91,13 @@ function Field({ label, value, onChange, disabled = false, type = "text", placeh
           onChange={onChange}
           disabled={disabled}
           placeholder={placeholder}
-          className={`w-full rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 outline-none transition
-            placeholder:text-gray-500
+          className={`w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50/60 dark:bg-gray-900/60 px-3 py-2 text-sm text-slate-900 dark:text-white outline-none transition
+            placeholder:text-slate-500 dark:placeholder:text-gray-400
             focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30
-            disabled:cursor-not-allowed disabled:text-gray-500 disabled:select-none`}
+            disabled:cursor-not-allowed disabled:text-slate-500 dark:disabled:text-gray-400 disabled:select-none`}
         />
         {disabled && (
-          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600 pointer-events-none" />
+          <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-gray-600 pointer-events-none" />
         )}
       </div>
     </div>
@@ -103,6 +106,7 @@ function Field({ label, value, onChange, disabled = false, type = "text", placeh
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function Settings() {
+  const { isDark } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [saved, setSaved] = useState(false);
 
@@ -204,26 +208,26 @@ export default function Settings() {
 
           <div className="flex flex-col gap-3">
             {/* Cambiar Contraseña */}
-            <button className="w-full bg-gray-800 hover:bg-gray-700 transition-colors text-left px-4 py-3 rounded-lg flex justify-between items-center group">
+            <button className="w-full bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors text-left px-4 py-3 rounded-lg flex justify-between items-center group">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-gray-200">Cambiar Contraseña</span>
-                <span className="text-xs text-gray-500">Última modificación hace 3 meses.</span>
+                <span className="text-sm font-medium text-slate-900 dark:text-white">Cambiar Contraseña</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">Última modificación hace 3 meses.</span>
               </div>
-              <ChevronRight className="h-4 w-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+              <ChevronRight className="h-4 w-4 text-slate-400 dark:text-gray-600 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors" />
             </button>
 
             {/* 2FA */}
-            <button className="w-full bg-gray-800 hover:bg-gray-700 transition-colors text-left px-4 py-3 rounded-lg flex justify-between items-center group">
+            <button className="w-full bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors text-left px-4 py-3 rounded-lg flex justify-between items-center group">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-gray-200">Configurar Autenticación 2FA</span>
-                  <span className="inline-flex items-center rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-400 ring-1 ring-orange-500/25">
+                  <span className="text-sm font-medium text-slate-900 dark:text-white">Configurar Autenticación 2FA</span>
+                  <span className="inline-flex items-center rounded-full bg-orange-500/15 px-2 py-0.5 text-[10px] font-semibold text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25">
                     Recomendado
                   </span>
                 </div>
-                <span className="text-xs text-gray-500">Añade una capa extra de seguridad a tu cuenta.</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">Añade una capa extra de seguridad a tu cuenta.</span>
               </div>
-              <ChevronRight className="h-4 w-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
+              <ChevronRight className="h-4 w-4 text-slate-400 dark:text-gray-600 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors" />
             </button>
           </div>
         </Card>
@@ -234,10 +238,10 @@ export default function Settings() {
 
           <div className="flex flex-col gap-1">
             {/* API Backend Atlas */}
-            <div className="flex items-center justify-between py-3.5 border-b border-gray-800/70">
+            <div className="flex items-center justify-between py-3.5 border-b border-slate-200/70 dark:border-gray-700/70">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-gray-200">API Backend Atlas</span>
-                <span className="text-xs text-gray-500">REST · Node.js · atlas-api-prod</span>
+                <span className="text-sm font-medium text-slate-900 dark:text-white">API Backend Atlas</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">REST · Node.js · atlas-api-prod</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -251,8 +255,8 @@ export default function Settings() {
             {/* Base de Datos */}
             <div className="flex items-center justify-between py-3.5">
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-gray-200">Base de Datos Principal</span>
-                <span className="text-xs text-gray-500">PostgreSQL 15 · Cloud SQL · atlas-db</span>
+                <span className="text-sm font-medium text-slate-900 dark:text-white">Base de Datos Principal</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">PostgreSQL 15 · Cloud SQL · atlas-db</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -261,6 +265,31 @@ export default function Settings() {
                 </span>
                 <span className="text-xs font-medium text-green-500/80">Conectado</span>
               </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* ── Tarjeta 5: Apariencia (Modo Claro / Oscuro) ── */}
+        <Card className="lg:col-span-2">
+          <CardHeader icon={Palette} title="Apariencia" />
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5">
+              <label
+                htmlFor="theme-toggle-settings"
+                className="cursor-pointer select-none text-sm font-medium text-slate-900 dark:text-white"
+              >
+                Tema de la interfaz
+              </label>
+              <span className="text-xs text-slate-500 dark:text-gray-400">
+                Alterna entre Modo Claro y Modo Oscuro. Tu elección se guarda en este navegador.
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="hidden text-xs font-medium text-slate-500 dark:text-gray-400 sm:inline">
+                {isDark ? "Modo oscuro" : "Modo claro"}
+              </span>
+              <ThemeToggle id="theme-toggle-settings" />
             </div>
           </div>
         </Card>
@@ -274,7 +303,7 @@ export default function Settings() {
           className={`inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white transition-all shadow-sm
             ${saved
               ? "bg-green-600 shadow-green-500/20 cursor-default"
-              : "bg-orange-500 hover:bg-orange-400 active:bg-orange-600 shadow-orange-500/20"
+              : "bg-orange-500 hover:bg-orange-600 active:bg-orange-600 shadow-orange-500/20"
             }`}
         >
           {saved ? (

@@ -6,13 +6,13 @@ function KpiCardSkeleton() {
     <div className="rounded-xl border border-border bg-card p-5">
       {/* Fila superior: label + ícono */}
       <div className="flex items-center justify-between">
-        <div className="h-4 w-28 animate-pulse rounded bg-gray-800" />
-        <div className="h-9 w-9 animate-pulse rounded-lg bg-gray-800" />
+        <div className="h-4 w-28 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
+        <div className="h-9 w-9 animate-pulse rounded-lg bg-slate-200 dark:bg-gray-800" />
       </div>
       {/* Número grande */}
-      <div className="mt-4 h-8 w-20 animate-pulse rounded bg-gray-800" />
+      <div className="mt-4 h-8 w-20 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
       {/* Delta */}
-      <div className="mt-2 h-3 w-40 animate-pulse rounded bg-gray-800" />
+      <div className="mt-2 h-3 w-40 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
     </div>
   );
 }

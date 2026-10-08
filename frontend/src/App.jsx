@@ -1,4 +1,4 @@
-﻿import { Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
 import DispatchBoard from "./pages/DispatchBoard";
@@ -9,7 +9,7 @@ import Settings from "./pages/Settings";
 
 export default function AtlasDashboard() {
   return (
-    <div className="flex h-dvh overflow-hidden text-foreground">
+    <div className="flex h-dvh overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#121212] dark:text-white">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
