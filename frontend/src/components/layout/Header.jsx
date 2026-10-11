@@ -1,14 +1,27 @@
 import { useState } from "react";
 import { Search, Bell, User, LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
+import AdminAvatar from "../ui/AdminAvatar";
+import AdminProfileModal from "../ui/AdminProfileModal";
 import { useTheme } from "../../hooks/useTheme";
 
+// Datos mock del perfil administrativo (pendiente de reemplazar por la sesión real).
+const ADMIN_PROFILE = {
+  name: "Diego Jiménez Escobar",
+  avatarSrc: "/professional-avatar.png",
+  role: "Coordinador de Despacho & Scrum Master",
+  email: "d.jimenez@entel.cl",
+  zone: "Región Metropolitana / Central",
+};
+
 export default function Header() {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const { isDark } = useTheme();
 
   return (
+    <>
     <header className="flex items-center gap-4 h-16 shrink-0 border-b border-slate-200 bg-white px-4 md:px-6 dark:border-gray-700 dark:bg-[#1e1e1e]">
       <div className="lg:hidden flex h-8 w-8 items-center justify-center rounded-md bg-primary">
         <span className="text-primary-foreground font-bold leading-none">
@@ -37,7 +50,7 @@ export default function Header() {
             aria-expanded={isNotifOpen}
             onClick={() => {
               setIsNotifOpen((prev) => !prev);
-              setIsProfileOpen(false);
+              setIsMenuOpen(false);
             }}
             className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -66,21 +79,17 @@ export default function Header() {
           <button
             id="btn-profile"
             aria-label="Your profile"
-            aria-expanded={isProfileOpen}
+            aria-expanded={isMenuOpen}
             onClick={() => {
-              setIsProfileOpen((prev) => !prev);
+              setIsMenuOpen((prev) => !prev);
               setIsNotifOpen(false);
             }}
-            className="block"
+            className="block rounded-full hover:ring-2 hover:ring-orange-500 transition-all"
           >
-            <img
-              src="/professional-avatar.png"
-              alt="Your profile"
-              className="h-9 w-9 rounded-full border border-border object-cover hover:ring-2 hover:ring-primary transition-all"
-            />
+            <AdminAvatar src={ADMIN_PROFILE.avatarSrc} name={ADMIN_PROFILE.name} />
           </button>
 
-          {isProfileOpen && (
+          {isMenuOpen && (
             <div
               role="menu"
               aria-label="Profile menu"
@@ -88,6 +97,10 @@ export default function Header() {
             >
               <button
                 role="menuitem"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setIsProfileOpen(true);
+                }}
                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-900 hover:bg-slate-100 transition-colors dark:text-white dark:hover:bg-gray-800"
               >
                 <User className="h-4 w-4 text-slate-500 dark:text-gray-400" />
@@ -121,5 +134,12 @@ export default function Header() {
 
       </div>
     </header>
+
+      <AdminProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        profile={ADMIN_PROFILE}
+      />
+    </>
   );
 }
