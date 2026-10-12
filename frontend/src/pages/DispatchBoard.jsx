@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Sparkles,
   ArrowUpRight,
@@ -7,38 +7,40 @@ import {
   Users,
   CreditCard,
   X,
-  FilePlus,
   Maximize2,
   CheckCircle2,
   Map,
+  Search,
+  Filter,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import KpiGrid from "../components/layout/KpiGrid";
 import { useTheme } from "../hooks/useTheme";
+import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
+import { SERVICE_TYPES } from "../lib/workOrderOptions";
+import { useWorkOrders } from "../context/WorkOrderContext";
 
-// ─── KPI Data ─────────────────────────────────────────────────────────────────
-const kpiData = [
-  {
-    label: "Ordenes Activas",
-    value: "32",
-    delta: "+3 esta semana",
-    icon: ClipboardList,
-  },
-  {
-    label: "Tecnicos en Campo",
-    value: "128",
-    delta: "-12 vs semana pasada",
-    icon: Users,
-  },
-  {
-    label: "SIMs Disponibles",
-    value: "99.8%",
-    delta: "Todos los sistemas operativos",
-    icon: CreditCard,
-  },
-];
+const STATUS_OPTIONS = ["En camino", "Completada", "Programada", "Reagendada"];
+
+function FilterPill({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-150 ${
+        active
+          ? "border-orange-500 bg-orange-500 text-white"
+          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:bg-gray-800"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 
 // ─── AI Insights Data ────────────────────────────────────────────────────────
 const insights = [
@@ -225,39 +227,54 @@ const DONUT_SEGMENTS = [
 // ─── Mock: Próximas visitas ───────────────────────────────────────────────────
 const UPCOMING_VISITS = [
   {
+    id: "#OT-08491",
     time: "14:00",
     service: "Instalación fibra óptica",
+    serviceType: "Fibra",
     client: "Sr. Ramírez — Providencia",
     status: "En camino",
     statusStyle: "bg-orange-500/15 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25",
+    technician: "Juan Rivas",
   },
   {
+    id: "#OT-08492",
     time: "14:30",
     service: "Cambio de SIM corporativa",
+    serviceType: "SIM",
     client: "Entel HQ — Santiago Centro",
     status: "Programada",
     statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
+    technician: "Luis Pinto",
   },
   {
+    id: "#OT-08494",
     time: "15:15",
     service: "Diagnóstico router empresarial",
+    serviceType: "Hardware",
     client: "Banco Estado — Las Condes",
     status: "Programada",
     statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
+    technician: "Tomás Castro",
   },
   {
+    id: "#OT-08493",
     time: "16:00",
     service: "Revisión antena 4G",
+    serviceType: "Red",
     client: "Torre Entel — Las Condes",
     status: "Reagendada",
     statusStyle: "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25",
+    technician: "María Kovalenko",
   },
   {
+    id: "#OT-08495",
     time: "17:30",
     service: "Activación Magic Link",
+    serviceType: "Magic Link",
     client: "PYME Clientes — Ñuñoa",
     status: "Programada",
     statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
+    technician: "Elena Kravets",
   },
 ];
 
@@ -391,9 +408,8 @@ function DonutChartCard({ isLoading }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 3 — Próximas visitas
 // ═══════════════════════════════════════════════════════════════════════════════
-function UpcomingVisitsCard({ isLoading }) {
-  // Cambia a `true` para ver el empty state cuando no hay visitas
-  const isEmpty = false;
+function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS }) {
+  const isEmpty = visits.length === 0;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
@@ -437,15 +453,15 @@ function UpcomingVisitsCard({ isLoading }) {
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
           <CheckCircle2 className="h-8 w-8 text-slate-500 dark:text-gray-400" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Agenda al día.
+            No se encontraron visitas
             <br />
-            No hay visitas pendientes.
+            para los filtros o búsqueda aplicados.
           </p>
         </div>
       ) : (
         /* ── Lista de visitas ── */
         <ol className="flex flex-col divide-y divide-border">
-          {UPCOMING_VISITS.map((visit, idx) => (
+          {visits.map((visit, idx) => (
             <li
               key={idx}
               className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
@@ -460,7 +476,7 @@ function UpcomingVisitsCard({ isLoading }) {
                   {visit.service}
                 </p>
                 <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {visit.client}
+                  {visit.client} {visit.technician && `· Técnico: ${visit.technician}`}
                 </p>
               </div>
               {/* Pill de estado */}
@@ -487,36 +503,48 @@ const ACTIVITY_LOG = [
     id: "#OT-08491",
     technician: "Juan Rivas",
     action: "Marcó visita como completada",
+    status: "Completada",
+    serviceType: "Fibra",
     time: "13:52",
   },
   {
     id: "#OT-08495",
     technician: "Elena Kravets",
     action: "Inició desplazamiento hacia el lugar",
+    status: "En camino",
+    serviceType: "Magic Link",
     time: "13:47",
   },
   {
     id: "#OT-08492",
     technician: "Luis Pinto",
     action: "Aceptó la OT asignada",
+    status: "Programada",
+    serviceType: "SIM",
     time: "13:30",
   },
   {
     id: "#OT-08496",
     technician: "Elena Kravets",
     action: "Actualizó estado a En Tránsito",
+    status: "En camino",
+    serviceType: "Red",
     time: "13:15",
   },
   {
     id: "#OT-08499",
     technician: "Luis Pinto",
     action: "Marcó visita como completada",
+    status: "Completada",
+    serviceType: "Hardware",
     time: "12:58",
   },
   {
     id: "#OT-08493",
     technician: "María Kovalenko",
     action: "Aceptó la OT asignada",
+    status: "Programada",
+    serviceType: "Red",
     time: "12:40",
   },
 ];
@@ -554,7 +582,7 @@ function ActivityTableSkeleton() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tabla — Registro de actividad reciente
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActivityTable() {
+function ActivityTable({ log = ACTIVITY_LOG }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Encabezado de la sección */}
@@ -592,22 +620,30 @@ function ActivityTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
-            {ACTIVITY_LOG.map((row, idx) => (
-              <tr key={idx} className="transition-colors hover:bg-slate-50 dark:hover:bg-white/2">
-                <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-gray-400 whitespace-nowrap">
-                  {row.id}
-                </td>
-                <td className="px-5 py-3 text-sm text-slate-900 dark:text-white font-medium whitespace-nowrap">
-                  {row.technician}
-                </td>
-                <td className="px-5 py-3 text-sm text-slate-500 dark:text-gray-400">
-                  {row.action}
-                </td>
-                <td className="px-5 py-3 text-xs text-slate-500 dark:text-gray-400 font-mono tabular-nums text-right whitespace-nowrap">
-                  {row.time}
+            {log.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-xs text-muted-foreground">
+                  No se registraron actividades que coincidan con la búsqueda.
                 </td>
               </tr>
-            ))}
+            ) : (
+              log.map((row, idx) => (
+                <tr key={idx} className="transition-colors hover:bg-slate-50 dark:hover:bg-white/2">
+                  <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-gray-400 whitespace-nowrap">
+                    {row.id}
+                  </td>
+                  <td className="px-5 py-3 text-sm text-slate-900 dark:text-white font-medium whitespace-nowrap">
+                    {row.technician}
+                  </td>
+                  <td className="px-5 py-3 text-sm text-slate-500 dark:text-gray-400">
+                    {row.action}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-slate-500 dark:text-gray-400 font-mono tabular-nums text-right whitespace-nowrap">
+                    {row.time}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -678,8 +714,20 @@ function AiInsights({ isLoading }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Vista principal — DispatchBoard
 // ═══════════════════════════════════════════════════════════════════════════════
+const normalize = (s) =>
+  (s ?? "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
 export default function DispatchBoard() {
+  const { visitsList, activityList, toast, setToast, createWorkOrder, totalOrders } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [serviceFilter, setServiceFilter] = useState(null);
 
   // ── Simula latencia de red — reemplazar por fetch real contra la BD ──────────
   const [isLoading, setIsLoading] = useState(true);
@@ -688,131 +736,273 @@ export default function DispatchBoard() {
     return () => clearTimeout(timer);
   }, []);
 
+  const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
+  const hasActiveFilters = Boolean(search.trim()) || activeFilterCount > 0;
+  const q = normalize(search.trim());
+
+  // KPIs dinámicos conectados al total de órdenes activas
+  const dynamicKpiData = useMemo(() => [
+    {
+      label: "Ordenes Activas",
+      value: String(totalOrders),
+      delta: "+3 esta semana",
+      icon: ClipboardList,
+    },
+    {
+      label: "Tecnicos en Campo",
+      value: "128",
+      delta: "-12 vs semana pasada",
+      icon: Users,
+    },
+    {
+      label: "SIMs Disponibles",
+      value: "99.8%",
+      delta: "Todos los sistemas operativos",
+      icon: CreditCard,
+    },
+  ], [totalOrders]);
+
+  const filteredVisits = visitsList.filter((visit) => {
+    if (statusFilter && normalize(visit.status) !== normalize(statusFilter)) return false;
+    if (serviceFilter && normalize(visit.serviceType) !== normalize(serviceFilter)) return false;
+    if (q) {
+      return (
+        normalize(visit.id).includes(q) ||
+        normalize(visit.service).includes(q) ||
+        normalize(visit.client).includes(q) ||
+        normalize(visit.technician).includes(q) ||
+        normalize(visit.status).includes(q) ||
+        normalize(visit.serviceType).includes(q)
+      );
+    }
+    return true;
+  });
+
+  const filteredActivityLog = activityList.filter((row) => {
+    if (statusFilter && normalize(row.status) !== normalize(statusFilter)) return false;
+    if (serviceFilter && normalize(row.serviceType) !== normalize(serviceFilter)) return false;
+    if (q) {
+      return (
+        normalize(row.id).includes(q) ||
+        normalize(row.technician).includes(q) ||
+        normalize(row.action).includes(q) ||
+        normalize(row.status).includes(q) ||
+        normalize(row.serviceType).includes(q)
+      );
+    }
+    return true;
+  });
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setStatusFilter(null);
+    setServiceFilter(null);
+  };
+
+  const handleCreateOT = (order) => {
+    createWorkOrder(order);
+  };
+
   return (
     <>
-      {/* ── Modal nueva OT (sin cambios) ── */}
-      {isModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setIsModalOpen(false)}
+      {/* ── Toast de confirmación ── */}
+      {toast && (
+        <aside
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-emerald-500/40 bg-white p-4 shadow-2xl dark:border-emerald-500/40 dark:bg-gray-900 animate-in fade-in slide-in-from-bottom-4 duration-200"
         >
-          <div
-            className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                  <FilePlus className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2
-                    id="modal-title"
-                    className="text-base font-semibold text-foreground"
-                  >
-                    Nueva Orden de Trabajo
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    Completa los detalles para despachar
-                  </p>
-                </div>
-              </div>
-              <button
-                aria-label="Cerrar modal"
-                onClick={() => setIsModalOpen(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-5 flex flex-col gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Tipo de Servicio
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Instalacion fibra optica"
-                  className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Direccion del servicio
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Av. Providencia 1234, Santiago"
-                  className="w-full rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Descripcion
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Describe el problema o requerimiento del cliente..."
-                  className="w-full resize-none rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                id="btn-cancel-modal"
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-lg border border-border bg-secondary px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary/80 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                id="btn-create-ot"
-                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
-              >
-                <Plus className="h-4 w-4" />
-                Crear OT
-              </button>
-            </div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="h-5 w-5" />
           </div>
-        </div>
+          <div className="text-xs">
+            <p className="font-semibold text-slate-900 dark:text-white">
+              {toast.title}
+            </p>
+            <p className="text-slate-500 dark:text-gray-400">
+              {toast.description}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            aria-label="Cerrar notificación"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </aside>
       )}
+
+      {/* ── Modal nueva OT ── */}
+      <NewWorkOrderModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCreate={handleCreateOT}
+      />
 
       {/* ── Layout principal ── */}
       <div className="flex flex-col gap-6">
         {/* Bloque superior: contenido central + sidebar AI */}
         <div className="flex flex-col gap-6 xl:flex-row xl:items-stretch">
           <div className="flex-1 flex flex-col gap-6">
-            {/* Cabecera + botón Nueva OT (sin cambios) */}
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-balance">
-                  Dispatch Board
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Estado en tiempo real de las ordenes de trabajo Entel.
-                </p>
+            {/* Cabecera + búsqueda, filtros y botón Nueva OT */}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight text-balance">
+                    Dispatch Board
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Estado en tiempo real de las ordenes de trabajo Entel.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Input de búsqueda con lupa */}
+                  <div className="relative w-full sm:w-72">
+                    <Search
+                      className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-gray-500"
+                      aria-hidden="true"
+                    />
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar OT, cliente o técnico..."
+                      aria-label="Buscar OT, cliente o técnico"
+                      className="w-full rounded-lg border border-slate-200 bg-card py-2 pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700"
+                    />
+                  </div>
+
+                  {/* Botón de Filtros */}
+                  <button
+                    type="button"
+                    onClick={() => setShowFilters((v) => !v)}
+                    aria-expanded={showFilters}
+                    aria-controls="dispatch-filters"
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors duration-150 ${
+                      showFilters || activeFilterCount > 0
+                        ? "border-orange-500/50 bg-orange-50 text-orange-600 dark:bg-orange-950/30 dark:text-orange-400"
+                        : "border-slate-200 dark:border-gray-700 bg-card text-muted-foreground hover:border-slate-300 dark:hover:border-gray-600 hover:text-foreground"
+                    }`}
+                  >
+                    <Filter className="h-3.5 w-3.5" aria-hidden="true" />
+                    Filtros
+                    {activeFilterCount > 0 && (
+                      <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+                        {activeFilterCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Botón Nueva OT */}
+                  <button
+                    id="btn-new-ot"
+                    onClick={() => setIsModalOpen(true)}
+                    className="flex items-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-sm font-semibold text-white active:scale-95 transition-all duration-150 shadow-sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nueva OT
+                  </button>
+                </div>
               </div>
-              <button
-                id="btn-new-ot"
-                onClick={() => setIsModalOpen(true)}
-                className="mt-3 sm:mt-0 flex items-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
-              >
-                <Plus className="h-4 w-4" />
-                Nueva OT
-              </button>
+
+              {/* Panel de filtros rápidos (pills) */}
+              {showFilters && (
+                <div
+                  id="dispatch-filters"
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-card p-4 dark:border-gray-700"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Estado
+                    </span>
+                    {STATUS_OPTIONS.map((status) => (
+                      <FilterPill
+                        key={status}
+                        label={status}
+                        active={statusFilter === status}
+                        onClick={() =>
+                          setStatusFilter((cur) => (cur === status ? null : status))
+                        }
+                      />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Tipo de servicio
+                    </span>
+                    {SERVICE_TYPES.map((service) => (
+                      <FilterPill
+                        key={service}
+                        label={service}
+                        active={serviceFilter === service}
+                        onClick={() =>
+                          setServiceFilter((cur) => (cur === service ? null : service))
+                        }
+                      />
+                    ))}
+                  </div>
+                  {activeFilterCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter(null);
+                        setServiceFilter(null);
+                      }}
+                      className="inline-flex items-center gap-1 self-start text-xs font-medium text-orange-600 hover:underline dark:text-orange-400"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                      Limpiar filtros
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Barra de feedback de filtros activos */}
+              {hasActiveFilters && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3.5 py-2 text-xs text-orange-700 dark:text-orange-300">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">Filtros activos:</span>
+                    <span>{filteredVisits.length} visitas</span>
+                    <span>·</span>
+                    <span>{filteredActivityLog.length} actividades</span>
+                    {search.trim() && (
+                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
+                        Texto: "{search.trim()}"
+                      </span>
+                    )}
+                    {statusFilter && (
+                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
+                        Estado: {statusFilter}
+                      </span>
+                    )}
+                    {serviceFilter && (
+                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
+                        Servicio: {serviceFilter}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="font-semibold text-orange-600 dark:text-orange-400 hover:underline"
+                  >
+                    Limpiar todo
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* KPIs — muestra skeleton mientras carga */}
-            <KpiGrid metrics={kpiData} isLoading={isLoading} />
+            <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} />
 
             {/* Cuadrícula analítica de 3 columnas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <ActiveZonesCard isLoading={isLoading} />
               <DonutChartCard isLoading={isLoading} />
-              <UpcomingVisitsCard isLoading={isLoading} />
+              <UpcomingVisitsCard isLoading={isLoading} visits={filteredVisits} />
             </div>
           </div>
 
@@ -823,7 +1013,11 @@ export default function DispatchBoard() {
         </div>
 
         {/* ── Tabla de actividad — skeleton mientras carga ── */}
-        {isLoading ? <ActivityTableSkeleton /> : <ActivityTable />}
+        {isLoading ? (
+          <ActivityTableSkeleton />
+        ) : (
+          <ActivityTable log={filteredActivityLog} />
+        )}
       </div>
     </>
   );

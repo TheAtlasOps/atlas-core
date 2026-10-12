@@ -1,30 +1,29 @@
 import { MapPin, Grip } from "lucide-react";
+import AdminAvatar from "./AdminAvatar";
 
 /**
  * TaskCard — Tarjeta Kanban estilo Jira/Linear.
  *
  * Props:
- *  - orderId  {string}  ID de la orden (ej. "#OT-08491")
- *  - title    {string}  Nombre del servicio
- *  - location {string}  Dirección / descripción de la ubicación
- *  - priority {string}  'Alta' | 'Media' | 'Baja'
- *  - assignee {string}  Iniciales del técnico asignado (default 'U')
- *  - tag      {string}  Etiqueta de categoría (Fibra / SIM / Red / etc.)
+ *  - orderId      {string}  ID de la orden (ej. "#OT-08491")
+ *  - title        {string}  Nombre del servicio
+ *  - location     {string}  Dirección / descripción de la ubicación
+ *  - priority     {string}  'Alta' | 'Media' | 'Baja'
+ *  - assigneeName {string}  Nombre completo del técnico asignado (ej. "Juan Rivas")
+ *  - assignee     {string}  Fallback si no hay `assigneeName` (default 'U')
+ *  - tag          {string}  Etiqueta de categoría (Fibra / SIM / Red / etc.)
  */
 
 // ─── Config de prioridad ──────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
   Alta: {
-    pill: "bg-red-500/15 text-red-600 dark:text-red-400 ring-1 ring-red-500/30",
-    dot: "bg-red-500",
+    pill: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
   },
   Media: {
-    pill: "bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30",
-    dot: "bg-amber-400",
+    pill: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
   },
   Baja: {
-    pill: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30",
-    dot: "bg-emerald-500",
+    pill: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
   },
 };
 
@@ -35,9 +34,11 @@ export default function TaskCard({
   location,
   priority = "Baja",
   assignee = "U",
+  assigneeName,
   tag,
 }) {
   const p = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG["Baja"];
+  const technicianName = assigneeName ?? assignee;
 
   return (
     <article
@@ -52,23 +53,24 @@ export default function TaskCard({
       "
       aria-label={`OT: ${title}`}
     >
-      {/* ── Ícono de arrastre (visible on hover) ── */}
-      <Grip
-        className="absolute top-3 right-3 w-3.5 h-3.5 text-slate-300 dark:text-gray-700 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors"
-        aria-hidden="true"
-      />
-
-      {/* ── Cabecera: ID + Pill de prioridad ── */}
-      <div className="flex items-center justify-between gap-2 pr-5">
-        <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400">{orderId}</span>
+      {/* ── Cabecera: ícono de arrastre + ID | Badge de prioridad (arriba derecha) ── */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Grip
+            className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-gray-700 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors"
+            aria-hidden="true"
+          />
+          <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400 truncate">
+            {orderId}
+          </span>
+        </div>
         <span
           className={`
-            inline-flex items-center gap-1.5 rounded-full px-2 py-0.5
+            inline-flex items-center rounded-full px-2.5 py-0.5
             text-[10px] font-bold uppercase tracking-wide shrink-0
             ${p.pill}
           `}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${p.dot}`} aria-hidden="true" />
           {priority}
         </span>
       </div>
@@ -86,26 +88,26 @@ export default function TaskCard({
         </div>
       )}
 
-      {/* ── Footer: tag + avatar ── */}
-      <div className="flex items-center justify-between mt-auto pt-1">
+      {/* ── Footer: tag | avatar + nombre del técnico ── */}
+      <div className="flex items-center justify-between gap-2 mt-auto pt-1">
         {/* Etiqueta de categoría */}
         {tag ? (
-          <span className="rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
+          <span className="shrink-0 rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
             {tag}
           </span>
         ) : (
           <span />
         )}
 
-        {/* Avatar del técnico */}
-        <div
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-primary text-xs font-bold uppercase ring-1 ring-primary/30"
-          title={`Técnico: ${assignee}`}
-          aria-label={`Técnico: ${assignee}`}
-        >
-          {assignee.charAt(0)}
+        {/* Técnico: avatar pequeño con iniciales + nombre */}
+        <div className="flex items-center gap-2 min-w-0" title={`Técnico: ${technicianName}`}>
+          <span className="truncate text-xs font-medium text-slate-600 dark:text-gray-300">
+            {technicianName}
+          </span>
+          <AdminAvatar name={technicianName} className="w-6 h-6 text-[10px]" />
         </div>
       </div>
+
     </article>
   );
 }
