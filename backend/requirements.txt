@@ -1,0 +1,31 @@
+# =============================================================================
+# ATLAS FSM BACKEND - DEPENDENCIAS OFICIALES
+# Framework: FastAPI | Motor BD: PostgreSQL 15+ (Neon.tech)
+# =============================================================================
+
+# FastAPI & Servidor ASGI
+fastapi==0.115.8
+uvicorn[standard]==0.34.0
+pydantic==2.10.6
+pydantic-settings==2.8.0
+
+# Base de Datos & ORM Asíncrono
+SQLAlchemy==2.0.38
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.1
+
+# Seguridad, JWT & Hashing
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
+python-multipart==0.0.20
+
+# Integraciones Cloud & Notificaciones
+resend==2.6.0
+google-cloud-storage==2.19.0
+
+# Testing & Cliente HTTP
+httpx==0.28.1
+pytest==8.3.4
+pytest-asyncio==0.25.3
