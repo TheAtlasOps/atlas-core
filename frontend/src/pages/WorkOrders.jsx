@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import { Filter, Plus, Inbox, Search, X, CheckCircle2 } from "lucide-react";
+import { Filter, Plus, Inbox, Search, X, CheckCircle2, Cpu } from "lucide-react";
 import TaskCard from "../components/ui/TaskCard";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
+import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
+import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import { SERVICE_TYPES } from "../lib/workOrderOptions";
 import { useWorkOrders } from "../context/WorkOrderContext";
 
@@ -46,16 +48,24 @@ function KanbanCardSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// Columna individual — acepta isLoading
+// Columna individual — acepta isLoading y onSelectOrder
 // ---------------------------------------------------------------------------
-function WorkOrderColumn({ id, label, accentColor, tasks, isLoading }) {
+function WorkOrderColumn({
+  id,
+  label,
+  accentColor,
+  tasks,
+  isLoading,
+  auditedOrders,
+  onSelectOrder,
+}) {
   return (
     <section
-      className="flex flex-col rounded-2xl border border-slate-200 dark:border-gray-700 bg-slate-50/40 dark:bg-gray-900/40 overflow-hidden"
+      className="flex flex-col rounded-2xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-900/40 overflow-hidden"
       aria-labelledby={`col-${id}-title`}
     >
       {/* Header — siempre visible */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-gray-700">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${accentColor}`} aria-hidden="true" />
           <h2
@@ -84,6 +94,8 @@ function WorkOrderColumn({ id, label, accentColor, tasks, isLoading }) {
                 assignee={task.assignee}
                 assigneeName={task.assigneeName}
                 tag={task.tag}
+                isAudited={Boolean(auditedOrders?.[task.orderId])}
+                onClick={() => onSelectOrder?.({ ...task, columnStatus: label })}
               />
             ))}
       </div>
@@ -140,8 +152,10 @@ export default function WorkOrders() {
   const isEmpty = false;
 
   // ── Estado global compartido y filtros locales ──────────────────────────────
-  const { columns, createWorkOrder, toast, setToast, totalOrders } = useWorkOrders();
+  const { columns, createWorkOrder, toast, setToast, totalOrders, auditedOrders } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null); // id de columna | null
@@ -217,12 +231,25 @@ export default function WorkOrders() {
         onCreate={handleCreate}
       />
 
+      {/* Drawer lateral de Auditoría de OT */}
+      <WorkOrderDetailDrawer
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onOpenInventoryModal={() => setIsInventoryOpen(true)}
+      />
+
+      {/* Modal de Inventario de Hardware (SIM / Routers) */}
+      <HardwareInventoryModal
+        isOpen={isInventoryOpen}
+        onClose={() => setIsInventoryOpen(false)}
+      />
+
       {/* Barra superior */}
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Work Orders</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Órdenes activas · {totalOrders} órdenes totales
+            Órdenes activas · {totalOrders} órdenes totales · Haz clic en cualquier tarjeta para auditar
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -261,6 +288,16 @@ export default function WorkOrders() {
                 {activeFilterCount}
               </span>
             )}
+          </button>
+
+          {/* Botón Inventario SIM / Routers */}
+          <button
+            type="button"
+            onClick={() => setIsInventoryOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] hover:border-orange-500/60 dark:hover:border-orange-500/60 px-3 py-1.5 text-xs font-semibold text-slate-900 dark:text-white transition-colors"
+          >
+            <Cpu className="h-3.5 w-3.5 text-orange-500" aria-hidden="true" />
+            Inventario SIM / Routers
           </button>
 
           <button
@@ -369,6 +406,8 @@ export default function WorkOrders() {
               key={col.id}
               {...col}
               isLoading={isLoading}
+              auditedOrders={auditedOrders}
+              onSelectOrder={setSelectedOrder}
             />
           ))
         )}

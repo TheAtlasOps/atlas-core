@@ -1,17 +1,19 @@
-import { MapPin, Grip } from "lucide-react";
+import { MapPin, Grip, ShieldCheck } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 
 /**
  * TaskCard — Tarjeta Kanban estilo Jira/Linear.
  *
  * Props:
- *  - orderId      {string}  ID de la orden (ej. "#OT-08491")
- *  - title        {string}  Nombre del servicio
- *  - location     {string}  Dirección / descripción de la ubicación
- *  - priority     {string}  'Alta' | 'Media' | 'Baja'
- *  - assigneeName {string}  Nombre completo del técnico asignado (ej. "Juan Rivas")
- *  - assignee     {string}  Fallback si no hay `assigneeName` (default 'U')
- *  - tag          {string}  Etiqueta de categoría (Fibra / SIM / Red / etc.)
+ *  - orderId      {string}   ID de la orden (ej. "#OT-08491")
+ *  - title        {string}   Nombre del servicio
+ *  - location     {string}   Dirección / descripción de la ubicación
+ *  - priority     {string}   'Alta' | 'Media' | 'Baja'
+ *  - assigneeName {string}   Nombre completo del técnico asignado (ej. "Juan Rivas")
+ *  - assignee     {string}   Fallback si no hay `assigneeName` (default 'U')
+ *  - tag          {string}   Etiqueta de categoría (Fibra / SIM / Red / etc.)
+ *  - isAudited    {boolean}  Indica si la auditoría de la OT fue aprobada
+ *  - onClick      {Function} Acción al hacer clic en la tarjeta (abre el Drawer de Auditoría)
  */
 
 // ─── Config de prioridad ──────────────────────────────────────────────────────
@@ -36,33 +38,57 @@ export default function TaskCard({
   assignee = "U",
   assigneeName,
   tag,
+  isAudited = false,
+  onClick,
 }) {
   const p = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG["Baja"];
   const technicianName = assigneeName ?? assignee;
 
+  const handleKeyDown = (e) => {
+    if (!onClick) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <article
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
       className="
         group relative flex flex-col gap-3 rounded-xl
-        bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-gray-700
+        bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-gray-800
         p-4
-        hover:border-slate-300 dark:hover:border-gray-600 hover:bg-slate-50 dark:hover:bg-[#262626]
-        transition-colors duration-150
-        cursor-grab active:cursor-grabbing
+        hover:border-orange-500/60 dark:hover:border-orange-500/60 hover:bg-slate-50 dark:hover:bg-[#262626]
+        transition-all duration-150
+        cursor-pointer
         select-none
+        focus:outline-none focus:ring-2 focus:ring-orange-500
       "
-      aria-label={`OT: ${title}`}
+      aria-label={`Auditar OT ${orderId}: ${title}`}
     >
       {/* ── Cabecera: ícono de arrastre + ID | Badge de prioridad (arriba derecha) ── */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <Grip
-            className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-gray-700 group-hover:text-slate-500 dark:group-hover:text-gray-400 transition-colors"
+            className="w-3.5 h-3.5 shrink-0 text-slate-300 dark:text-gray-700 group-hover:text-orange-500 transition-colors"
             aria-hidden="true"
           />
           <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400 truncate">
             {orderId}
           </span>
+          {isAudited && (
+            <span
+              title="Auditoría técnica verificada"
+              className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400"
+            >
+              <ShieldCheck className="h-2.5 w-2.5" />
+              Auditada
+            </span>
+          )}
         </div>
         <span
           className={`
@@ -76,7 +102,7 @@ export default function TaskCard({
       </div>
 
       {/* ── Título ── */}
-      <h3 className="text-sm font-semibold leading-snug text-slate-900 dark:text-white">
+      <h3 className="text-sm font-semibold leading-snug text-slate-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
         {title}
       </h3>
 
@@ -91,13 +117,16 @@ export default function TaskCard({
       {/* ── Footer: tag | avatar + nombre del técnico ── */}
       <div className="flex items-center justify-between gap-2 mt-auto pt-1">
         {/* Etiqueta de categoría */}
-        {tag ? (
-          <span className="shrink-0 rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
-            {tag}
+        <div className="flex items-center gap-1.5">
+          {tag ? (
+            <span className="shrink-0 rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
+              {tag}
+            </span>
+          ) : null}
+          <span className="text-[10px] font-semibold text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            Ver auditoría →
           </span>
-        ) : (
-          <span />
-        )}
+        </div>
 
         {/* Técnico: avatar pequeño con iniciales + nombre */}
         <div className="flex items-center gap-2 min-w-0" title={`Técnico: ${technicianName}`}>
