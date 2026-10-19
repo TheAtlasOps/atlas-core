@@ -24,6 +24,7 @@ import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
 import { SERVICE_TYPES } from "../lib/workOrderOptions";
 import { useWorkOrders } from "../context/WorkOrderContext";
+import { api } from "../lib/api";
 
 const STATUS_OPTIONS = ["En camino", "Completada", "Programada", "Reagendada"];
 
@@ -43,7 +44,6 @@ function FilterPill({ label, active, onClick }) {
     </button>
   );
 }
-
 
 // ─── AI Insights Data ────────────────────────────────────────────────────────
 const insights = [
@@ -65,37 +65,54 @@ const insights = [
 const MAP_MARKERS = [
   {
     id: 1,
+    orderNumber: "#OT-08491",
+    title: "Instalación fibra óptica — Providencia",
     label: "Providencia",
     lat: -33.432,
     lng: -70.6093,
-    status: "En camino",
+    status: "EN_RUTA",
     hex: "#f97316",
   },
   {
     id: 2,
+    orderNumber: "#OT-08493",
+    title: "Revisión antena 4G — Las Condes",
     label: "Las Condes",
     lat: -33.4103,
     lng: -70.5684,
-    status: "En camino",
+    status: "EN_SITIO",
     hex: "#f97316",
   },
   {
     id: 3,
+    orderNumber: "#OT-08495",
+    title: "Activación Magic Link — Ñuñoa",
     label: "Ñuñoa",
     lat: -33.4569,
     lng: -70.599,
-    status: "Completada",
+    status: "COMPLETADA",
     hex: "#34d399",
   },
   {
     id: 4,
+    orderNumber: "#OT-08492",
+    title: "Cambio de SIM corporativa — Santiago Centro",
     label: "Santiago Centro",
     lat: -33.4489,
     lng: -70.6693,
-    status: "Programada",
+    status: "CONFIRMADA",
     hex: "#60a5fa",
   },
 ];
+
+function getMarkerHexByStatus(status, fallbackHex) {
+  if (fallbackHex) return fallbackHex;
+  const s = (status || "").toUpperCase();
+  if (s === "COMPLETADA" || s === "COMPLETADO") return "#34d399";
+  if (s === "EN_RUTA" || s === "EN_SITIO" || s === "EN CAMINO") return "#f97316";
+  if (s === "CANCELADA" || s === "REAGENDADA") return "#f87171";
+  return "#60a5fa";
+}
 
 // divIcon personalizado: círculo con color de estado + halo
 function makeIcon(hex) {
@@ -117,7 +134,7 @@ function makeIcon(hex) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading }) {
+function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
   const { isDark } = useTheme();
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
@@ -175,32 +192,39 @@ function ActiveZonesCard({ isLoading }) {
               />
 
               {/* Marcadores con divIcon personalizados */}
-              {MAP_MARKERS.map((m) => (
-                <Marker key={m.id} position={[m.lat, m.lng]} icon={makeIcon(m.hex)}>
-                  <Popup>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        lineHeight: "1.5",
-                        minWidth: "100px",
-                      }}
-                    >
-                      <strong>{m.label}</strong>
-                      <br />
-                      <span style={{ color: m.hex }}>{m.status}</span>
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
+              {markers.map((m) => {
+                const hex = getMarkerHexByStatus(m.status, m.hex);
+                return (
+                  <Marker key={m.id} position={[m.lat, m.lng]} icon={makeIcon(hex)}>
+                    <Popup>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          lineHeight: "1.5",
+                          minWidth: "120px",
+                        }}
+                      >
+                        <strong>
+                          {m.orderNumber
+                            ? `${m.orderNumber} · ${m.title || m.label || ""}`
+                            : m.label}
+                        </strong>
+                        <br />
+                        <span style={{ color: hex }}>{m.status}</span>
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
             </MapContainer>
           </div>
 
           {/* Leyenda */}
           <div className="flex flex-wrap gap-3">
-            <LegendDot color="bg-primary"     label="En camino" />
+            <LegendDot color="bg-primary"     label="En camino / En sitio" />
             <LegendDot color="bg-emerald-400" label="Completada" />
-            <LegendDot color="bg-blue-400"    label="Programada" />
-            <LegendDot color="bg-rose-400"    label="Reagendada" />
+            <LegendDot color="bg-blue-400"    label="Confirmada" />
+            <LegendDot color="bg-rose-400"    label="Cancelada" />
           </div>
         </>
       )}
@@ -748,11 +772,52 @@ export default function DispatchBoard() {
   const [statusFilter, setStatusFilter] = useState(null);
   const [serviceFilter, setServiceFilter] = useState(null);
 
-  // ── Simula latencia de red — reemplazar por fetch real contra la BD ──────────
+  const [kpis, setKpis] = useState(null);
+  const [mapMarkers, setMapMarkers] = useState(MAP_MARKERS);
   const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 2500);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    async function loadDashboard() {
+      try {
+        setIsLoading(true);
+        const [kpisRes, ordersData] = await Promise.all([
+          api.orders.getKpis(),
+          api.orders.getAll({ size: 50 }),
+        ]);
+
+        if (!cancelled) {
+          if (kpisRes) {
+            setKpis(kpisRes);
+          }
+          if (ordersData?.items?.length) {
+            const markers = ordersData.items
+              .filter((o) => o.lat && o.lng)
+              .map((o) => ({
+                id: o.id,
+                orderNumber: o.order_number,
+                title: o.title,
+                lat: parseFloat(o.lat),
+                lng: parseFloat(o.lng),
+                status: o.status,
+              }));
+            if (markers.length > 0) {
+              setMapMarkers(markers);
+            }
+          }
+        }
+      } catch {
+        // Fallback a datos Mock si el backend no está disponible (ej. Vercel)
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+    loadDashboard();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
@@ -774,7 +839,7 @@ export default function DispatchBoard() {
         title: visit.service,
         client: visit.client,
         location: visit.client,
-        priority: "Media",
+        priority: "MEDIA",
         assigneeName: visit.technician,
         tag: visit.serviceType,
         columnStatus: visit.status,
@@ -782,27 +847,44 @@ export default function DispatchBoard() {
     }
   };
 
-  // KPIs dinámicos conectados al total de órdenes activas
-  const dynamicKpiData = useMemo(() => [
-    {
-      label: "Ordenes Activas",
-      value: String(totalOrders),
-      delta: "+3 esta semana",
-      icon: ClipboardList,
-    },
-    {
-      label: "Tecnicos en Campo",
-      value: "128",
-      delta: "-12 vs semana pasada",
-      icon: Users,
-    },
-    {
-      label: "SIMs Disponibles",
-      value: "99.8%",
-      delta: "Todos los sistemas operativos",
-      icon: CreditCard,
-    },
-  ], [totalOrders]);
+  const completedMockCount = useMemo(() => {
+    const completedCol = columns.find((c) => c.id === "completada");
+    return completedCol ? completedCol.tasks.length : 3;
+  }, [columns]);
+
+  // 4 KPIs conectados a kpis.active_orders, kpis.technicians_in_field, kpis.available_sims_rate y kpis.completed_today con fallback
+  const dynamicKpiData = useMemo(
+    () => [
+      {
+        label: "Ordenes Activas",
+        value: String(kpis?.active_orders ?? totalOrders),
+        delta: "+3 esta semana",
+        icon: ClipboardList,
+      },
+      {
+        label: "Tecnicos en Campo",
+        value: String(kpis?.technicians_in_field ?? 128),
+        delta: "Activos en ruta RM",
+        icon: Users,
+      },
+      {
+        label: "SIMs Disponibles",
+        value:
+          kpis?.available_sims_rate !== undefined
+            ? `${kpis.available_sims_rate}%`
+            : "99.8%",
+        delta: "Stock operativo Entel",
+        icon: CreditCard,
+      },
+      {
+        label: "Completadas Hoy",
+        value: String(kpis?.completed_today ?? completedMockCount),
+        delta: "SLA en cumplimiento",
+        icon: CheckCircle2,
+      },
+    ],
+    [kpis, totalOrders, completedMockCount]
+  );
 
   const filteredVisits = visitsList.filter((visit) => {
     if (statusFilter && normalize(visit.status) !== normalize(statusFilter)) return false;
@@ -841,8 +923,8 @@ export default function DispatchBoard() {
     setServiceFilter(null);
   };
 
-  const handleCreateOT = (order) => {
-    createWorkOrder(order);
+  const handleCreateOT = (order, apiCreated) => {
+    createWorkOrder(order, apiCreated);
   };
 
   return (
@@ -1066,7 +1148,7 @@ export default function DispatchBoard() {
 
             {/* Cuadrícula analítica de 3 columnas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <ActiveZonesCard isLoading={isLoading} />
+              <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} />
               <DonutChartCard isLoading={isLoading} />
               <UpcomingVisitsCard
                 isLoading={isLoading}

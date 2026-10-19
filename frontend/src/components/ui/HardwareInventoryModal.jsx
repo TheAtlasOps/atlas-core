@@ -13,21 +13,38 @@ import {
   CheckCircle2,
   AlertTriangle,
   Cpu,
+  Link2,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 import { useWorkOrders } from "../../context/WorkOrderContext";
+import { api } from "../../lib/api";
+import {
+  mapApiSimToInventoryItem,
+  mapApiRouterToInventoryItem,
+} from "../../lib/auditAndHardwareData";
 
-const STATUS_OPTIONS = ["Disponible", "Asignado", "En Falla"];
+// SimStatusEnum oficial del backend FastAPI / Neon DB
+const STATUS_OPTIONS = [
+  "DISPONIBLE",
+  "ASIGNADA_TECNICO",
+  "INSTALADA",
+  "DEFECTUOSA",
+  "BAJA",
+];
 const TECH_OPTIONS = ["5G", "4G LTE"];
 const TYPE_OPTIONS = ["SIM", "Router"];
 
 const STATUS_BADGE_STYLES = {
-  Disponible:
+  DISPONIBLE:
     "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/30",
-  Asignado:
+  ASIGNADA_TECNICO:
+    "bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30",
+  INSTALADA:
     "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/30",
-  "En Falla":
+  DEFECTUOSA:
     "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/30",
+  BAJA:
+    "bg-slate-500/15 text-slate-600 dark:text-gray-400 ring-1 ring-slate-500/30",
 };
 
 function FilterPill({ label, active, onClick }) {
@@ -51,29 +68,93 @@ function FilterPill({ label, active, onClick }) {
  * Contenido reutilizable del inventario de hardware (SIMs y Routers)
  */
 export function HardwareInventoryContent({ onClose }) {
-  const { hardwareInventory, setHardwareInventory, setToast } = useWorkOrders();
+  const {
+    hardwareInventory,
+    setHardwareInventory,
+    reassignOrderHardware,
+    setToast,
+  } = useWorkOrders();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(null);
   const [techFilter, setTechFilter] = useState(null);
   const [typeFilter, setTypeFilter] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showPairForm, setShowPairForm] = useState(false);
+  const [pairEquipmentId, setPairEquipmentId] = useState("");
+  const [pairSimCardId, setPairSimCardId] = useState("");
+  const [isPairing, setIsPairing] = useState(false);
 
   const [newItem, setNewItem] = useState({
     deviceType: "SIM",
     model: "",
     identifier: "",
     technology: "5G",
-    status: "Disponible",
+    status: "DISPONIBLE",
   });
+
+  // Consume api.inventory.getSims() y api.inventory.getRouters() al abrir el modal con fallback a Mock Data
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInventoryFromApi() {
+      try {
+        const [simsData, routersData] = await Promise.all([
+          api.inventory.getSims(),
+          api.inventory.getRouters(),
+        ]);
+        if (cancelled) return;
+        const sims = Array.isArray(simsData?.items)
+          ? simsData.items.map(mapApiSimToInventoryItem)
+          : [];
+        const routers = Array.isArray(routersData?.items)
+          ? routersData.items.map(mapApiRouterToInventoryItem)
+          : [];
+        if (sims.length > 0 || routers.length > 0) {
+          setHardwareInventory([...sims, ...routers]);
+        }
+      } catch {
+        // Fallback silencioso a datos Mock en Vercel
+      }
+    }
+    loadInventoryFromApi();
+    return () => {
+      cancelled = true;
+    };
+  }, [setHardwareInventory]);
 
   const stats = useMemo(() => {
     const total = hardwareInventory.length;
-    const disponibles = hardwareInventory.filter((i) => i.status === "Disponible").length;
-    const asignados = hardwareInventory.filter((i) => i.status === "Asignado").length;
-    const enFalla = hardwareInventory.filter((i) => i.status === "En Falla").length;
+    const disponibles = hardwareInventory.filter(
+      (i) => i.status === "DISPONIBLE"
+    ).length;
+    const asignados = hardwareInventory.filter((i) =>
+      ["INSTALADA", "ASIGNADA_TECNICO"].includes(i.status)
+    ).length;
+    const enFalla = hardwareInventory.filter((i) =>
+      ["DEFECTUOSA", "BAJA"].includes(i.status)
+    ).length;
     return { total, disponibles, asignados, enFalla };
   }, [hardwareInventory]);
+
+  const availableRouters = useMemo(
+    () =>
+      hardwareInventory.filter(
+        (item) =>
+          item.deviceType === "Router" &&
+          !["DEFECTUOSA", "BAJA"].includes(item.status)
+      ),
+    [hardwareInventory]
+  );
+
+  const availableSims = useMemo(
+    () =>
+      hardwareInventory.filter(
+        (item) =>
+          item.deviceType === "SIM" &&
+          !["DEFECTUOSA", "BAJA"].includes(item.status)
+      ),
+    [hardwareInventory]
+  );
 
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -97,6 +178,25 @@ export function HardwareInventoryContent({ onClose }) {
     navigator.clipboard?.writeText(text);
     setCopiedId(text);
     setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const handlePairSubmit = async (e) => {
+    e.preventDefault();
+    if (!pairEquipmentId || !pairSimCardId) return;
+    setIsPairing(true);
+    const routerItem = availableRouters.find((r) => r.id === pairEquipmentId);
+    const simItem = availableSims.find((s) => s.id === pairSimCardId);
+    try {
+      await api.inventory.pair(pairEquipmentId, pairSimCardId, null);
+    } catch {
+      // Fallback en Vercel: actualiza estado local
+    } finally {
+      reassignOrderHardware(null, { routerItem, simItem });
+      setIsPairing(false);
+      setShowPairForm(false);
+      setPairEquipmentId("");
+      setPairSimCardId("");
+    }
   };
 
   const handleAddSubmit = (e) => {
@@ -131,13 +231,13 @@ export function HardwareInventoryContent({ onClose }) {
       model: "",
       identifier: "",
       technology: "5G",
-      status: "Disponible",
+      status: "DISPONIBLE",
     });
 
     if (setToast) {
       setToast({
         title: `${created.deviceType} registrado en inventario`,
-        description: `ID ${created.identifier} (${created.technology}) disponible en stock.`,
+        description: `ID ${created.identifier} (${created.technology}) en estado ${created.status}.`,
       });
       setTimeout(() => setToast(null), 4000);
     }
@@ -177,7 +277,22 @@ export function HardwareInventoryContent({ onClose }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowAddForm((v) => !v)}
+            onClick={() => {
+              setShowPairForm((v) => !v);
+              setShowAddForm(false);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20 px-3 py-2 text-xs font-semibold text-orange-600 dark:text-orange-400 transition-colors"
+          >
+            <Link2 className="h-4 w-4" />
+            Emparejar Router + SIM
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddForm((v) => !v);
+              setShowPairForm(false);
+            }}
             className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors"
           >
             <Plus className="h-4 w-4" />
@@ -214,7 +329,7 @@ export function HardwareInventoryContent({ onClose }) {
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Disponibles
+              DISPONIBLE
             </p>
             <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
               {stats.disponibles}
@@ -226,7 +341,7 @@ export function HardwareInventoryContent({ onClose }) {
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-              Asignados en OT
+              INSTALADA / ASIGNADA
             </p>
             <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
               {stats.asignados}
@@ -238,7 +353,7 @@ export function HardwareInventoryContent({ onClose }) {
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-              En Falla / RMA
+              DEFECTUOSA / BAJA
             </p>
             <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
               {stats.enFalla}
@@ -247,6 +362,69 @@ export function HardwareInventoryContent({ onClose }) {
           <AlertTriangle className="h-5 w-5 text-rose-500" />
         </div>
       </div>
+
+      {/* ── Formulario de Emparejamiento Router + SIM (api.inventory.pair) ── */}
+      {showPairForm && (
+        <form
+          onSubmit={handlePairSubmit}
+          className="mx-6 mt-4 rounded-xl border border-orange-500/40 bg-slate-50 dark:bg-[#141414] p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end shrink-0"
+        >
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+              Router Industrial (equipment_id)
+            </label>
+            <select
+              required
+              value={pairEquipmentId}
+              onChange={(e) => setPairEquipmentId(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+            >
+              <option value="">Seleccionar Router...</option>
+              {availableRouters.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.identifier} — {r.model} ({r.status})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+              Tarjeta SIM Entel (sim_card_id)
+            </label>
+            <select
+              required
+              value={pairSimCardId}
+              onChange={(e) => setPairSimCardId(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+            >
+              <option value="">Seleccionar SIM (ICCID)...</option>
+              {availableSims.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.identifier} ({s.technology} · {s.status})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={isPairing}
+              className="flex-1 rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {isPairing ? "Emparejando..." : "Confirmar Emparejamiento"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPairForm(false)}
+              className="rounded-lg border border-slate-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-slate-600 dark:text-gray-400"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* ── Formulario rápido para registrar nuevo equipo/SIM ── */}
       {showAddForm && (
@@ -544,7 +722,7 @@ export function HardwareInventoryContent({ onClose }) {
                         <span
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
                             STATUS_BADGE_STYLES[item.status] ||
-                            STATUS_BADGE_STYLES.Disponible
+                            STATUS_BADGE_STYLES.DISPONIBLE
                           }`}
                         >
                           {item.status}

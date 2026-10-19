@@ -16,13 +16,28 @@ import AdminAvatar from "./AdminAvatar";
  *  - onClick      {Function} Acción al hacer clic en la tarjeta (abre el Drawer de Auditoría)
  */
 
-// ─── Config de prioridad ──────────────────────────────────────────────────────
+// ─── Config de prioridad (soporta OrderPriorityEnum y etiquetas legibles) ───
 const PRIORITY_CONFIG = {
+  URGENTE: {
+    pill: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
+  },
+  Urgente: {
+    pill: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
+  },
+  ALTA: {
+    pill: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+  },
   Alta: {
     pill: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
   },
+  MEDIA: {
+    pill: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+  },
   Media: {
     pill: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+  },
+  BAJA: {
+    pill: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
   },
   Baja: {
     pill: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
@@ -31,18 +46,30 @@ const PRIORITY_CONFIG = {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 export default function TaskCard({
-  orderId = "#OT-00000",
+  orderId,
+  order_number,
   title,
   location,
-  priority = "Baja",
+  address_override,
+  client,
+  priority = "BAJA",
   assignee = "U",
   assigneeName,
+  technician_summary,
   tag,
   isAudited = false,
   onClick,
 }) {
-  const p = PRIORITY_CONFIG[priority] ?? PRIORITY_CONFIG["Baja"];
-  const technicianName = assigneeName ?? assignee;
+  const resolvedOrderId = orderId || order_number || "#OT-00000";
+  const resolvedLocation = location || address_override || "";
+  const resolvedClient =
+    typeof client === "object" ? client?.business_name : client;
+  const p =
+    PRIORITY_CONFIG[priority] ??
+    PRIORITY_CONFIG[String(priority).toUpperCase()] ??
+    PRIORITY_CONFIG.BAJA;
+  const technicianName =
+    assigneeName || technician_summary?.full_name || assignee;
 
   const handleKeyDown = (e) => {
     if (!onClick) return;
@@ -68,7 +95,7 @@ export default function TaskCard({
         select-none
         focus:outline-none focus:ring-2 focus:ring-orange-500
       "
-      aria-label={`Auditar OT ${orderId}: ${title}`}
+      aria-label={`Auditar OT ${resolvedOrderId}: ${title}`}
     >
       {/* ── Cabecera: ícono de arrastre + ID | Badge de prioridad (arriba derecha) ── */}
       <div className="flex items-center justify-between gap-2">
@@ -78,7 +105,7 @@ export default function TaskCard({
             aria-hidden="true"
           />
           <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400 truncate">
-            {orderId}
+            {resolvedOrderId}
           </span>
           {isAudited && (
             <span
@@ -101,16 +128,23 @@ export default function TaskCard({
         </span>
       </div>
 
-      {/* ── Título ── */}
-      <h3 className="text-sm font-semibold leading-snug text-slate-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
-        {title}
-      </h3>
+      {/* ── Título y Cliente ── */}
+      <div className="flex flex-col gap-0.5">
+        <h3 className="text-sm font-semibold leading-snug text-slate-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
+          {title}
+        </h3>
+        {resolvedClient && (
+          <p className="text-[11px] font-medium text-slate-500 dark:text-gray-400 truncate">
+            {resolvedClient}
+          </p>
+        )}
+      </div>
 
       {/* ── Ubicación ── */}
-      {location && (
+      {resolvedLocation && (
         <div className="flex items-start gap-1.5">
           <MapPin className="w-3.5 h-3.5 text-slate-500 dark:text-gray-400 mt-0.5 shrink-0" aria-hidden="true" />
-          <span className="text-xs text-slate-500 dark:text-gray-400 leading-snug">{location}</span>
+          <span className="text-xs text-slate-500 dark:text-gray-400 leading-snug">{resolvedLocation}</span>
         </div>
       )}
 
