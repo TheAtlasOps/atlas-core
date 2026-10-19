@@ -23,6 +23,7 @@ import {
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage } from "../../lib/auditAndHardwareData";
 import { useWorkOrders } from "../../context/WorkOrderContext";
+import { api } from "../../lib/api";
 
 /**
  * Ilustración técnica SVG de alta fidelidad para cada tipo de evidencia en terreno.
@@ -168,8 +169,13 @@ function EvidenceVisualPreview({ kind, modelRef, serialRef, large = false }) {
 }
 
 const PRIORITY_STYLES = {
+  URGENTE: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400",
+  Urgente: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400",
+  ALTA: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400",
   Alta: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400",
+  MEDIA: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
   Media: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+  BAJA: "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400",
   Baja: "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400",
 };
 
@@ -192,6 +198,7 @@ export default function WorkOrderDetailDrawer({
     auditedOrders,
     approveOrderAudit,
     reassignOrderHardware,
+    refreshOrders,
   } = useWorkOrders();
 
   const [activeTab, setActiveTab] = useState("all");
@@ -199,15 +206,37 @@ export default function WorkOrderDetailDrawer({
   const [isReassigning, setIsReassigning] = useState(false);
   const [selectedRouterId, setSelectedRouterId] = useState("");
   const [selectedSimId, setSelectedSimId] = useState("");
+  const [apiOrderDetail, setApiOrderDetail] = useState(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isPairing, setIsPairing] = useState(false);
 
-  // Reset estados internos al cambiar de orden
+  // Reset estados internos y consultar detalle completo con api.orders.getById(order.id)
   useEffect(() => {
     setActiveTab("all");
     setSelectedPhotoIndex(null);
     setIsReassigning(false);
     setSelectedRouterId("");
     setSelectedSimId("");
-  }, [order?.orderId]);
+    setApiOrderDetail(null);
+
+    if (!order?.id) return undefined;
+
+    let cancelled = false;
+    async function fetchDetail() {
+      try {
+        const detail = await api.orders.getById(order.id);
+        if (!cancelled && detail) {
+          setApiOrderDetail(detail);
+        }
+      } catch {
+        // Fallback silencioso a datos Mock de auditoría en Vercel
+      }
+    }
+    fetchDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [order?.id, order?.orderId]);
 
   // Cierre con Escape y bloqueo de scroll de fondo
   useEffect(() => {
@@ -235,17 +264,26 @@ export default function WorkOrderDetailDrawer({
 
   if (!order) return null;
 
-  const auditData = getOrderAuditPackage(order, orderHardwareOverrides);
-  const isAudited = Boolean(auditedOrders[order.orderId]);
+  const auditData = getOrderAuditPackage(
+    order,
+    orderHardwareOverrides,
+    apiOrderDetail
+  );
+  const orderKey = order.order_number || order.orderId;
+  const isAudited = Boolean(auditedOrders[orderKey]);
 
   const availableRouters = hardwareInventory.filter(
-    (item) => item.deviceType === "Router" && item.status !== "En Falla"
+    (item) =>
+      item.deviceType === "Router" &&
+      !["DEFECTUOSA", "BAJA", "En Falla"].includes(item.status)
   );
   const availableSims = hardwareInventory.filter(
-    (item) => item.deviceType === "SIM" && item.status !== "En Falla"
+    (item) =>
+      item.deviceType === "SIM" &&
+      !["DEFECTUOSA", "BAJA", "En Falla"].includes(item.status)
   );
 
-  const handleConfirmReassign = (e) => {
+  const handleConfirmReassign = async (e) => {
     e.preventDefault();
     const routerItem = availableRouters.find((r) => r.id === selectedRouterId);
     const simItem = availableSims.find((s) => s.id === selectedSimId);
@@ -253,15 +291,49 @@ export default function WorkOrderDetailDrawer({
       setIsReassigning(false);
       return;
     }
-    reassignOrderHardware(order, { routerItem, simItem });
-    setIsReassigning(false);
-    setSelectedRouterId("");
-    setSelectedSimId("");
+
+    setIsPairing(true);
+    try {
+      const equipmentId =
+        routerItem?.id || availableRouters[0]?.id || "00000000-0000-4000-8000-000000002001";
+      const simCardId =
+        simItem?.id || availableSims[0]?.id || "00000000-0000-4000-8000-000000001001";
+      const clientId =
+        apiOrderDetail?.client_id ||
+        order?.client_id ||
+        order?.client?.id ||
+        null;
+
+      await api.inventory.pair(equipmentId, simCardId, clientId);
+    } catch {
+      // Fallback en Vercel: continúa actualizando el estado local
+    } finally {
+      reassignOrderHardware(order, { routerItem, simItem });
+      setIsPairing(false);
+      setIsReassigning(false);
+      setSelectedRouterId("");
+      setSelectedSimId("");
+    }
   };
 
-  const handleApproveAudit = () => {
-    approveOrderAudit(order);
-    onClose();
+  const handleApproveAudit = async () => {
+    setIsApproving(true);
+    try {
+      if (order.id) {
+        await api.orders.updateStatus(
+          order.id,
+          "COMPLETADA",
+          "Auditoría aprobada por coordinador"
+        );
+        await refreshOrders();
+      }
+    } catch {
+      // Fallback en Vercel: actualiza columna y badge en estado local
+    } finally {
+      approveOrderAudit(order);
+      setIsApproving(false);
+      onClose();
+    }
   };
 
   const showSection = (sectionId) => activeTab === "all" || activeTab === sectionId;
@@ -710,9 +782,10 @@ export default function WorkOrderDetailDrawer({
                     </button>
                     <button
                       type="submit"
-                      className="rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors"
+                      disabled={isPairing}
+                      className="rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-60"
                     >
-                      Guardar Vinculación
+                      {isPairing ? "Vinculando..." : "Guardar Vinculación"}
                     </button>
                   </div>
                 </form>
@@ -820,10 +893,11 @@ export default function WorkOrderDetailDrawer({
           <button
             type="button"
             onClick={handleApproveAudit}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all"
+            disabled={isApproving}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all disabled:opacity-60"
           >
             <ShieldCheck className="h-4 w-4" />
-            Aprobar y Cerrar Auditoría
+            {isApproving ? "Aprobando..." : "Aprobar y Cerrar Auditoría"}
           </button>
         </footer>
 

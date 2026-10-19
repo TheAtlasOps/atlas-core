@@ -38,10 +38,16 @@ function KpiCard({ kpi }) {
 }
 
 export default function KpiGrid({ metrics = [], isLoading = false }) {
+  const skeletonCount = metrics.length || 4;
+  const colClass =
+    skeletonCount === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3";
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className={`grid gap-4 sm:grid-cols-2 ${colClass}`}>
       {isLoading
-        ? Array.from({ length: 3 }).map((_, i) => <KpiCardSkeleton key={i} />)
+        ? Array.from({ length: skeletonCount }).map((_, i) => (
+            <KpiCardSkeleton key={i} />
+          ))
         : metrics.map((kpi) => <KpiCard key={kpi.label} kpi={kpi} />)}
     </div>
   );

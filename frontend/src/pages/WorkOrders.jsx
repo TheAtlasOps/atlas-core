@@ -4,14 +4,16 @@ import TaskCard from "../components/ui/TaskCard";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
-import { SERVICE_TYPES } from "../lib/workOrderOptions";
+import { SERVICE_TYPES, PRIORITIES } from "../lib/workOrderOptions";
 import { useWorkOrders } from "../context/WorkOrderContext";
 
-// Opciones de filtro por Estado (corresponden a las columnas del tablero)
+// Opciones de filtro por Estado (OrderStatusEnum oficial + columnas Kanban)
 const STATUS_FILTERS = [
-  { id: "asignada", label: "Asignada" },
-  { id: "en-transito", label: "En Tránsito" },
-  { id: "completada", label: "Completada" },
+  { id: "CONFIRMADA", label: "Confirmada / Asignada", columnId: "asignada" },
+  { id: "IDLE", label: "Idle (Sin asignar)", columnId: "asignada" },
+  { id: "EN_RUTA", label: "En Ruta", columnId: "en-transito" },
+  { id: "EN_SITIO", label: "En Sitio", columnId: "en-transito" },
+  { id: "COMPLETADA", label: "Completada", columnId: "completada" },
 ];
 
 // Quita tildes y pasa a minúsculas para una búsqueda tolerante
@@ -88,11 +90,15 @@ function WorkOrderColumn({
               <TaskCard
                 key={task.id}
                 orderId={task.orderId}
+                order_number={task.order_number}
                 title={task.title}
                 location={task.location}
+                address_override={task.address_override}
+                client={task.client}
                 priority={task.priority}
                 assignee={task.assignee}
                 assigneeName={task.assigneeName}
+                technician_summary={task.technician_summary}
                 tag={task.tag}
                 isAudited={Boolean(auditedOrders?.[task.orderId])}
                 onClick={() => onSelectOrder?.({ ...task, columnStatus: label })}
@@ -141,57 +147,106 @@ function FilterPill({ label, active, onClick }) {
 // Vista principal Work Orders
 // ---------------------------------------------------------------------------
 export default function WorkOrders() {
-  // ── Simula latencia de red — reemplazar por fetch real contra la BD ─────────
+  // ── Estado global compartido y sincronización con FastAPI ───────────────────
+  const {
+    columns,
+    createWorkOrder,
+    refreshOrders,
+    toast,
+    setToast,
+    totalOrders,
+    auditedOrders,
+  } = useWorkOrders();
+
   const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 2500);
-    return () => clearTimeout(timer);
-  }, []);
+    let isMounted = true;
+    async function loadKanban() {
+      try {
+        await refreshOrders();
+      } catch {
+        // Fallback silencioso a Mock Data en WorkOrderContext
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    loadKanban();
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshOrders]);
 
   // Cambia a `true` para ver el empty state cuando no hay órdenes
   const isEmpty = false;
 
-  // ── Estado global compartido y filtros locales ──────────────────────────────
-  const { columns, createWorkOrder, toast, setToast, totalOrders, auditedOrders } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState(null); // id de columna | null
+  const [statusFilter, setStatusFilter] = useState(null); // OrderStatusEnum | null
+  const [priorityFilter, setPriorityFilter] = useState(null); // OrderPriorityEnum | null
   const [serviceFilter, setServiceFilter] = useState(null); // tag | null
 
-  const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
+  const activeFilterCount =
+    (statusFilter ? 1 : 0) + (priorityFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
 
-  // ── Filtrado: búsqueda (OT, cliente, técnico) + estado + tipo de servicio ──
+  // ── Filtrado: búsqueda (OT, cliente, técnico) + estado + prioridad + servicio
   const filteredColumns = useMemo(() => {
     const q = normalize(search.trim());
     return columns.map((col) => ({
       ...col,
-      tasks:
-        statusFilter && statusFilter !== col.id
-          ? []
-          : col.tasks.filter((t) => {
-              if (serviceFilter && t.tag !== serviceFilter) return false;
-              if (!q) return true;
-              return [t.orderId, t.title, t.client, t.assigneeName, t.location].some(
-                (field) => normalize(field).includes(q)
-              );
-            }),
+      tasks: col.tasks.filter((t) => {
+        if (statusFilter) {
+          const taskStatus = String(t.status || "").toUpperCase();
+          const selectedMeta = STATUS_FILTERS.find((s) => s.id === statusFilter);
+          if (taskStatus !== statusFilter && selectedMeta?.columnId !== col.id) {
+            return false;
+          }
+          if (taskStatus && taskStatus !== statusFilter) {
+            return false;
+          }
+        }
+        if (
+          priorityFilter &&
+          String(t.priority || "").toUpperCase() !== priorityFilter
+        ) {
+          return false;
+        }
+        if (
+          serviceFilter &&
+          t.tag !== serviceFilter &&
+          t.serviceType !== serviceFilter
+        ) {
+          return false;
+        }
+        if (!q) return true;
+        return [
+          t.orderId,
+          t.order_number,
+          t.title,
+          typeof t.client === "object" ? t.client?.business_name : t.client,
+          t.assigneeName,
+          t.technician_summary?.full_name,
+          t.location,
+          t.address_override,
+        ].some((field) => normalize(field).includes(q));
+      }),
     }));
-  }, [columns, search, statusFilter, serviceFilter]);
+  }, [columns, search, statusFilter, priorityFilter, serviceFilter]);
 
   const visibleCount = filteredColumns.reduce((acc, col) => acc + col.tasks.length, 0);
   const hasActiveCriteria = Boolean(search.trim()) || activeFilterCount > 0;
 
   const clearFilters = () => {
     setStatusFilter(null);
+    setPriorityFilter(null);
     setServiceFilter(null);
   };
 
   // ── Crear OT: agrega la orden usando el contexto compartido ───────────────
-  const handleCreate = (form) => {
-    createWorkOrder(form);
+  const handleCreate = (form, apiCreatedOrder) => {
+    createWorkOrder(form, apiCreatedOrder);
   };
 
   return (
@@ -333,6 +388,19 @@ export default function WorkOrders() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              Prioridad
+            </span>
+            {PRIORITIES.map((p) => (
+              <FilterPill
+                key={p}
+                label={p}
+                active={priorityFilter === p}
+                onClick={() => setPriorityFilter((cur) => (cur === p ? null : p))}
+              />
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
               Tipo de servicio
             </span>
             {SERVICE_TYPES.map((s) => (
@@ -370,7 +438,12 @@ export default function WorkOrders() {
             )}
             {statusFilter && (
               <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
-                Columna: {STATUS_FILTERS.find((s) => s.id === statusFilter)?.label}
+                Estado: {STATUS_FILTERS.find((s) => s.id === statusFilter)?.label || statusFilter}
+              </span>
+            )}
+            {priorityFilter && (
+              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
+                Prioridad: {priorityFilter}
               </span>
             )}
             {serviceFilter && (

@@ -1,52 +1,153 @@
-import { createContext, useContext, useState, useCallback, useMemo } from "react";
-import { INITIAL_HARDWARE_INVENTORY } from "../lib/auditAndHardwareData";
+import { createContext, useContext, useState, useCallback, useMemo, useEffect } from "react";
+import {
+  INITIAL_HARDWARE_INVENTORY,
+  mapApiSimToInventoryItem,
+  mapApiRouterToInventoryItem,
+} from "../lib/auditAndHardwareData";
+import {
+  getInitials,
+  normalizeOrderItem,
+  buildColumnsFromOrders,
+} from "../lib/workOrderOptions";
+import { api } from "../lib/api";
 
 const WorkOrderContext = createContext(null);
 
-function getInitials(name) {
-  return (name ?? "")
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase() || "U";
-}
-
-// ─── Datos iniciales del tablero Kanban ─────────────────────────────────────────
-const INITIAL_COLUMNS = [
+// ─── Datos Mock iniciales con estructura compatible con Backend + UI ──────────
+const INITIAL_MOCK_ORDERS = [
   {
-    id: "asignada",
-    label: "Asignada",
-    accentColor: "bg-blue-500",
-    tasks: [
-      { id: 1, orderId: "#OT-08491", title: "Instalación fibra óptica", client: "Sr. Ramírez", location: "Av. Providencia 1234, Providencia", priority: "Alta", assignee: "JR", assigneeName: "Juan Rivas", tag: "Fibra" },
-      { id: 2, orderId: "#OT-08492", title: "Cambio de SIM corporativa", client: "Entel HQ", location: "Entel HQ, Santiago Centro", priority: "Media", assignee: "LP", assigneeName: "Luis Pinto", tag: "SIM" },
-      { id: 3, orderId: "#OT-08493", title: "Revisión antena 4G", client: "Torre Entel", location: "Torre Entel, Las Condes", priority: "Alta", assignee: "MK", assigneeName: "María Kovalenko", tag: "Red" },
-      { id: 4, orderId: "#OT-08494", title: "Diagnóstico router empresarial", client: "Corp. Vitacura", location: "Av. Vitacura 2939, Vitacura", priority: "Baja", assignee: "TC", assigneeName: "Tomás Castro", tag: "Hardware" },
-    ],
+    id: "00000000-0000-4000-8000-000000008491",
+    order_number: "#OT-08491",
+    title: "Instalación fibra óptica",
+    status: "CONFIRMADA",
+    priority: "ALTA",
+    client: { business_name: "Sr. Ramírez" },
+    address_override: "Av. Providencia 1234, Providencia",
+    technician_summary: { full_name: "Juan Rivas", initials: "JR" },
+    tag: "Fibra",
+    lat: -33.432,
+    lng: -70.6093,
   },
   {
-    id: "en-transito",
-    label: "En Tránsito",
-    accentColor: "bg-amber-500",
-    tasks: [
-      { id: 5, orderId: "#OT-08495", title: "Activación Magic Link", client: "PYME Clientes", location: "Calle Irarrázaval 890, Ñuñoa", priority: "Alta", assignee: "EK", assigneeName: "Elena Kravets", tag: "Magic Link" },
-      { id: 6, orderId: "#OT-08496", title: "Revisión señal móvil", client: "Torre Entel", location: "Torre Entel, Santiago Centro", priority: "Media", assignee: "EK", assigneeName: "Elena Kravets", tag: "Red" },
-      { id: 7, orderId: "#OT-08497", title: "Instalación repetidor WiFi", client: "Municipalidad de Maipú", location: "Municipalidad de Maipú, Maipú", priority: "Alta", assignee: "SA", assigneeName: "Sofía Araya", tag: "Hardware" },
-    ],
+    id: "00000000-0000-4000-8000-000000008492",
+    order_number: "#OT-08492",
+    title: "Cambio de SIM corporativa",
+    status: "CONFIRMADA",
+    priority: "MEDIA",
+    client: { business_name: "Entel HQ" },
+    address_override: "Entel HQ, Santiago Centro",
+    technician_summary: { full_name: "Luis Pinto", initials: "LP" },
+    tag: "SIM",
+    lat: -33.4489,
+    lng: -70.6693,
   },
   {
-    id: "completada",
-    label: "Completada",
-    accentColor: "bg-emerald-500",
-    tasks: [
-      { id: 8, orderId: "#OT-08498", title: "Alta de línea empresarial", client: "BancoEstado", location: "BancoEstado Casa Matriz, Santiago", priority: "Baja", assignee: "EK", assigneeName: "Elena Kravets", tag: "SIM" },
-      { id: 9, orderId: "#OT-08499", title: "Reemplazo módem ADSL", client: "Sra. Fuentes", location: "Calle Los Aromos 52, Peñalolén", priority: "Media", assignee: "LP", assigneeName: "Luis Pinto", tag: "Hardware" },
-      { id: 10, orderId: "#OT-08500", title: "Configuración VPN corporativa", client: "Grupo Apoquindo", location: "Av. Apoquindo 6100, Las Condes", priority: "Media", assignee: "JR", assigneeName: "Juan Rivas", tag: "Red" },
-    ],
+    id: "00000000-0000-4000-8000-000000008493",
+    order_number: "#OT-08493",
+    title: "Revisión antena 4G",
+    status: "CONFIRMADA",
+    priority: "URGENTE",
+    client: { business_name: "Torre Entel" },
+    address_override: "Torre Entel, Las Condes",
+    technician_summary: { full_name: "María Kovalenko", initials: "MK" },
+    tag: "Red",
+    lat: -33.4103,
+    lng: -70.5684,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008494",
+    order_number: "#OT-08494",
+    title: "Diagnóstico router empresarial",
+    status: "IDLE",
+    priority: "BAJA",
+    client: { business_name: "Corp. Vitacura" },
+    address_override: "Av. Vitacura 2939, Vitacura",
+    technician_summary: { full_name: "Tomás Castro", initials: "TC" },
+    tag: "Hardware",
+    lat: -33.3992,
+    lng: -70.5981,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008495",
+    order_number: "#OT-08495",
+    title: "Activación Magic Link",
+    status: "EN_RUTA",
+    priority: "ALTA",
+    client: { business_name: "PYME Clientes" },
+    address_override: "Calle Irarrázaval 890, Ñuñoa",
+    technician_summary: { full_name: "Elena Kravets", initials: "EK" },
+    tag: "Magic Link",
+    lat: -33.4569,
+    lng: -70.599,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008496",
+    order_number: "#OT-08496",
+    title: "Revisión señal móvil",
+    status: "EN_SITIO",
+    priority: "MEDIA",
+    client: { business_name: "Torre Entel" },
+    address_override: "Torre Entel, Santiago Centro",
+    technician_summary: { full_name: "Elena Kravets", initials: "EK" },
+    tag: "Red",
+    lat: -33.444,
+    lng: -70.653,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008497",
+    order_number: "#OT-08497",
+    title: "Instalación repetidor WiFi",
+    status: "EN_RUTA",
+    priority: "ALTA",
+    client: { business_name: "Municipalidad de Maipú" },
+    address_override: "Municipalidad de Maipú, Maipú",
+    technician_summary: { full_name: "Sofía Araya", initials: "SA" },
+    tag: "Hardware",
+    lat: -33.511,
+    lng: -70.758,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008498",
+    order_number: "#OT-08498",
+    title: "Alta de línea empresarial",
+    status: "COMPLETADA",
+    priority: "BAJA",
+    client: { business_name: "BancoEstado" },
+    address_override: "BancoEstado Casa Matriz, Santiago",
+    technician_summary: { full_name: "Elena Kravets", initials: "EK" },
+    tag: "SIM",
+    lat: -33.4418,
+    lng: -70.6512,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008499",
+    order_number: "#OT-08499",
+    title: "Reemplazo módem ADSL",
+    status: "COMPLETADA",
+    priority: "MEDIA",
+    client: { business_name: "Sra. Fuentes" },
+    address_override: "Calle Los Aromos 52, Peñalolén",
+    technician_summary: { full_name: "Luis Pinto", initials: "LP" },
+    tag: "Hardware",
+    lat: -33.485,
+    lng: -70.542,
+  },
+  {
+    id: "00000000-0000-4000-8000-000000008500",
+    order_number: "#OT-08500",
+    title: "Configuración VPN corporativa",
+    status: "COMPLETADA",
+    priority: "MEDIA",
+    client: { business_name: "Grupo Apoquindo" },
+    address_override: "Av. Apoquindo 6100, Las Condes",
+    technician_summary: { full_name: "Juan Rivas", initials: "JR" },
+    tag: "Red",
+    lat: -33.408,
+    lng: -70.567,
   },
 ];
+
+const INITIAL_COLUMNS = buildColumnsFromOrders(INITIAL_MOCK_ORDERS);
 
 // ─── Datos iniciales de visitas del Dispatch Board ────────────────────────────
 const INITIAL_VISITS = [
@@ -172,142 +273,257 @@ export function WorkOrderProvider({ children }) {
     }, 4500);
   }, []);
 
+  /**
+   * Recarga la lista de órdenes desde FastAPI (`api.orders.getAll({ size: 100 })`).
+   * Si falla (ej: Vercel sin backend local), mantiene las columnas Mock actuales.
+   */
+  const refreshOrders = useCallback(async () => {
+    try {
+      const response = await api.orders.getAll({ size: 100 });
+      if (response && Array.isArray(response.items) && response.items.length > 0) {
+        setColumns(buildColumnsFromOrders(response.items));
+        return response.items;
+      }
+    } catch {
+      // Fallback silencioso a datos Mock en Vercel
+    }
+    return null;
+  }, []);
+
+  /**
+   * Recarga el inventario de SIMs y Routers desde FastAPI (`api.inventory.getSims` y `getRouters`).
+   * Si falla, mantiene INITIAL_HARDWARE_INVENTORY.
+   */
+  const refreshHardwareInventory = useCallback(async () => {
+    try {
+      const [simsRes, routersRes] = await Promise.all([
+        api.inventory.getSims({ size: 100 }),
+        api.inventory.getRouters({ size: 100 }),
+      ]);
+      const sims = Array.isArray(simsRes?.items)
+        ? simsRes.items.map(mapApiSimToInventoryItem)
+        : [];
+      const routers = Array.isArray(routersRes?.items)
+        ? routersRes.items.map(mapApiRouterToInventoryItem)
+        : [];
+      if (sims.length > 0 || routers.length > 0) {
+        setHardwareInventory([...sims, ...routers]);
+        return [...sims, ...routers];
+      }
+    } catch {
+      // Fallback silencioso a datos Mock en Vercel
+    }
+    return null;
+  }, []);
+
+  useEffect(() => {
+    refreshOrders();
+  }, [refreshOrders]);
+
   const totalOrders = useMemo(
     () => columns.reduce((acc, col) => acc + col.tasks.length, 0),
     [columns]
   );
 
-  const createWorkOrder = useCallback((form) => {
-    const nextNum = 8500 + totalOrders + 1;
-    const newId = `#OT-${String(nextNum).padStart(5, "0")}`;
-    const orderTitle = form.title?.trim() || `${form.serviceType} — ${form.clientName}`;
+  const createWorkOrder = useCallback(
+    (form, apiCreatedOrder = null) => {
+      const nextNum = 8500 + totalOrders + 1;
+      const newId =
+        apiCreatedOrder?.order_number || `#OT-${String(nextNum).padStart(5, "0")}`;
+      const orderTitle =
+        apiCreatedOrder?.title ||
+        form.title?.trim() ||
+        `${form.serviceType} — ${form.clientName}`;
+      const priorityEnum = (
+        apiCreatedOrder?.priority ||
+        form.priority ||
+        "MEDIA"
+      ).toUpperCase();
 
-    // 1. Tarjeta para el tablero Kanban (columna Asignada)
-    const newTask = {
-      id: Date.now(),
-      orderId: newId,
-      title: orderTitle,
-      client: form.clientName,
-      location: form.address,
-      priority: form.priority,
-      assignee: getInitials(form.technician),
-      assigneeName: form.technician,
-      tag: form.serviceType,
-    };
-
-    setColumns((prev) =>
-      prev.map((col) =>
-        col.id === "asignada" ? { ...col, tasks: [newTask, ...col.tasks] } : col
-      )
-    );
-
-    // 2. Elemento para Próximas Visitas del Dispatch Board
-    const newVisit = {
-      id: newId,
-      time: "Ahora",
-      service: orderTitle,
-      serviceType: form.serviceType,
-      client: `${form.clientName} (${form.address})`,
-      status: "Programada",
-      statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
-      technician: form.technician,
-    };
-    setVisitsList((prev) => [newVisit, ...prev]);
-
-    // 3. Elemento para Registro de Actividad
-    const newActivity = {
-      id: newId,
-      technician: form.technician,
-      action: `OT creada: ${orderTitle}`,
-      status: "Programada",
-      serviceType: form.serviceType,
-      time: "Hace un momento",
-    };
-    setActivityList((prev) => [newActivity, ...prev]);
-
-    // 4. Toast de confirmación
-    showNotification(
-      `Orden ${newId} creada exitosamente`,
-      `${orderTitle} · Asignada a ${form.technician}`
-    );
-
-    return newTask;
-  }, [totalOrders, showNotification]);
-
-  const approveOrderAudit = useCallback((order) => {
-    if (!order?.orderId) return;
-
-    setAuditedOrders((prev) => ({ ...prev, [order.orderId]: true }));
-
-    // Registrar en el log de actividad
-    const newActivity = {
-      id: order.orderId,
-      technician: order.assigneeName || "Coordinación",
-      action: "Auditoría técnica aprobada (Evidencias + Firma digital verificadas)",
-      status: "Completada",
-      serviceType: order.tag || "Fibra",
-      time: "Ahora",
-    };
-    setActivityList((prev) => [newActivity, ...prev]);
-
-    showNotification(
-      `Auditoría ${order.orderId} aprobada y cerrada`,
-      `Evidencias fotográficas, parámetros dBm y firma digital validados.`
-    );
-  }, [showNotification]);
-
-  const reassignOrderHardware = useCallback((order, { routerItem, simItem }) => {
-    if (!order?.orderId) return;
-
-    setOrderHardwareOverrides((prev) => {
-      const current = prev[order.orderId] || {};
-      return {
-        ...prev,
-        [order.orderId]: {
-          ...current,
-          ...(routerItem
-            ? {
-                routerModel: routerItem.model,
-                routerSerial: routerItem.identifier,
-              }
-            : {}),
-          ...(simItem
-            ? {
-                simIccid: simItem.identifier,
-                simTechnology: simItem.technology,
-              }
-            : {}),
+      const newTask = normalizeOrderItem({
+        id: apiCreatedOrder?.id || Date.now(),
+        order_number: newId,
+        title: orderTitle,
+        status: apiCreatedOrder?.status || "CONFIRMADA",
+        priority: priorityEnum,
+        client: {
+          business_name:
+            apiCreatedOrder?.client?.business_name || form.clientName,
         },
+        address_override: apiCreatedOrder?.address_override || form.address,
+        technician_summary: {
+          full_name:
+            apiCreatedOrder?.technician_summary?.full_name || form.technician,
+          initials: getInitials(
+            apiCreatedOrder?.technician_summary?.full_name || form.technician
+          ),
+        },
+        tag: form.serviceType,
+      });
+
+      setColumns((prev) =>
+        prev.map((col) =>
+          col.id === "asignada"
+            ? { ...col, tasks: [newTask, ...col.tasks] }
+            : col
+        )
+      );
+
+      const newVisit = {
+        id: newId,
+        time: "Ahora",
+        service: orderTitle,
+        serviceType: form.serviceType,
+        client: `${form.clientName} (${form.address})`,
+        status: "Programada",
+        statusStyle:
+          "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
+        technician: form.technician,
       };
-    });
+      setVisitsList((prev) => [newVisit, ...prev]);
 
-    setHardwareInventory((prev) =>
-      prev.map((item) => {
-        if (routerItem && item.id === routerItem.id) {
-          return {
-            ...item,
-            status: "Asignado",
-            orderId: order.orderId,
-            technician: order.assigneeName || "Técnico Terreno",
-          };
-        }
-        if (simItem && item.id === simItem.id) {
-          return {
-            ...item,
-            status: "Asignado",
-            orderId: order.orderId,
-            technician: order.assigneeName || "Técnico Terreno",
-          };
-        }
-        return item;
-      })
-    );
+      const newActivity = {
+        id: newId,
+        technician: form.technician,
+        action: `OT creada: ${orderTitle}`,
+        status: "Programada",
+        serviceType: form.serviceType,
+        time: "Hace un momento",
+      };
+      setActivityList((prev) => [newActivity, ...prev]);
 
-    showNotification(
-      `Hardware reasignado en ${order.orderId}`,
-      `Equipamiento actualizado y sincronizado con el inventario activo.`
-    );
-  }, [showNotification]);
+      showNotification(
+        `Orden ${newId} creada exitosamente`,
+        `${orderTitle} · Asignada a ${form.technician}`
+      );
+
+      return newTask;
+    },
+    [totalOrders, showNotification]
+  );
+
+  const approveOrderAudit = useCallback(
+    (order) => {
+      const orderKey = order?.order_number || order?.orderId;
+      if (!orderKey) return;
+
+      setAuditedOrders((prev) => ({ ...prev, [orderKey]: true }));
+
+      // Actualizar estado de la tarjeta a COMPLETADA y moverla a la columna Completada
+      setColumns((prev) => {
+        let movedTask = null;
+        const withoutTask = prev.map((col) => {
+          const found = col.tasks.find(
+            (t) => (t.order_number || t.orderId) === orderKey
+          );
+          if (found) {
+            movedTask = { ...found, status: "COMPLETADA" };
+          }
+          return {
+            ...col,
+            tasks: col.tasks.filter(
+              (t) => (t.order_number || t.orderId) !== orderKey
+            ),
+          };
+        });
+
+        if (!movedTask) return prev;
+        return withoutTask.map((col) =>
+          col.id === "completada"
+            ? { ...col, tasks: [movedTask, ...col.tasks] }
+            : col
+        );
+      });
+
+      const newActivity = {
+        id: orderKey,
+        technician:
+          order.technician_summary?.full_name ||
+          order.assigneeName ||
+          "Coordinación",
+        action:
+          "Auditoría aprobada por coordinador (Estado actualizado a COMPLETADA)",
+        status: "Completada",
+        serviceType: order.tag || "Fibra",
+        time: "Ahora",
+      };
+      setActivityList((prev) => [newActivity, ...prev]);
+
+      showNotification(
+        `Auditoría ${orderKey} aprobada y cerrada`,
+        `Estado actualizado a COMPLETADA · Evidencias y firma validadas.`
+      );
+    },
+    [showNotification]
+  );
+
+  const reassignOrderHardware = useCallback(
+    (order, { routerItem, simItem }) => {
+      const orderKey = order?.order_number || order?.orderId || "EMPAREJAMIENTO";
+
+      if (order?.order_number || order?.orderId) {
+        setOrderHardwareOverrides((prev) => {
+          const current = prev[orderKey] || {};
+          return {
+            ...prev,
+            [orderKey]: {
+              ...current,
+              ...(routerItem
+                ? {
+                    routerModel: routerItem.model,
+                    routerSerial: routerItem.identifier,
+                  }
+                : {}),
+              ...(simItem
+                ? {
+                    simIccid: simItem.identifier,
+                    simTechnology: simItem.technology,
+                  }
+                : {}),
+            },
+          };
+        });
+      }
+
+      setHardwareInventory((prev) =>
+        prev.map((item) => {
+          if (routerItem && item.id === routerItem.id) {
+            return {
+              ...item,
+              status: "INSTALADA",
+              orderId: order?.order_number || order?.orderId || item.orderId || "Vinculado",
+              technician:
+                order?.technician_summary?.full_name ||
+                order?.assigneeName ||
+                item.technician ||
+                "Técnico Terreno",
+            };
+          }
+          if (simItem && item.id === simItem.id) {
+            return {
+              ...item,
+              status: "INSTALADA",
+              orderId: order?.order_number || order?.orderId || item.orderId || "Vinculado",
+              technician:
+                order?.technician_summary?.full_name ||
+                order?.assigneeName ||
+                item.technician ||
+                "Técnico Terreno",
+            };
+          }
+          return item;
+        })
+      );
+
+      showNotification(
+        `Hardware emparejado exitosamente`,
+        `${routerItem ? `Router ${routerItem.identifier}` : ""}${
+          routerItem && simItem ? " + " : ""
+        }${simItem ? `SIM ${simItem.identifier}` : ""} sincronizados.`
+      );
+    },
+    [showNotification]
+  );
 
   const value = useMemo(
     () => ({
@@ -322,6 +538,9 @@ export function WorkOrderProvider({ children }) {
       totalOrders,
       toast,
       setToast,
+      showNotification,
+      refreshOrders,
+      refreshHardwareInventory,
       createWorkOrder,
       approveOrderAudit,
       reassignOrderHardware,
@@ -335,6 +554,9 @@ export function WorkOrderProvider({ children }) {
       auditedOrders,
       totalOrders,
       toast,
+      showNotification,
+      refreshOrders,
+      refreshHardwareInventory,
       createWorkOrder,
       approveOrderAudit,
       reassignOrderHardware,

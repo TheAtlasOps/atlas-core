@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, FilePlus } from "lucide-react";
-import { SERVICE_TYPES, PRIORITIES, TECHNICIANS } from "../../lib/workOrderOptions";
+import { X, Plus, FilePlus, RefreshCw } from "lucide-react";
+import {
+  SERVICE_TYPES,
+  PRIORITIES,
+  TECHNICIANS,
+  TECHNICIAN_UUID_MAP,
+} from "../../lib/workOrderOptions";
+import { api } from "../../lib/api";
+import { useWorkOrders } from "../../context/WorkOrderContext";
 
 const FIELD_CLASS =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-[#121212] dark:text-white dark:placeholder:text-gray-500";
@@ -14,7 +21,7 @@ const INITIAL_FORM = {
   address: "",
   serviceType: "",
   technician: "",
-  priority: "Media",
+  priority: "MEDIA",
 };
 
 /**
@@ -22,15 +29,62 @@ const INITIAL_FORM = {
  * el estado se reinicia automáticamente en cada apertura.
  */
 function NewWorkOrderForm({ onClose, onCreate }) {
+  const { refreshOrders } = useWorkOrders();
   const [form, setForm] = useState(INITIAL_FORM);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const setField = (field) => (e) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (onCreate) onCreate(form);
-    onClose();
+    setIsSubmitting(true);
+
+    const addressParts = form.address.split(",");
+    const comunaOverride =
+      addressParts.length > 1
+        ? addressParts[addressParts.length - 1].trim()
+        : "Santiago";
+
+    const orderPayload = {
+      title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
+      description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
+      service_type: form.serviceType,
+      priority: String(form.priority || "MEDIA").toUpperCase(),
+      scheduled_date: new Date().toISOString(),
+      address_override: form.address,
+      comuna_override: comunaOverride,
+      tag: form.serviceType,
+    };
+
+    try {
+      const createdOrder = await api.orders.create(orderPayload);
+      let finalOrder = createdOrder;
+
+      if (form.technician && createdOrder?.id) {
+        const technicianId =
+          TECHNICIAN_UUID_MAP[form.technician] ||
+          "00000000-0000-4000-8000-000000000101";
+        try {
+          finalOrder = await api.orders.assign(
+            createdOrder.id,
+            technicianId,
+            new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+          );
+        } catch {
+          // Si falla la asignación puntual, conserva la orden recién creada
+        }
+      }
+
+      if (onCreate) onCreate(form, finalOrder);
+      await refreshOrders();
+    } catch {
+      // Fallback en Vercel o sin backend activo: mantiene la creación en estado local
+      if (onCreate) onCreate(form, null);
+    } finally {
+      setIsSubmitting(false);
+      onClose();
+    }
   };
 
   return (
@@ -183,10 +237,15 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         </button>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 active:scale-95"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 active:scale-95 disabled:opacity-60"
         >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Crear Orden
+          {isSubmitting ? (
+            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          )}
+          {isSubmitting ? "Creando..." : "Crear Orden"}
         </button>
       </div>
     </form>

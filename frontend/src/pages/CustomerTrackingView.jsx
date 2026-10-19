@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   Clock,
@@ -12,29 +12,127 @@ import {
   FileText,
   X,
   Building2,
+  FileSignature,
+  CalendarCheck,
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
-import { getTrackingDataByUuid } from "../lib/magicLinksData";
+import {
+  getTrackingDataByUuid,
+  mapApiSummaryToTrackingOrder,
+} from "../lib/magicLinksData";
+import { api } from "../lib/api";
+
+const DEFAULT_SIGNATURE_BASE64 =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
 export default function CustomerTrackingView() {
   const { uuid } = useParams();
+  const [searchParams] = useSearchParams();
+  const token = useMemo(
+    () => searchParams.get("token") || uuid || "xK9pQ2",
+    [searchParams, uuid]
+  );
+
+  const fallbackOrder = useMemo(() => getTrackingDataByUuid(token), [token]);
+  const [apiSummary, setApiSummary] = useState(null);
+
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState("");
   const [commentText, setCommentText] = useState("");
 
-  // Resolución dinámica y verídica del requerimiento y técnico según el enlace/UUID
-  const order = useMemo(() => getTrackingDataByUuid(uuid), [uuid]);
+  // Confirmación de visita y Firma digital (Magic Link API)
+  const [visitConfirmed, setVisitConfirmed] = useState(false);
+  const [visitNotes, setVisitNotes] = useState("");
+  const [isConfirmingVisit, setIsConfirmingVisit] = useState(false);
+
+  const [signedByName, setSignedByName] = useState("");
+  const [isSigned, setIsSigned] = useState(false);
+  const [isSigning, setIsSigning] = useState(false);
+
+  // Consulta api.clientPortal.getSummary(token) con fallback a Mock Data para Vercel
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchPortalSummary() {
+      try {
+        const data = await api.clientPortal.getSummary(token);
+        if (!cancelled && data) {
+          setApiSummary(data);
+          if (data.is_confirmed) setVisitConfirmed(true);
+          if (data.signature_url || data.is_completed) setIsSigned(true);
+        }
+      } catch {
+        // Fallback silencioso a datos Mock en Vercel
+      }
+    }
+    fetchPortalSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const order = useMemo(
+    () => mapApiSummaryToTrackingOrder(apiSummary, fallbackOrder),
+    [apiSummary, fallbackOrder]
+  );
+
+  const timelineSteps = useMemo(
+    () => order.timeline_steps || order.steps || [],
+    [order.timeline_steps, order.steps]
+  );
 
   const currentStepIndex = useMemo(() => {
-    const idx = order.steps.findIndex((s) => s.key === order.statusKey);
+    const currentByFlag = timelineSteps.findIndex((s) => s.current);
+    if (currentByFlag >= 0) return currentByFlag;
+    const idx = timelineSteps.findIndex(
+      (s) => s.key === (order.status_key || order.statusKey)
+    );
     return idx >= 0 ? idx : 1;
-  }, [order]);
+  }, [timelineSteps, order.status_key, order.statusKey]);
 
-  const handleSendReport = (e) => {
+  const handleConfirmVisit = async (e) => {
+    e.preventDefault();
+    setIsConfirmingVisit(true);
+    try {
+      await api.clientPortal.confirmVisit(token, {
+        is_confirmed: true,
+        notes: visitNotes.trim() || "Visita confirmada por cliente en portal Magic Link",
+      });
+    } catch {
+      // Fallback en Vercel: confirma localmente
+    } finally {
+      setVisitConfirmed(true);
+      setIsConfirmingVisit(false);
+    }
+  };
+
+  const handleSignConformity = async (e) => {
+    e.preventDefault();
+    const signer = signedByName.trim() || order.client || "Cliente Receptor";
+    setIsSigning(true);
+    try {
+      await api.clientPortal.sign(token, DEFAULT_SIGNATURE_BASE64, signer);
+    } catch {
+      // Fallback en Vercel: registra firma en estado local
+    } finally {
+      setSignedByName(signer);
+      setIsSigned(true);
+      setIsSigning(false);
+    }
+  };
+
+  const handleSendReport = async (e) => {
     e.preventDefault();
     if (!selectedIssue) return;
+    try {
+      await api.clientPortal.confirmVisit(token, {
+        is_confirmed: false,
+        notes: `${selectedIssue}${commentText ? ` — ${commentText}` : ""}`,
+      });
+    } catch {
+      // Fallback silencioso en Vercel
+    }
     setReportSuccess(true);
     setTimeout(() => {
       setReportSuccess(false);
@@ -43,6 +141,9 @@ export default function CustomerTrackingView() {
       setCommentText("");
     }, 2400);
   };
+
+  const isCompletedStatus =
+    order.status_key === "completada" || order.statusKey === "finalizado";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#121212] text-slate-900 dark:text-white flex flex-col font-sans selection:bg-orange-100 selection:text-orange-900 transition-colors duration-200">
@@ -68,7 +169,7 @@ export default function CustomerTrackingView() {
           <div className="flex items-center gap-2 shrink-0">
             <ThemeToggle id="portal-theme-toggle" />
             <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-mono font-medium text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-gray-700">
-              {order.orderNumber}
+              {order.order_number || order.orderNumber}
             </span>
           </div>
         </div>
@@ -91,20 +192,18 @@ export default function CustomerTrackingView() {
             {/* Badge de Estado */}
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                order.statusKey === "finalizado"
+                isCompletedStatus
                   ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
                   : "bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30"
               }`}
             >
               <span className="relative flex h-2 w-2">
-                {order.statusKey !== "finalizado" && (
+                {!isCompletedStatus && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                 )}
                 <span
                   className={`relative inline-flex rounded-full h-2 w-2 ${
-                    order.statusKey === "finalizado"
-                      ? "bg-emerald-500"
-                      : "bg-orange-500"
+                    isCompletedStatus ? "bg-emerald-500" : "bg-orange-500"
                   }`}
                 ></span>
               </span>
@@ -119,7 +218,9 @@ export default function CustomerTrackingView() {
                 <Clock className="h-6 w-6 text-white" />
               </div>
               <div>
-                <p className="text-xs text-orange-100 font-medium">Llegada estimada a destino</p>
+                <p className="text-xs text-orange-100 font-medium">
+                  Llegada estimada a destino
+                </p>
                 <p className="text-2xl font-bold tracking-tight">{order.eta}</p>
               </div>
             </div>
@@ -130,7 +231,7 @@ export default function CustomerTrackingView() {
             </div>
           </div>
 
-          {/* Dirección y Cliente */}
+          {/* Dirección, Comuna, Fecha Programada y Cliente */}
           <div className="mt-4 pt-4 border-t border-slate-100 dark:border-gray-800 flex flex-col gap-2 text-xs sm:text-sm text-slate-600 dark:text-gray-300">
             <div className="flex items-start gap-2.5">
               <Building2 className="h-4 w-4 text-slate-400 dark:text-gray-500 shrink-0 mt-0.5" />
@@ -140,19 +241,30 @@ export default function CustomerTrackingView() {
             </div>
             <div className="flex items-start gap-2.5">
               <MapPin className="h-4 w-4 text-slate-400 dark:text-gray-500 shrink-0 mt-0.5" />
-              <span>{order.address}</span>
+              <span>
+                {order.address}
+                {order.comuna ? ` (${order.comuna})` : ""}
+              </span>
             </div>
+            {order.scheduled_date && (
+              <div className="flex items-start gap-2.5">
+                <CalendarCheck className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
+                <span className="text-xs text-slate-500 dark:text-gray-400">
+                  Programación: {order.scheduled_date}
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
-        {/* ── 2. STEPPER / LÍNEA DE TIEMPO DE 4 ESTADOS ── */}
+        {/* ── 2. STEPPER / LÍNEA DE TIEMPO DE 4 ESTADOS (confirmada, en_ruta, en_sitio, completada) ── */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-5 shadow-sm transition-colors">
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
               Progreso del Servicio
             </h3>
             <span className="text-xs font-medium text-slate-500 dark:text-gray-400">
-              Etapa {currentStepIndex + 1} de {order.steps.length}
+              Etapa {currentStepIndex + 1} de {timelineSteps.length}
             </span>
           </div>
 
@@ -162,13 +274,17 @@ export default function CustomerTrackingView() {
             <div
               className="absolute top-1/2 left-0 h-1 bg-orange-500 -translate-y-1/2 z-0 transition-all duration-500"
               style={{
-                width: `${(currentStepIndex / (order.steps.length - 1)) * 100}%`,
+                width: `${
+                  timelineSteps.length > 1
+                    ? (currentStepIndex / (timelineSteps.length - 1)) * 100
+                    : 100
+                }%`,
               }}
             />
 
-            {order.steps.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex;
-              const isCurrent = idx === currentStepIndex;
+            {timelineSteps.map((step, idx) => {
+              const isCompleted = step.completed || idx < currentStepIndex;
+              const isCurrent = step.current || idx === currentStepIndex;
 
               return (
                 <div
@@ -186,7 +302,7 @@ export default function CustomerTrackingView() {
                         : ""
                     }`}
                   >
-                    {isCompleted ? (
+                    {isCompleted && !isCurrent ? (
                       <CheckCircle2 className="h-4 w-4 text-white" />
                     ) : (
                       idx + 1
@@ -199,16 +315,16 @@ export default function CustomerTrackingView() {
 
           {/* Línea de Tiempo Vertical Detallada */}
           <div className="space-y-4">
-            {order.steps.map((step, idx) => {
-              const isCompleted = idx < currentStepIndex;
-              const isCurrent = idx === currentStepIndex;
-              const isPending = idx > currentStepIndex;
+            {timelineSteps.map((step, idx) => {
+              const isCompleted = step.completed || idx < currentStepIndex;
+              const isCurrent = step.current || idx === currentStepIndex;
+              const isPending = !isCompleted && !isCurrent && idx > currentStepIndex;
               const StepIcon =
-                step.key === "registrada"
+                step.key === "confirmada" || step.key === "registrada"
                   ? FileText
                   : step.key === "en_ruta"
                   ? Truck
-                  : step.key === "en_curso"
+                  : step.key === "en_sitio" || step.key === "en_curso"
                   ? Wrench
                   : CheckCircle2;
 
@@ -242,7 +358,7 @@ export default function CustomerTrackingView() {
                             : "text-slate-900 dark:text-white"
                         }`}
                       >
-                        {step.title}
+                        {step.label || step.title}
                       </p>
                       <span
                         className={`text-[11px] font-mono tabular-nums ${
@@ -253,7 +369,7 @@ export default function CustomerTrackingView() {
                             : "text-slate-400 dark:text-gray-500"
                         }`}
                       >
-                        {step.time}
+                        {step.timestamp || step.time}
                       </span>
                     </div>
 
@@ -267,7 +383,6 @@ export default function CustomerTrackingView() {
                       {step.description}
                     </p>
 
-                    {/* Indicador sutil de progreso si es el paso activo */}
                     {isCurrent && (
                       <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 dark:text-orange-400 bg-white dark:bg-gray-900 px-2.5 py-0.5 rounded-full border border-orange-200 dark:border-orange-500/30 shadow-2xs">
                         <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />
@@ -283,7 +398,6 @@ export default function CustomerTrackingView() {
 
         {/* ── 3. TARJETA DE SEGURIDAD Y VALIDACIÓN DEL TÉCNICO ── */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-slate-200 dark:border-gray-800 p-5 mt-1 transition-colors">
-          {/* Encabezado con sello de verificación */}
           <div className="flex items-center justify-between border-b border-slate-100 dark:border-gray-800 pb-3 mb-4">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -296,9 +410,7 @@ export default function CustomerTrackingView() {
             </span>
           </div>
 
-          {/* Perfil del Técnico verídico */}
           <div className="flex items-center gap-4">
-            {/* Avatar circular utilizando AdminAvatar (con iniciales en blanco y fondo naranja Entel) */}
             <AdminAvatar
               name={order.technician.name}
               className="w-12 h-12 text-base shadow-sm ring-2 ring-orange-200 dark:ring-orange-950/50"
@@ -315,9 +427,11 @@ export default function CustomerTrackingView() {
                 <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 dark:bg-gray-800 text-[11px] font-mono text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-gray-700">
                   ID: {order.technician.credentialId}
                 </span>
-                <span className="text-[11px] text-slate-500 dark:text-gray-400">
-                  Zona: {order.technician.zone}
-                </span>
+                {order.technician.phone && (
+                  <span className="text-[11px] text-slate-500 dark:text-gray-400">
+                    Tel: {order.technician.phone}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -340,22 +454,23 @@ export default function CustomerTrackingView() {
               <div className="mt-0.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-white dark:bg-gray-900 border border-slate-300 dark:border-gray-600 rounded shadow-2xs">
                 <span className="h-2 w-2 rounded-full bg-blue-600" title="Chile" />
                 <span className="font-mono font-bold text-xs text-slate-900 dark:text-white tracking-wider">
-                  {order.technician.licensePlate}
+                  {order.technician.vehicle_plate || order.technician.licensePlate}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Nota de Seguridad para Recepción / Conserjería */}
           <div className="mt-3 p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-[11px] text-blue-900 dark:text-blue-200 leading-snug flex items-start gap-2">
             <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
             <span>
               Para validación en conserjería o recepción, el técnico portará su credencial física oficial con el número{" "}
-              <strong className="text-blue-950 dark:text-blue-100">{order.technician.credentialId}</strong>.
+              <strong className="text-blue-950 dark:text-blue-100">
+                {order.technician.credentialId}
+              </strong>
+              .
             </span>
           </div>
 
-          {/* Enlace secundario: Reportar problema con la visita */}
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-gray-800 text-center">
             <button
               type="button"
@@ -368,6 +483,93 @@ export default function CustomerTrackingView() {
           </div>
         </section>
 
+        {/* ── 4. CONFIRMACIÓN DE VISITA Y FIRMA DIGITAL DE CONFORMIDAD ── */}
+        <section className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-slate-200 dark:border-gray-800 p-5 space-y-4 transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-gray-800 pb-3">
+            <div className="flex items-center gap-2">
+              <FileSignature className="h-5 w-5 text-orange-500" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Confirmación de Visita y Firma Digital
+              </h3>
+            </div>
+            {(visitConfirmed || isSigned) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" />
+                {isSigned ? "Firmada" : "Confirmada"}
+              </span>
+            )}
+          </div>
+
+          {/* Bloque A: Confirmar recepción de visita */}
+          {!visitConfirmed ? (
+            <form onSubmit={handleConfirmVisit} className="space-y-2.5">
+              <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
+                Indicaciones de acceso / recepción para el técnico:
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={visitNotes}
+                  onChange={(e) => setVisitNotes(e.target.value)}
+                  placeholder="Ej: Anunciarse en recepción piso 4..."
+                  className="flex-1 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isConfirmingVisit}
+                  className="shrink-0 rounded-lg bg-slate-900 dark:bg-gray-800 hover:bg-slate-800 dark:hover:bg-gray-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-60"
+                >
+                  {isConfirmingVisit ? "Confirmando..." : "Confirmar Visita"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+              <span>Visita técnica confirmada en sistema ATLAS.</span>
+            </div>
+          )}
+
+          {/* Bloque B: Firma digital de acta de conformidad */}
+          {!isSigned ? (
+            <form
+              onSubmit={handleSignConformity}
+              className="pt-3 border-t border-slate-100 dark:border-gray-800 space-y-2.5"
+            >
+              <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
+                Firmar recepción conforme del servicio técnico:
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={signedByName}
+                  onChange={(e) => setSignedByName(e.target.value)}
+                  placeholder={`Nombre receptor (${order.client})`}
+                  className="flex-1 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isSigning}
+                  className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-60"
+                >
+                  <FileSignature className="h-3.5 w-3.5" />
+                  {isSigning ? "Firmando..." : "Firmar Conformidad"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 px-3 py-2.5 text-xs text-orange-700 dark:text-orange-300 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
+                <span>
+                  Acta de conformidad firmada digitalmente por{" "}
+                  <strong>{signedByName || order.client}</strong>.
+                </span>
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* Canales de Asistencia Directa */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-xl border border-slate-200 dark:border-gray-800 p-4 shadow-xs flex items-center justify-between gap-3 text-xs transition-colors">
           <div className="flex items-center gap-2.5">
@@ -375,8 +577,12 @@ export default function CustomerTrackingView() {
               <Phone className="h-4 w-4 text-orange-600 dark:text-orange-500" />
             </div>
             <div>
-              <p className="font-semibold text-slate-800 dark:text-slate-200">Mesa de Ayuda Entel Empresas</p>
-              <p className="text-slate-500 dark:text-gray-400">Atención técnica 24/7 para clientes corporativos</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                Mesa de Ayuda Entel Empresas
+              </p>
+              <p className="text-slate-500 dark:text-gray-400">
+                Atención técnica 24/7 para clientes corporativos
+              </p>
             </div>
           </div>
           <a
@@ -387,10 +593,9 @@ export default function CustomerTrackingView() {
           </a>
         </section>
 
-        {/* Token / UUID informativo para modo desarrollo */}
-        {import.meta.env.DEV && uuid && (
+        {import.meta.env.DEV && token && (
           <p className="text-center text-[10px] text-slate-400 dark:text-gray-500 font-mono break-all py-1">
-            Token de acceso activo: {uuid}
+            Token de acceso activo: {token}
           </p>
         )}
       </main>
@@ -401,7 +606,7 @@ export default function CustomerTrackingView() {
           Entel S.A. · Servicio de Soporte Técnico Empresas
         </p>
         <p className="text-[11px] text-slate-400 dark:text-gray-500 mt-0.5">
-          Plataforma de Despacho ATLAS © {new Date().getFullYear()} · Modo Consulta Solo Lectura
+          Plataforma de Despacho ATLAS © {new Date().getFullYear()} · Portal Público Magic Link
         </p>
       </footer>
 
