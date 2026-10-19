@@ -4,6 +4,7 @@ from app.api.v1.orders import router as orders_router
 from app.api.v1.inventory import router as inventory_router
 from app.api.v1.client import router as client_router
 from app.api.v1.evidences import router as evidences_router
+from app.api.v1.notifications import router as notifications_router
 
 api_router = APIRouter()
 
@@ -21,6 +22,9 @@ api_router.include_router(client_router, prefix="/client", tags=["Portal Cliente
 
 # ─── Módulo de Evidencias y Cierre (14-DocArq §1.2 / RF-API-07 / RNF-SEG-05) ─
 api_router.include_router(evidences_router, prefix="/evidences", tags=["Evidencias y Cierre Técnico"])
+
+# ─── Módulo de Notificaciones Transaccionales (14-DocArq §1.2 / RF-API-10) ───
+api_router.include_router(notifications_router, prefix="/notifications", tags=["Notificaciones Transaccionales"])
 
 
 @api_router.get("/health", tags=["Salud"])
