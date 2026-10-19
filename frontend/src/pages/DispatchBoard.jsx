@@ -12,6 +12,7 @@ import {
   Map,
   Search,
   Filter,
+  Cpu,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -19,6 +20,8 @@ import "leaflet/dist/leaflet.css";
 import KpiGrid from "../components/layout/KpiGrid";
 import { useTheme } from "../hooks/useTheme";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
+import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
+import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
 import { SERVICE_TYPES } from "../lib/workOrderOptions";
 import { useWorkOrders } from "../context/WorkOrderContext";
 
@@ -150,9 +153,9 @@ function ActiveZonesCard({ isLoading }) {
         </div>
       ) : (
         <>
-          {/* Contenedor del mapa — overflow-hidden para respetar el border-radius */}
+          {/* Contenedor del mapa — overflow-hidden e isolate para respetar el stacking context */}
           <div
-            className="relative rounded-lg overflow-hidden border border-border"
+            className="relative rounded-lg overflow-hidden border border-border z-0 isolate"
             style={{ height: "200px" }}
           >
             <MapContainer
@@ -408,7 +411,7 @@ function DonutChartCard({ isLoading }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 3 — Próximas visitas
 // ═══════════════════════════════════════════════════════════════════════════════
-function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS }) {
+function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrderId }) {
   const isEmpty = visits.length === 0;
 
   return (
@@ -422,7 +425,7 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS }) {
           <p className="text-xs text-muted-foreground">Agenda del día — hoy</p>
         </div>
         <a
-          href="#"
+          href="/work-orders"
           className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
         >
           Ver todas
@@ -464,7 +467,9 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS }) {
           {visits.map((visit, idx) => (
             <li
               key={idx}
-              className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
+              onClick={() => onSelectOrderId?.(visit.id)}
+              className="flex items-start gap-3 py-3 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-1.5 -mx-1.5 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
+              title={`Auditar ${visit.id}`}
             >
               {/* Hora */}
               <span className="w-10 shrink-0 text-xs text-muted-foreground tabular-nums font-mono pt-0.5">
@@ -582,7 +587,7 @@ function ActivityTableSkeleton() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tabla — Registro de actividad reciente
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActivityTable({ log = ACTIVITY_LOG }) {
+function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       {/* Encabezado de la sección */}
@@ -592,7 +597,7 @@ function ActivityTable({ log = ACTIVITY_LOG }) {
             Registro de actividad reciente
           </h2>
           <p className="text-xs text-muted-foreground">
-            Últimas acciones registradas por los técnicos
+            Últimas acciones registradas por los técnicos · Haz clic en una fila para ver auditoría
           </p>
         </div>
         <span className="text-[10px] text-muted-foreground font-mono">
@@ -628,8 +633,12 @@ function ActivityTable({ log = ACTIVITY_LOG }) {
               </tr>
             ) : (
               log.map((row, idx) => (
-                <tr key={idx} className="transition-colors hover:bg-slate-50 dark:hover:bg-white/2">
-                  <td className="px-5 py-3 font-mono text-xs text-slate-500 dark:text-gray-400 whitespace-nowrap">
+                <tr
+                  key={idx}
+                  onClick={() => onSelectOrderId?.(row.id)}
+                  className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+                >
+                  <td className="px-5 py-3 font-mono text-xs font-semibold text-orange-600 dark:text-orange-400 whitespace-nowrap">
                     {row.id}
                   </td>
                   <td className="px-5 py-3 text-sm text-slate-900 dark:text-white font-medium whitespace-nowrap">
@@ -722,8 +731,18 @@ const normalize = (s) =>
     .toLowerCase();
 
 export default function DispatchBoard() {
-  const { visitsList, activityList, toast, setToast, createWorkOrder, totalOrders } = useWorkOrders();
+  const {
+    columns,
+    visitsList,
+    activityList,
+    toast,
+    setToast,
+    createWorkOrder,
+    totalOrders,
+  } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
@@ -739,6 +758,29 @@ export default function DispatchBoard() {
   const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
   const hasActiveFilters = Boolean(search.trim()) || activeFilterCount > 0;
   const q = normalize(search.trim());
+
+  const handleSelectOrderId = (orderId) => {
+    for (const col of columns) {
+      const found = col.tasks.find((t) => t.orderId === orderId);
+      if (found) {
+        setSelectedOrder({ ...found, columnStatus: col.label });
+        return;
+      }
+    }
+    const visit = visitsList.find((v) => v.id === orderId);
+    if (visit) {
+      setSelectedOrder({
+        orderId: visit.id,
+        title: visit.service,
+        client: visit.client,
+        location: visit.client,
+        priority: "Media",
+        assigneeName: visit.technician,
+        tag: visit.serviceType,
+        columnStatus: visit.status,
+      });
+    }
+  };
 
   // KPIs dinámicos conectados al total de órdenes activas
   const dynamicKpiData = useMemo(() => [
@@ -841,12 +883,25 @@ export default function DispatchBoard() {
         onCreate={handleCreateOT}
       />
 
+      {/* ── Modal Inventario SIM / Routers ── */}
+      <HardwareInventoryModal
+        isOpen={isInventoryOpen}
+        onClose={() => setIsInventoryOpen(false)}
+      />
+
+      {/* ── Drawer lateral de Auditoría de OT ── */}
+      <WorkOrderDetailDrawer
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onOpenInventoryModal={() => setIsInventoryOpen(true)}
+      />
+
       {/* ── Layout principal ── */}
       <div className="flex flex-col gap-6">
         {/* Bloque superior: contenido central + sidebar AI */}
         <div className="flex flex-col gap-6 xl:flex-row xl:items-stretch">
           <div className="flex-1 flex flex-col gap-6">
-            {/* Cabecera + búsqueda, filtros y botón Nueva OT */}
+            {/* Cabecera + búsqueda, filtros, Inventario y botón Nueva OT */}
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -894,6 +949,17 @@ export default function DispatchBoard() {
                         {activeFilterCount}
                       </span>
                     )}
+                  </button>
+
+                  {/* Botón Inventario SIM / Routers */}
+                  <button
+                    id="btn-hardware-inventory"
+                    type="button"
+                    onClick={() => setIsInventoryOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] hover:border-orange-500/60 dark:hover:border-orange-500/60 px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white transition-colors shadow-xs"
+                  >
+                    <Cpu className="h-4 w-4 text-orange-500" aria-hidden="true" />
+                    Inventario SIM / Routers
                   </button>
 
                   {/* Botón Nueva OT */}
@@ -1002,7 +1068,11 @@ export default function DispatchBoard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <ActiveZonesCard isLoading={isLoading} />
               <DonutChartCard isLoading={isLoading} />
-              <UpcomingVisitsCard isLoading={isLoading} visits={filteredVisits} />
+              <UpcomingVisitsCard
+                isLoading={isLoading}
+                visits={filteredVisits}
+                onSelectOrderId={handleSelectOrderId}
+              />
             </div>
           </div>
 
@@ -1016,7 +1086,10 @@ export default function DispatchBoard() {
         {isLoading ? (
           <ActivityTableSkeleton />
         ) : (
-          <ActivityTable log={filteredActivityLog} />
+          <ActivityTable
+            log={filteredActivityLog}
+            onSelectOrderId={handleSelectOrderId}
+          />
         )}
       </div>
     </>

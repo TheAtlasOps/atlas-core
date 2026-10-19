@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useMemo } from "react";
+import { INITIAL_HARDWARE_INVENTORY } from "../lib/auditAndHardwareData";
 
 const WorkOrderContext = createContext(null);
 
@@ -157,7 +158,19 @@ export function WorkOrderProvider({ children }) {
   const [columns, setColumns] = useState(INITIAL_COLUMNS);
   const [visitsList, setVisitsList] = useState(INITIAL_VISITS);
   const [activityList, setActivityList] = useState(INITIAL_ACTIVITIES);
+  const [hardwareInventory, setHardwareInventory] = useState(INITIAL_HARDWARE_INVENTORY);
+  const [orderHardwareOverrides, setOrderHardwareOverrides] = useState({});
+  const [auditedOrders, setAuditedOrders] = useState({
+    "#OT-08498": true,
+  });
   const [toast, setToast] = useState(null);
+
+  const showNotification = useCallback((title, description) => {
+    setToast({ title, description });
+    setTimeout(() => {
+      setToast(null);
+    }, 4500);
+  }, []);
 
   const totalOrders = useMemo(
     () => columns.reduce((acc, col) => acc + col.tasks.length, 0),
@@ -213,17 +226,88 @@ export function WorkOrderProvider({ children }) {
     setActivityList((prev) => [newActivity, ...prev]);
 
     // 4. Toast de confirmación
-    setToast({
-      title: `Orden ${newId} creada exitosamente`,
-      description: `${orderTitle} · Asignada a ${form.technician}`,
-    });
-
-    setTimeout(() => {
-      setToast(null);
-    }, 4500);
+    showNotification(
+      `Orden ${newId} creada exitosamente`,
+      `${orderTitle} · Asignada a ${form.technician}`
+    );
 
     return newTask;
-  }, [totalOrders]);
+  }, [totalOrders, showNotification]);
+
+  const approveOrderAudit = useCallback((order) => {
+    if (!order?.orderId) return;
+
+    setAuditedOrders((prev) => ({ ...prev, [order.orderId]: true }));
+
+    // Registrar en el log de actividad
+    const newActivity = {
+      id: order.orderId,
+      technician: order.assigneeName || "Coordinación",
+      action: "Auditoría técnica aprobada (Evidencias + Firma digital verificadas)",
+      status: "Completada",
+      serviceType: order.tag || "Fibra",
+      time: "Ahora",
+    };
+    setActivityList((prev) => [newActivity, ...prev]);
+
+    showNotification(
+      `Auditoría ${order.orderId} aprobada y cerrada`,
+      `Evidencias fotográficas, parámetros dBm y firma digital validados.`
+    );
+  }, [showNotification]);
+
+  const reassignOrderHardware = useCallback((order, { routerItem, simItem }) => {
+    if (!order?.orderId) return;
+
+    setOrderHardwareOverrides((prev) => {
+      const current = prev[order.orderId] || {};
+      return {
+        ...prev,
+        [order.orderId]: {
+          ...current,
+          ...(routerItem
+            ? {
+                routerModel: routerItem.model,
+                routerSerial: routerItem.identifier,
+              }
+            : {}),
+          ...(simItem
+            ? {
+                simIccid: simItem.identifier,
+                simTechnology: simItem.technology,
+              }
+            : {}),
+        },
+      };
+    });
+
+    setHardwareInventory((prev) =>
+      prev.map((item) => {
+        if (routerItem && item.id === routerItem.id) {
+          return {
+            ...item,
+            status: "Asignado",
+            orderId: order.orderId,
+            technician: order.assigneeName || "Técnico Terreno",
+          };
+        }
+        if (simItem && item.id === simItem.id) {
+          return {
+            ...item,
+            status: "Asignado",
+            orderId: order.orderId,
+            technician: order.assigneeName || "Técnico Terreno",
+          };
+        }
+        return item;
+      })
+    );
+
+    showNotification(
+      `Hardware reasignado en ${order.orderId}`,
+      `Equipamiento actualizado y sincronizado con el inventario activo.`
+    );
+  }, [showNotification]);
 
   const value = useMemo(
     () => ({
@@ -231,12 +315,30 @@ export function WorkOrderProvider({ children }) {
       setColumns,
       visitsList,
       activityList,
+      hardwareInventory,
+      setHardwareInventory,
+      orderHardwareOverrides,
+      auditedOrders,
       totalOrders,
       toast,
       setToast,
       createWorkOrder,
+      approveOrderAudit,
+      reassignOrderHardware,
     }),
-    [columns, visitsList, activityList, totalOrders, toast, createWorkOrder]
+    [
+      columns,
+      visitsList,
+      activityList,
+      hardwareInventory,
+      orderHardwareOverrides,
+      auditedOrders,
+      totalOrders,
+      toast,
+      createWorkOrder,
+      approveOrderAudit,
+      reassignOrderHardware,
+    ]
   );
 
   return (
