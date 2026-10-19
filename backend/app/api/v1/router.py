@@ -3,6 +3,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.orders import router as orders_router
 from app.api.v1.inventory import router as inventory_router
 from app.api.v1.client import router as client_router
+from app.api.v1.evidences import router as evidences_router
 
 api_router = APIRouter()
 
@@ -17,6 +18,9 @@ api_router.include_router(inventory_router, prefix="/inventory", tags=["Inventar
 
 # ─── Módulo de Portal Cliente (14-DocArq §1.2 / RF-CLI-01-09) ────────────────
 api_router.include_router(client_router, prefix="/client", tags=["Portal Cliente (Magic Link)"])
+
+# ─── Módulo de Evidencias y Cierre (14-DocArq §1.2 / RF-API-07 / RNF-SEG-05) ─
+api_router.include_router(evidences_router, prefix="/evidences", tags=["Evidencias y Cierre Técnico"])
 
 
 @api_router.get("/health", tags=["Salud"])
