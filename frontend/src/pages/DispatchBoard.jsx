@@ -308,13 +308,52 @@ const UPCOMING_VISITS = [
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 2 — Estado de visitas (Donut Chart SVG nativo)
 // ═══════════════════════════════════════════════════════════════════════════════
-function DonutChartCard({ isLoading }) {
-  const total = DONUT_SEGMENTS.reduce((acc, s) => acc + s.value, 0);
+function DonutChartCard({ isLoading, kpis, columns }) {
+  const dynamicSegments = useMemo(() => {
+    // 1. Extraer del objeto kpis si está disponible desde FastAPI
+    if (kpis?.status_distribution) {
+      const dist = kpis.status_distribution;
+      const completadas = dist.COMPLETADA || 0;
+      const enRuta = (dist.EN_RUTA || 0) + (dist.EN_SITIO || 0);
+      const pendientes = (dist.CONFIRMADA || 0) + (dist.IDLE || 0);
+      const canceladas = dist.CANCELADA || 0;
+      const sum = completadas + enRuta + pendientes + canceladas;
+      if (sum > 0) {
+        return [
+          { label: "Completadas", value: completadas, color: "#22c55e", strokeColor: "#22c55e" },
+          { label: "En Ruta",     value: enRuta,      color: "#3b82f6", strokeColor: "#3b82f6" },
+          { label: "Pendientes",  value: pendientes,  color: "#f59e0b", strokeColor: "#f59e0b" },
+          { label: "Canceladas",  value: canceladas,  color: "#ef4444", strokeColor: "#ef4444" },
+        ];
+      }
+    }
+
+    // 2. Extraer de las columnas del Kanban si kpis aún no cargó
+    if (columns?.length) {
+      const completadas = columns.find((c) => c.id === "completada")?.tasks?.length || 0;
+      const enRuta = columns.find((c) => c.id === "en-transito")?.tasks?.length || 0;
+      const pendientes = columns.find((c) => c.id === "asignada")?.tasks?.length || 0;
+      const canceladas = 0;
+      const sum = completadas + enRuta + pendientes + canceladas;
+      if (sum > 0) {
+        return [
+          { label: "Completadas", value: completadas, color: "#22c55e", strokeColor: "#22c55e" },
+          { label: "En Ruta",     value: enRuta,      color: "#3b82f6", strokeColor: "#3b82f6" },
+          { label: "Pendientes",  value: pendientes,  color: "#f59e0b", strokeColor: "#f59e0b" },
+          { label: "Canceladas",  value: canceladas,  color: "#ef4444", strokeColor: "#ef4444" },
+        ];
+      }
+    }
+
+    return DONUT_SEGMENTS;
+  }, [kpis, columns]);
+
+  const total = dynamicSegments.reduce((acc, s) => acc + s.value, 0);
 
   // Calculamos stroke-dasharray y stroke-dashoffset para cada segmento
   let accumulated = 0;
-  const segments = DONUT_SEGMENTS.map((seg) => {
-    const dash = (seg.value / total) * CIRCUMFERENCE;
+  const segments = dynamicSegments.map((seg) => {
+    const dash = total > 0 ? (seg.value / total) * CIRCUMFERENCE : 0;
     const offset = CIRCUMFERENCE - accumulated;
     accumulated += dash;
     return { ...seg, dash, offset };
@@ -406,7 +445,7 @@ function DonutChartCard({ isLoading }) {
 
           {/* Leyenda con valores */}
           <div className="flex flex-col gap-2">
-            {DONUT_SEGMENTS.map((seg) => (
+            {dynamicSegments.map((seg) => (
               <div key={seg.label} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span
@@ -420,7 +459,7 @@ function DonutChartCard({ isLoading }) {
                     {seg.value}
                   </span>
                   <span className="text-[10px] text-muted-foreground w-7 text-right tabular-nums">
-                    {Math.round((seg.value / total) * 100)}%
+                    {total > 0 ? Math.round((seg.value / total) * 100) : 0}%
                   </span>
                 </div>
               </div>
@@ -1149,7 +1188,7 @@ export default function DispatchBoard() {
             {/* Cuadrícula analítica de 3 columnas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} />
-              <DonutChartCard isLoading={isLoading} />
+              <DonutChartCard isLoading={isLoading} kpis={kpis} columns={columns} />
               <UpcomingVisitsCard
                 isLoading={isLoading}
                 visits={filteredVisits}

@@ -8,6 +8,8 @@ import {
   getInitials,
   normalizeOrderItem,
   buildColumnsFromOrders,
+  buildVisitsFromOrders,
+  buildActivitiesFromOrders,
 } from "../lib/workOrderOptions";
 import { api } from "../lib/api";
 
@@ -282,6 +284,8 @@ export function WorkOrderProvider({ children }) {
       const response = await api.orders.getAll({ size: 100 });
       if (response && Array.isArray(response.items) && response.items.length > 0) {
         setColumns(buildColumnsFromOrders(response.items));
+        setVisitsList(buildVisitsFromOrders(response.items));
+        setActivityList(buildActivitiesFromOrders(response.items));
         return response.items;
       }
     } catch {

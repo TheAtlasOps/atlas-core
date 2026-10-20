@@ -171,3 +171,80 @@ export function buildColumnsFromOrders(ordersList) {
     },
   ];
 }
+
+/**
+ * Adapta una lista de órdenes para el listado de visitas en el Dispatch Board.
+ */
+export function buildVisitsFromOrders(ordersList) {
+  if (!Array.isArray(ordersList)) return [];
+  return ordersList.map((o, idx) => {
+    const norm = normalizeOrderItem(o);
+    let statusLabel = "Programada";
+    let statusStyle = "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25";
+    if (norm.status === "EN_RUTA" || norm.status === "EN_SITIO") {
+      statusLabel = "En camino";
+      statusStyle = "bg-orange-500/15 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25";
+    } else if (norm.status === "COMPLETADA") {
+      statusLabel = "Completada";
+      statusStyle = "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/25";
+    } else if (norm.status === "CANCELADA") {
+      statusLabel = "Cancelada";
+      statusStyle = "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25";
+    }
+
+    const baseHours = 14 + Math.floor(idx / 2);
+    const baseMins = (idx % 2) * 30;
+    const timeStr = `${String(baseHours).padStart(2, "0")}:${String(baseMins).padStart(2, "0")}`;
+
+    const locationPart = (norm.location || "Santiago").split(",")[0].trim();
+    const clientDisplay = `${norm.clientName} — ${locationPart}`;
+
+    return {
+      id: norm.orderId,
+      time: o.scheduled_time || o.time || timeStr,
+      service: norm.title,
+      serviceType: norm.tag,
+      client: clientDisplay,
+      status: statusLabel,
+      statusStyle,
+      technician: norm.assigneeName,
+    };
+  });
+}
+
+/**
+ * Adapta una lista de órdenes para la bitácora de actividad reciente del Dispatch Board.
+ */
+export function buildActivitiesFromOrders(ordersList) {
+  if (!Array.isArray(ordersList)) return [];
+  return ordersList.map((o, idx) => {
+    const norm = normalizeOrderItem(o);
+    let action = "Actualizó estado de la OT";
+    let status = "Programada";
+    if (norm.status === "COMPLETADA") {
+      action = "Marcó visita como completada";
+      status = "Completada";
+    } else if (norm.status === "EN_RUTA") {
+      action = "Inició desplazamiento hacia el lugar";
+      status = "En camino";
+    } else if (norm.status === "EN_SITIO") {
+      action = "Llegó al sitio del cliente";
+      status = "En camino";
+    } else {
+      action = "Aceptó la OT asignada";
+      status = "Programada";
+    }
+
+    const minuteVal = Math.max(10, 58 - idx * 8);
+    const minuteStr = String(minuteVal).padStart(2, "0");
+
+    return {
+      id: norm.orderId,
+      technician: norm.assigneeName,
+      action,
+      status,
+      serviceType: norm.tag,
+      time: `13:${minuteStr}`,
+    };
+  });
+}

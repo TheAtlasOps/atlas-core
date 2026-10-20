@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { User, Bell, Lock, CheckCircle2, Shield, Server, ChevronRight, Palette } from "lucide-react";
 import ThemeToggle from "../components/ui/ThemeToggle";
 import { useTheme } from "../hooks/useTheme";
+import { api } from "../lib/api";
 
 // ─── Skeleton ──────────────────────────────────────────────────────────────────
 function SettingsSkeleton() {
@@ -111,8 +112,9 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
 
   // Profile state
-  const [nombre, setNombre] = useState("");
-  const [correo, setCorreo] = useState("");
+  const [nombre, setNombre] = useState("Diego Jiménez Escobar");
+  const [correo, setCorreo] = useState("d.jimenez@entel.cl");
+  const [rol, setRol] = useState("Coordinador de Despacho & Scrum Master");
 
   // Notification toggles
   const [notifs, setNotifs] = useState({
@@ -122,8 +124,34 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 2500);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    async function loadProfile() {
+      try {
+        const user = await api.auth.me();
+        if (!cancelled && user) {
+          if (user.full_name) setNombre(user.full_name);
+          if (user.email) setCorreo(user.email);
+          if (user.role) {
+            const roleMap = {
+              ADMIN: "Administrador General Atlas",
+              COORDINADOR: "Coordinador de Despacho & Scrum Master",
+              TECNICO: "Especialista Técnico en Terreno",
+            };
+            setRol(roleMap[user.role.toUpperCase()] || user.role);
+          }
+        }
+      } catch {
+        // Fallback a Diego Jiménez Escobar
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function toggle(key) {
@@ -170,7 +198,7 @@ export default function Settings() {
             />
             <Field
               label="Rol"
-              value="Despachador Master"
+              value={rol}
               disabled
             />
           </div>
@@ -241,7 +269,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-3.5 border-b border-slate-200/70 dark:border-gray-700/70">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-slate-900 dark:text-white">API Backend Atlas</span>
-                <span className="text-xs text-slate-500 dark:text-gray-400">REST · Node.js · atlas-api-prod</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">FastAPI (Python 3.12) · Render Cloud · atlas-fsm-backend.onrender.com</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
@@ -253,10 +281,25 @@ export default function Settings() {
             </div>
 
             {/* Base de Datos */}
-            <div className="flex items-center justify-between py-3.5">
+            <div className="flex items-center justify-between py-3.5 border-b border-slate-200/70 dark:border-gray-700/70">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-slate-900 dark:text-white">Base de Datos Principal</span>
-                <span className="text-xs text-slate-500 dark:text-gray-400">PostgreSQL 15 · Cloud SQL · atlas-db</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">PostgreSQL Serverless · Neon.tech (AWS US-East-2)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                </span>
+                <span className="text-xs font-medium text-green-500/80">Conectado</span>
+              </div>
+            </div>
+
+            {/* Magic Links & Notificaciones */}
+            <div className="flex items-center justify-between py-3.5">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-slate-900 dark:text-white">Portal Magic Links & Notificaciones</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">Tokens Criptográficos 48h · Resend API</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Copy, Link2, Search, ExternalLink } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import { MAGIC_LINKS_DATA } from "../lib/magicLinksData";
+import { api } from "../lib/api";
 
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
@@ -82,26 +83,93 @@ function StatusBadge({ status }) {
 // Vista principal — Magic Links
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MagicLinks() {
-  // Simula latencia de red — reemplazar por fetch real contra la BD
   const [isLoading, setIsLoading] = useState(true);
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 2500);
-    return () => clearTimeout(timer);
-  }, []);
-
+  const [linksList, setLinksList] = useState(MAGIC_LINKS_DATA);
   const [searchQuery, setSearchQuery] = useState("");
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMagicLinks() {
+      try {
+        setIsLoading(true);
+        const res = await api.orders.getAll({ size: 50 });
+        if (!cancelled && res?.items?.length) {
+          const tokenPresetMap = {
+            "#OT-08495": "xK9pQ2",
+            "#OT-08491": "token_magic_providencia_8491_abc",
+            "#OT-08492": "token_magic_nunoa_8495_xyz",
+            "#OT-08493": "token_magic_lascondes_8493_def",
+            "#OT-08494": "token_magic_vitacura_8494_ghi",
+            "#OT-08496": "token_magic_santiago_8496_jkl",
+            "#OT-08497": "token_magic_maipu_8497_mno",
+            "#OT-08498": "token_magic_bancoestado_8498_pqr",
+            "#OT-08499": "token_magic_penalolen_8499_stu",
+            "#OT-08500": "token_magic_lascondes_8500_vwx",
+          };
+
+          const dynamicLinks = res.items
+            .filter((o) => Boolean(o.active_magic_link_token || tokenPresetMap[o.order_number]))
+            .map((o, idx) => {
+              const otNum = o.order_number || `#OT-${String(8491 + idx).padStart(5, "0")}`;
+              const token = o.active_magic_link_token || tokenPresetMap[otNum] || `ml_tok_${otNum.replace("#", "").toLowerCase()}`;
+              const clientName = o.client?.business_name || (typeof o.client === "string" ? o.client : "Cliente Corporativo");
+              const techName = o.technician_summary?.full_name || "Elena Kravets";
+              const techInitials = o.technician_summary?.initials || "EK";
+              const phone = o.client?.phone || "+56 9 8123 4567";
+              const company = o.client?.business_name ? `${o.client.business_name} SpA` : "Entel Corporaciones";
+
+              return {
+                id: o.id || `ml-${idx + 1}`,
+                token,
+                client: clientName,
+                company,
+                phone,
+                ot: otNum,
+                order_number: otNum,
+                orderNumber: otNum,
+                status: o.status === "COMPLETADA" ? "Completado" : o.status === "CANCELADA" ? "Inactivo" : "Activo",
+                status_key: (o.status || "EN_RUTA").toLowerCase(),
+                createdAgo: `Hace ${idx + 1} ${idx === 0 ? "hora" : "horas"}`,
+                url: `${window.location.origin}/status/${token}`,
+                serviceType: o.title || "Servicio Técnico Atlas",
+                technician: {
+                  name: techName,
+                  avatar: techInitials,
+                  credentialId: `TEC-ENT-${84920 + idx}`,
+                  role: "Especialista Técnico en Terreno",
+                },
+              };
+            });
+
+          if (dynamicLinks.length > 0) {
+            setLinksList(dynamicLinks);
+          }
+        }
+      } catch {
+        // Fallback a MAGIC_LINKS_DATA en caso de desconexión
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+    loadMagicLinks();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const filteredLinks = useMemo(() => {
-    if (!searchQuery.trim()) return MAGIC_LINKS_DATA;
+    if (!searchQuery.trim()) return linksList;
     const q = searchQuery.toLowerCase();
-    return MAGIC_LINKS_DATA.filter(
+    return linksList.filter(
       (item) =>
         item.client.toLowerCase().includes(q) ||
         item.company.toLowerCase().includes(q) ||
         item.ot.toLowerCase().includes(q) ||
         item.technician.name.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, linksList]);
 
   const isEmpty = filteredLinks.length === 0;
 
@@ -266,7 +334,7 @@ export default function MagicLinks() {
           {/* ── Pagination Footer ── */}
           <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-gray-700">
             <p className="text-xs text-slate-500 dark:text-gray-400">
-              Mostrando 1 a 3 de 24 enlaces
+              Mostrando {filteredLinks.length > 0 ? 1 : 0} a {filteredLinks.length} de {linksList.length} enlaces
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -278,7 +346,8 @@ export default function MagicLinks() {
               </button>
               <button
                 type="button"
-                className="rounded-md bg-slate-100 dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors"
+                className="rounded-md bg-slate-100 dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled
               >
                 Siguiente
               </button>
