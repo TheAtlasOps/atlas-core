@@ -766,18 +766,24 @@ export function HardwareInventoryContent({ onClose }) {
 
                       {/* 5. Orden / Técnico Asignado */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        {item.orderId && item.technician ? (
+                        {item.orderId || item.technician ? (
                           <div className="flex items-center gap-2">
-                            <span className="rounded bg-orange-500/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-orange-600 dark:text-orange-400">
-                              {item.orderId}
-                            </span>
-                            <AdminAvatar
-                              name={item.technician}
-                              className="h-5 w-5 text-[9px]"
-                            />
-                            <span className="text-xs font-medium text-slate-800 dark:text-gray-200">
-                              {item.technician}
-                            </span>
+                            {item.orderId && (
+                              <span className="rounded bg-orange-500/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-orange-600 dark:text-orange-400">
+                                {item.orderId}
+                              </span>
+                            )}
+                            {item.technician && (
+                              <>
+                                <AdminAvatar
+                                  name={item.technician}
+                                  className="h-5 w-5 text-[9px]"
+                                />
+                                <span className="text-xs font-medium text-slate-800 dark:text-gray-200">
+                                  {item.technician}
+                                </span>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400 dark:text-gray-500">

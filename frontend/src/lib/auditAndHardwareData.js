@@ -196,24 +196,44 @@ export function normalizeSimStatus(rawStatus) {
 export function mapApiSimToInventoryItem(sim) {
   const status = normalizeSimStatus(sim.status);
   const is4G = (sim.notes || "").toUpperCase().includes("4G");
+
+  // Enriquecer con preset de metadatos según ICCID si existe
+  const preset = INITIAL_HARDWARE_INVENTORY.find(
+    (item) => item.identifier === sim.iccid
+  );
+
+  const technicianName =
+    sim.assigned_technician_name ||
+    preset?.technician ||
+    null;
+
+  const orderId =
+    preset?.orderId ||
+    (sim.installed_client_name ? `Cliente: ${sim.installed_client_name}` : null);
+
+  const location =
+    sim.installed_client_name ||
+    preset?.location ||
+    "Bodega Central RM";
+
   return {
     id: String(sim.id),
     deviceType: "SIM",
-    model: sim.notes || "SIM Corporativa Multi-APN Entel",
+    model: preset?.model || sim.notes || "SIM Corporativa Multi-APN Entel",
     identifier: sim.iccid,
     secondaryId: [
       sim.imsi ? `IMSI: ${sim.imsi}` : null,
       sim.msisdn ? sim.msisdn : null,
     ]
       .filter(Boolean)
-      .join(" · ") || "APN: m2m.entel.cl",
-    operator: sim.operator || "Entel",
-    technology: is4G ? "4G LTE" : "5G",
+      .join(" · ") || preset?.secondaryId || "APN: m2m.entel.cl",
+    operator: sim.operator || preset?.operator || "Entel",
+    technology: preset?.technology || (is4G ? "4G LTE" : "5G"),
     status,
-    orderId: sim.installed_client_name ? `Cliente: ${sim.installed_client_name}` : null,
-    technician: sim.assigned_technician_name || null,
-    clientId: sim.installed_client_id || null,
-    location: sim.installed_client_name || "Bodega Central RM",
+    orderId,
+    technician: technicianName,
+    clientId: sim.installed_client_id || preset?.clientId || null,
+    location,
   };
 }
 
@@ -223,19 +243,39 @@ export function mapApiSimToInventoryItem(sim) {
 export function mapApiRouterToInventoryItem(router) {
   const status = normalizeSimStatus(router.status);
   const is5G = (router.type || "").toUpperCase().includes("5G") || (router.model || "").includes("50");
+
+  // Enriquecer con preset de metadatos según N° de Serie si existe
+  const preset = INITIAL_HARDWARE_INVENTORY.find(
+    (item) => item.identifier === router.serial_number
+  );
+
+  const technicianName =
+    router.assigned_technician_name ||
+    preset?.technician ||
+    null;
+
+  const orderId =
+    preset?.orderId ||
+    (router.installed_client_name ? `Cliente: ${router.installed_client_name}` : null);
+
+  const location =
+    router.installed_client_name ||
+    preset?.location ||
+    "Bodega Central RM";
+
   return {
     id: String(router.id),
     deviceType: "Router",
-    model: `${router.brand || ""} ${router.model || ""}`.trim() || "Router Industrial CPE",
+    model: preset?.model || `${router.brand || ""} ${router.model || ""}`.trim() || "Router Industrial CPE",
     identifier: router.serial_number,
-    secondaryId: router.mac_address ? `MAC: ${router.mac_address}` : `Tipo: ${router.type || "ROUTER_5G"}`,
-    operator: "Entel Corporativo",
-    technology: is5G ? "5G" : "4G LTE",
+    secondaryId: router.mac_address ? `MAC: ${router.mac_address}` : (preset?.secondaryId || `Tipo: ${router.type || "ROUTER_5G"}`),
+    operator: preset?.operator || "Entel Corporativo",
+    technology: preset?.technology || (is5G ? "5G" : "4G LTE"),
     status,
-    orderId: router.installed_client_name ? `Cliente: ${router.installed_client_name}` : null,
-    technician: router.assigned_technician_name || null,
-    clientId: router.installed_client_id || null,
-    location: router.installed_client_name || "Bodega Central RM",
+    orderId,
+    technician: technicianName,
+    clientId: router.installed_client_id || preset?.clientId || null,
+    location,
   };
 }
 
