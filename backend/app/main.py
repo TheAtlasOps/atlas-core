@@ -22,10 +22,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Configuración de CORS Restrictivo (RNF-SEG-01 / RNF-MAN-01)
+# Configuración de CORS Restrictivo + Soporte automático para despliegues en Vercel (RNF-SEG-01 / RNF-MAN-01)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],

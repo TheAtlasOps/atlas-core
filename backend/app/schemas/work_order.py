@@ -62,7 +62,8 @@ class WorkOrderBase(BaseModel):
 
 
 class WorkOrderCreate(WorkOrderBase):
-    client_id: uuid.UUID
+    client_id: Optional[uuid.UUID] = None
+    client_name: Optional[str] = None
     technician_id: Optional[uuid.UUID] = None
     order_number: Optional[str] = None  # Si es None, el servicio genera uno secuencial
 

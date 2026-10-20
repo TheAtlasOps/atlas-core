@@ -24,24 +24,31 @@ export const SERVICE_TYPES = ["Fibra", "SIM", "Red", "Hardware", "Magic Link"];
 export const PRIORITIES = ["BAJA", "MEDIA", "ALTA", "URGENTE"];
 
 export const TECHNICIANS = [
-  "Juan Rivas",
-  "Luis Pinto",
-  "María Kovalenko",
+  "Juan Rojas",
+  "Luis Paredes",
+  "Matías Koch",
   "Tomás Castro",
-  "Elena Kravets",
-  "Sofía Araya",
+  "Esteban Kral",
+  "Sebastián Araya",
+  "Carlos Mendoza",
 ];
 
 export const TECHNICIAN_UUID_MAP = {
-  "Juan Rivas": "11111111-1111-4111-8111-111111111101",
-  "Luis Pinto": "11111111-1111-4111-8111-111111111102",
-  "María Kovalenko": "11111111-1111-4111-8111-111111111103",
-  "Tomás Castro": "11111111-1111-4111-8111-111111111104",
-  "Elena Kravets": "11111111-1111-4111-8111-111111111105",
-  "Sofía Araya": "11111111-1111-4111-8111-111111111106",
+  "Carlos Mendoza": "b0000000-0000-0000-0000-000000000001",
+  "Juan Rojas": "b0000000-0000-0000-0000-000000000002",
+  "Juan Rivas": "b0000000-0000-0000-0000-000000000002",
+  "Luis Paredes": "b0000000-0000-0000-0000-000000000003",
+  "Luis Pinto": "b0000000-0000-0000-0000-000000000003",
+  "Matías Koch": "b0000000-0000-0000-0000-000000000004",
+  "María Kovalenko": "b0000000-0000-0000-0000-000000000004",
+  "Tomás Castro": "b0000000-0000-0000-0000-000000000005",
+  "Esteban Kral": "b0000000-0000-0000-0000-000000000006",
+  "Elena Kravets": "b0000000-0000-0000-0000-000000000006",
+  "Sebastián Araya": "b0000000-0000-0000-0000-000000000007",
+  "Sofía Araya": "b0000000-0000-0000-0000-000000000007",
 };
 
-export const DEFAULT_CLIENT_UUID = "22222222-2222-4222-8222-222222222201";
+export const DEFAULT_CLIENT_UUID = "c0000000-0000-0000-0000-000000000001";
 
 export function getInitials(name) {
   return (

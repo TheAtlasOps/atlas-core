@@ -16,8 +16,26 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     # Base de Datos (Neon.tech / PostgreSQL)
-    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_sample_password@ep-atlas-sample.us-east-2.aws.neon.tech/atlas_fsm?sslmode=require"
+    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_sample_password@ep-atlas-sample.us-east-2.aws.neon.tech/atlas_fsm?ssl=require"
     DATABASE_SYNC_URL: str = "postgresql://neondb_owner:npg_sample_password@ep-atlas-sample.us-east-2.aws.neon.tech/atlas_fsm?sslmode=require"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_async_database_url(cls, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        url = v.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql+asyncpg://" + url[len("postgres://"):]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+        url = url.replace("sslmode=require", "ssl=require")
+        url = (
+            url.replace("&channel_binding=require", "")
+            .replace("channel_binding=require&", "")
+            .replace("?channel_binding=require", "")
+        )
+        return url
 
     # Pool de Conexiones (Optimización Free Tier / Serverless Neon)
     DB_POOL_SIZE: int = 10
