@@ -1,6 +1,7 @@
 import uuid
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from decimal import Decimal
 from typing import List, Optional, Tuple, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
@@ -16,7 +17,6 @@ from app.models.inventory import SimCard
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum, SimStatusEnum
 from app.schemas.work_order import (
     WorkOrderCreate,
-    WorkOrderUpdate,
     WorkOrderStatusUpdate,
     WorkOrderAssign,
     SyncBatchRequest,
@@ -114,25 +114,72 @@ async def create_order(
     Crea una orden técnica con validación de cliente, correlativo e inicialización de estados (RF-BO-01).
     Dispara automáticamente la generación de un Magic Link seguro (14-DocArq §3.3).
     """
-    # 1. Validar existencia del cliente
-    client_res = await db.execute(select(Client).where(Client.id == order_in.client_id))
-    client = client_res.scalar_one_or_none()
+    # 1. Resolver o crear cliente
+    client: Optional[Client] = None
+    if order_in.client_name and order_in.client_name.strip():
+        clean_name = order_in.client_name.strip()
+        existing_client_res = await db.execute(
+            select(Client).where(Client.business_name.ilike(clean_name)).limit(1)
+        )
+        client = existing_client_res.scalar_one_or_none()
+        if not client:
+            client = Client(
+                business_name=clean_name,
+                contact_person=clean_name,
+                contact_phone="+56 9 8000 0000",
+                contact_email="contacto@cliente-atlas.cl",
+                address=order_in.address_override or "Santiago, RM",
+                comuna=order_in.comuna_override or "Santiago",
+                region="Metropolitana",
+                lat=order_in.lat or Decimal("-33.4372"),
+                lng=order_in.lng or Decimal("-70.6506"),
+            )
+            db.add(client)
+            await db.flush()
+
+    if not client and order_in.client_id:
+        client_res = await db.execute(select(Client).where(Client.id == order_in.client_id))
+        client = client_res.scalar_one_or_none()
+
+    if not client:
+        # Fallback al primer cliente existente en base de datos
+        first_res = await db.execute(select(Client).limit(1))
+        client = first_res.scalar_one_or_none()
+
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Cliente con ID {order_in.client_id} no encontrado"
+            detail="No se encontró un cliente válido para asociar la orden"
         )
 
-    # 2. Generar correlativo si no viene provisto (ej: #OT-08501)
+    # 2. Generar correlativo único si no viene provisto (ej: #OT-08501)
     if not order_in.order_number:
         count_res = await db.execute(select(func.count(WorkOrder.id)))
         current_count = (count_res.scalar() or 0) + 8491
         order_number = f"#OT-{current_count:05d}"
+        existing_num = await db.execute(
+            select(WorkOrder.id).where(WorkOrder.order_number == order_number)
+        )
+        while existing_num.scalar_one_or_none() is not None:
+            current_count += 1
+            order_number = f"#OT-{current_count:05d}"
+            existing_num = await db.execute(
+                select(WorkOrder.id).where(WorkOrder.order_number == order_number)
+            )
     else:
         order_number = order_in.order_number
 
-    # 3. Determinar estado inicial
-    initial_status = OrderStatusEnum.CONFIRMADA if order_in.technician_id else OrderStatusEnum.IDLE
+    # 3. Validar técnico si viene provisto
+    resolved_tech_id = None
+    if order_in.technician_id:
+        tech_res = await db.execute(
+            select(Technician.id).where(Technician.id == order_in.technician_id)
+        )
+        if tech_res.scalar_one_or_none() is not None:
+            resolved_tech_id = order_in.technician_id
+
+    # 4. Determinar estado inicial
+    initial_status = OrderStatusEnum.CONFIRMADA if resolved_tech_id else OrderStatusEnum.IDLE
 
     now_utc = datetime.now(timezone.utc)
     new_order = WorkOrder(
@@ -142,8 +189,8 @@ async def create_order(
         service_type=order_in.service_type,
         priority=order_in.priority,
         status=initial_status,
-        client_id=order_in.client_id,
-        technician_id=order_in.technician_id,
+        client_id=client.id,
+        technician_id=resolved_tech_id,
         scheduled_date=order_in.scheduled_date,
         eta=order_in.eta,
         address_override=order_in.address_override or client.address,
@@ -158,7 +205,7 @@ async def create_order(
     db.add(new_order)
     await db.flush()  # Obtiene el UUID de la orden antes de registrar historial
 
-    # 4. Registrar auditoría inicial inmutable (RF-BO-12)
+    # 5. Registrar auditoría inicial inmutable (RF-BO-12)
     history_entry = OrderStatusHistory(
         work_order_id=new_order.id,
         old_status=None,
@@ -174,7 +221,7 @@ async def create_order(
     await db.commit()
     await db.refresh(new_order)
 
-    # 5. Generar Magic Link seguro para el portal cliente
+    # 6. Generar Magic Link seguro para el portal cliente
     try:
         await generate_magic_link_for_order(db=db, work_order_id=new_order.id, expire_hours=48)
     except Exception:

@@ -199,19 +199,22 @@ export function HardwareInventoryContent({ onClose }) {
     }
   };
 
-  const handleAddSubmit = (e) => {
+  const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newItem.identifier.trim()) return;
 
-    const created = {
+    const cleanId = newItem.identifier.trim();
+    const modelText =
+      newItem.model.trim() ||
+      (newItem.deviceType === "SIM"
+        ? "SIM M2M Industrial Entel"
+        : "Teltonika RUTX50 Industrial");
+
+    let created = {
       id: `hw-${Date.now()}`,
       deviceType: newItem.deviceType,
-      model:
-        newItem.model.trim() ||
-        (newItem.deviceType === "SIM"
-          ? "SIM M2M Industrial Entel"
-          : "Teltonika RUTX50 Industrial"),
-      identifier: newItem.identifier.trim(),
+      model: modelText,
+      identifier: cleanId,
       secondaryId:
         newItem.deviceType === "SIM"
           ? "APN: m2m.entel.cl"
@@ -223,6 +226,38 @@ export function HardwareInventoryContent({ onClose }) {
       technician: null,
       location: "Bodega Central RM",
     };
+
+    try {
+      if (newItem.deviceType === "SIM") {
+        const apiSim = await api.inventory.createSim({
+          iccid: cleanId.slice(0, 22),
+          operator: "Entel",
+          status: newItem.status,
+          notes: `${modelText} (${newItem.technology})`,
+        });
+        if (apiSim?.id) {
+          created = mapApiSimToInventoryItem(apiSim);
+        }
+      } else {
+        const parts = modelText.split(" ");
+        const brand = parts[0] || "Teltonika";
+        const model = parts.slice(1).join(" ") || modelText;
+        const apiRouter = await api.inventory.createRouter({
+          serial_number: cleanId,
+          mac_address: "B8:27:EB:99:10:AA",
+          brand,
+          model,
+          type: newItem.technology === "5G" ? "ROUTER_5G" : "ROUTER_4G",
+          status: "DISPONIBLE",
+          notes: modelText,
+        });
+        if (apiRouter?.id) {
+          created = mapApiRouterToInventoryItem(apiRouter);
+        }
+      }
+    } catch {
+      // Fallback silencioso a estado local si el backend no está activo
+    }
 
     setHardwareInventory((prev) => [created, ...prev]);
     setShowAddForm(false);

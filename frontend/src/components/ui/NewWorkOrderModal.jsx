@@ -6,6 +6,8 @@ import {
   PRIORITIES,
   TECHNICIANS,
   TECHNICIAN_UUID_MAP,
+  DEFAULT_CLIENT_UUID,
+  mapServiceTagToEnum,
 } from "../../lib/workOrderOptions";
 import { api } from "../../lib/api";
 import { useWorkOrders } from "../../context/WorkOrderContext";
@@ -46,12 +48,20 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         ? addressParts[addressParts.length - 1].trim()
         : "Santiago";
 
+    const technicianId =
+      TECHNICIAN_UUID_MAP[form.technician] ||
+      "b0000000-0000-0000-0000-000000000002";
+
     const orderPayload = {
       title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
       description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
-      service_type: form.serviceType,
+      service_type: mapServiceTagToEnum(form.serviceType),
       priority: String(form.priority || "MEDIA").toUpperCase(),
+      client_id: DEFAULT_CLIENT_UUID,
+      client_name: form.clientName.trim(),
+      technician_id: technicianId,
       scheduled_date: new Date().toISOString(),
+      eta: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       address_override: form.address,
       comuna_override: comunaOverride,
       tag: form.serviceType,
@@ -61,10 +71,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
       const createdOrder = await api.orders.create(orderPayload);
       let finalOrder = createdOrder;
 
-      if (form.technician && createdOrder?.id) {
-        const technicianId =
-          TECHNICIAN_UUID_MAP[form.technician] ||
-          "00000000-0000-4000-8000-000000000101";
+      if (form.technician && createdOrder?.id && !createdOrder?.technician_id) {
         try {
           finalOrder = await api.orders.assign(
             createdOrder.id,

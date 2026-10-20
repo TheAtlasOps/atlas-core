@@ -1,16 +1,69 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
-async function request(endpoint, options = {}) {
-  const token = localStorage.getItem("atlas_token");
+const DEFAULT_DEMO_EMAIL = "diego.jimenez@atlasops.cl";
+const DEFAULT_DEMO_PASSWORD = "atlas1234";
+
+let loginPromise = null;
+
+async function ensureAuthToken() {
+  const existing = localStorage.getItem("atlas_token");
+  if (existing) return existing;
+
+  if (!loginPromise) {
+    loginPromise = fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: DEFAULT_DEMO_EMAIL,
+        password: DEFAULT_DEMO_PASSWORD,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data?.access_token) {
+          localStorage.setItem("atlas_token", data.access_token);
+          return data.access_token;
+        }
+        return null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        loginPromise = null;
+      });
+  }
+
+  return loginPromise;
+}
+
+async function request(endpoint, options = {}, isRetry = false) {
+  const isPublicEndpoint =
+    endpoint === "/auth/login" || endpoint.startsWith("/client/");
+
+  let token = localStorage.getItem("atlas_token");
+  if (!token && !isPublicEndpoint) {
+    token = await ensureAuthToken();
+  }
+
   const headers = {
     "Content-Type": "application/json",
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
+
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers,
   });
+
+  if (response.status === 401 && !isPublicEndpoint && !isRetry) {
+    localStorage.removeItem("atlas_token");
+    const refreshed = await ensureAuthToken();
+    if (refreshed) {
+      return request(endpoint, options, true);
+    }
+  }
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || `Error HTTP ${response.status}`);
@@ -43,10 +96,14 @@ export const api = {
       const query = new URLSearchParams(params).toString();
       return request(`/inventory/sims${query ? `?${query}` : ""}`);
     },
+    createSim: (simData) =>
+      request("/inventory/sims", { method: "POST", body: JSON.stringify(simData) }),
     getRouters: (params = {}) => {
       const query = new URLSearchParams(params).toString();
       return request(`/inventory/routers${query ? `?${query}` : ""}`);
     },
+    createRouter: (routerData) =>
+      request("/inventory/routers", { method: "POST", body: JSON.stringify(routerData) }),
     pair: (equipmentId, simCardId, clientId = null) =>
       request("/inventory/pair", {
         method: "POST",

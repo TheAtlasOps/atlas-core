@@ -311,7 +311,6 @@ async def pair_devices(
         )
 
     # 3. Control de Exclusividad Estricto (RF-API-03 / 14-DocArq §3.2)
-    # Si la SIM ya está INSTALADA en un cliente distinto y la acción no es 'REEMPLAZO', impedir duplicidad
     if (
         sim.status == SimStatusEnum.INSTALADA
         and pair_req.client_id
@@ -346,6 +345,9 @@ async def pair_devices(
         equip.status = EquipmentStatusEnum.ASIGNADO_TECNICO
         sim.assigned_technician_id = pair_req.technician_id
         sim.status = SimStatusEnum.ASIGNADA_TECNICO
+    else:
+        equip.status = EquipmentStatusEnum.INSTALADO
+        sim.status = SimStatusEnum.INSTALADA
 
     # 5. Si está vinculado a una orden de trabajo, crear registro en work_order_items (RF-API-05)
     order_item_id = None
