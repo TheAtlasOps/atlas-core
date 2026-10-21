@@ -199,9 +199,15 @@ export function HardwareInventoryContent({ onClose }) {
     }
   };
 
+  const [formError, setFormError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newItem.identifier.trim()) return;
+
+    setFormError(null);
+    setIsSubmitting(true);
 
     const cleanId = newItem.identifier.trim();
     const modelText =
@@ -210,22 +216,7 @@ export function HardwareInventoryContent({ onClose }) {
         ? "SIM M2M Industrial Entel"
         : "Teltonika RUTX50 Industrial");
 
-    let created = {
-      id: `hw-${Date.now()}`,
-      deviceType: newItem.deviceType,
-      model: modelText,
-      identifier: cleanId,
-      secondaryId:
-        newItem.deviceType === "SIM"
-          ? "APN: m2m.entel.cl"
-          : "MAC: B8:27:EB:99:10:AA",
-      operator: "Entel Corporativo",
-      technology: newItem.technology,
-      status: newItem.status,
-      orderId: null,
-      technician: null,
-      location: "Bodega Central RM",
-    };
+    let created = null;
 
     try {
       if (newItem.deviceType === "SIM") {
@@ -255,26 +246,41 @@ export function HardwareInventoryContent({ onClose }) {
           created = mapApiRouterToInventoryItem(apiRouter);
         }
       }
-    } catch {
-      // Fallback silencioso a estado local si el backend no está activo
-    }
 
-    setHardwareInventory((prev) => [created, ...prev]);
-    setShowAddForm(false);
-    setNewItem({
-      deviceType: "SIM",
-      model: "",
-      identifier: "",
-      technology: "5G",
-      status: "DISPONIBLE",
-    });
+      if (created) {
+        setHardwareInventory((prev) => [created, ...prev]);
+        setShowAddForm(false);
+        setNewItem({
+          deviceType: "SIM",
+          model: "",
+          identifier: "",
+          technology: "5G",
+          status: "DISPONIBLE",
+        });
 
-    if (setToast) {
-      setToast({
-        title: `${created.deviceType} registrado en inventario`,
-        description: `ID ${created.identifier} (${created.technology}) en estado ${created.status}.`,
-      });
-      setTimeout(() => setToast(null), 4000);
+        if (setToast) {
+          setToast({
+            title: `${created.deviceType} registrado en Neon DB`,
+            description: `ID ${created.identifier} guardado exitosamente.`,
+            type: "success",
+          });
+          setTimeout(() => setToast(null), 5000);
+        }
+      }
+    } catch (err) {
+      console.error("Error al registrar hardware:", err);
+      const errorMessage = err?.message || "No se pudo registrar el hardware.";
+      setFormError(errorMessage);
+      if (setToast) {
+        setToast({
+          title: "Error al registrar hardware",
+          description: errorMessage,
+          type: "error",
+        });
+        setTimeout(() => setToast(null), 6000);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -467,6 +473,13 @@ export function HardwareInventoryContent({ onClose }) {
           onSubmit={handleAddSubmit}
           className="mx-6 mt-4 rounded-xl border border-orange-500/40 bg-slate-50 dark:bg-[#141414] p-4 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end shrink-0"
         >
+          {formError && (
+            <div className="col-span-1 sm:col-span-5 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+              <span className="font-medium">{formError}</span>
+            </div>
+          )}
+
           <div>
             <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
               Tipo Dispositivo
@@ -491,9 +504,10 @@ export function HardwareInventoryContent({ onClose }) {
               type="text"
               required
               value={newItem.identifier}
-              onChange={(e) =>
-                setNewItem((prev) => ({ ...prev, identifier: e.target.value }))
-              }
+              onChange={(e) => {
+                setFormError(null);
+                setNewItem((prev) => ({ ...prev, identifier: e.target.value }));
+              }}
               placeholder={
                 newItem.deviceType === "SIM"
                   ? "89560200102400018500"
@@ -541,14 +555,19 @@ export function HardwareInventoryContent({ onClose }) {
           <div className="flex gap-2">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white"
+              disabled={isSubmitting}
+              className="flex-1 rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60 transition-colors"
             >
-              Guardar
+              {isSubmitting ? "Guardando..." : "Guardar"}
             </button>
             <button
               type="button"
-              onClick={() => setShowAddForm(false)}
-              className="rounded-lg border border-slate-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-slate-600 dark:text-gray-400"
+              disabled={isSubmitting}
+              onClick={() => {
+                setShowAddForm(false);
+                setFormError(null);
+              }}
+              className="rounded-lg border border-slate-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
             >
               Cancelar
             </button>

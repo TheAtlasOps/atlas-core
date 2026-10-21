@@ -58,3 +58,30 @@ frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
 *.log
+
+# Terraform / IaC (Infraestructura como Código)
+infra/terraform/.terraform/
+infra/terraform/.terraform.lock.hcl
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/*.tfvars
+infra/terraform/*.tfplan
+!infra/terraform/terraform.tfvars.example
+
+# Local Docker Data
+infra/docker/pgdata/
+
+# =============================================================================
+# MODULO CMDB E INFRAESTRUCTURA COMO CODIGO (LOCAL POR AHORA)
+# Descomentar o eliminar estas lineas cuando el equipo apruebe subir el modulo:
+# =============================================================================
+infra/
+Database/cmdb_schema.sql
+Database/cmdb_seed.sql
+docs/database/05_CMDB_E_INFRAESTRUCTURA_COMO_CODIGO.md
+
+# Propuestas estratégicas y benchmarking interno
+docs/PROPUESTAS_MEJORA_Y_BENCHMARKING.md
+PROPUESTAS_MEJORA_Y_BENCHMARKING.md
+
+
