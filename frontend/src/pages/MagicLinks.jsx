@@ -115,6 +115,11 @@ export default function MagicLinks() {
   const [sendImmediately, setSendImmediately] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Estado para el modal de envío de correo personalizado
+  const [sendModalRow, setSendModalRow] = useState(null);
+  const [sendModalEmail, setSendModalEmail] = useState("");
+  const [isSendingFromModal, setIsSendingFromModal] = useState(false);
+
   // Auto-dismiss del toast después de 6 segundos
   useEffect(() => {
     if (!toast) return;
@@ -229,9 +234,16 @@ export default function MagicLinks() {
     }).catch(() => {});
   };
 
-  // ── Disparo manual de correo vía SendGrid / Resend ──
-  const handleSendEmail = async (row) => {
-    if (!row.workOrderId) {
+  // ── Abrir modal para elegir correo destino real ──
+  const handleOpenSendModal = (row) => {
+    setSendModalRow(row);
+    setSendModalEmail(row.clientEmail || "");
+  };
+
+  // ── Confirmar y despachar vía SendGrid a la dirección ingresada ──
+  const handleConfirmSendEmail = async (e) => {
+    e.preventDefault();
+    if (!sendModalRow?.workOrderId) {
       setToast({
         type: "error",
         title: "No se puede despachar",
@@ -240,18 +252,33 @@ export default function MagicLinks() {
       return;
     }
 
-    setSendingEmailId(row.id);
+    const target = sendModalEmail.trim();
+    if (!target) {
+      setToast({
+        type: "error",
+        title: "Correo requerido",
+        message: "Por favor ingresa un correo de destino válido.",
+      });
+      return;
+    }
+
+    setIsSendingFromModal(true);
     try {
-      const res = await api.notifications.sendMagicLink(row.workOrderId);
+      const res = await api.notifications.sendMagicLink(sendModalRow.workOrderId, target);
       if (res?.success) {
-        const isSimulated = res.simulated;
         setToast({
           type: "success",
-          title: isSimulated ? "Envío Simulado (Modo Dev)" : "¡Correo enviado con éxito!",
-          message: isSimulated
-            ? `Notificación preparada para ${res.recipient || row.clientEmail}. (Para envío real a bandejas, configura SENDGRID_API_KEY en .env).`
-            : `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid (ID: ${res.message_id}).`,
+          title: "¡Correo enviado con éxito!",
+          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid (ID: ${res.message_id}).`,
         });
+
+        // Actualizar el correo visualmente en la fila
+        setLinksList((prev) =>
+          prev.map((item) =>
+            item.id === sendModalRow.id ? { ...item, clientEmail: target } : item
+          )
+        );
+        setSendModalRow(null);
       } else {
         throw new Error(res?.status || "Error reportado por el servidor de correo");
       }
@@ -262,7 +289,7 @@ export default function MagicLinks() {
         message: err.message || "No se pudo despachar el correo transaccional.",
       });
     } finally {
-      setSendingEmailId(null);
+      setIsSendingFromModal(false);
     }
   };
 
@@ -283,12 +310,13 @@ export default function MagicLinks() {
       // 1. Generar token criptográfico
       const genRes = await api.auth.generateMagicLink(selectedOrderId, 48);
 
-      // 2. Si marcó enviar por correo inmediatamente
+      // 2. Si marcó enviar por correo inmediatamente, usar customEmail
       let emailSent = false;
       let emailMsg = "";
-      if (sendImmediately) {
+      const targetEmail = customEmail.trim();
+      if (sendImmediately && targetEmail) {
         try {
-          const notifRes = await api.notifications.sendMagicLink(selectedOrderId);
+          const notifRes = await api.notifications.sendMagicLink(selectedOrderId, targetEmail);
           if (notifRes?.success) {
             emailSent = true;
             emailMsg = notifRes.simulated
@@ -504,19 +532,14 @@ export default function MagicLinks() {
                       {/* Acciones */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Botón Enviar Correo vía SendGrid */}
+                          {/* Botón Enviar Correo vía SendGrid a dirección personalizada */}
                           <button
                             type="button"
-                            disabled={sendingEmailId === row.id}
-                            onClick={() => handleSendEmail(row)}
-                            title={`Enviar correo con Magic Link a ${row.clientEmail || row.client} (SendGrid)`}
-                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                            onClick={() => handleOpenSendModal(row)}
+                            title={`Enviar Magic Link a un correo real (SendGrid)`}
+                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
                           >
-                            {sendingEmailId === row.id ? (
-                              <div className="h-4 w-4 rounded-full border-2 border-emerald-500/30 border-t-emerald-500 animate-spin" />
-                            ) : (
-                              <Mail className="h-4 w-4" />
-                            )}
+                            <Mail className="h-4 w-4" />
                           </button>
 
                           {/* Abrir vista */}
@@ -676,6 +699,94 @@ export default function MagicLinks() {
                     <>
                       <Send className="h-4 w-4" />
                       <span>Generar y Despachar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: ENVIAR MAGIC LINK POR CORREO DIRECTO ── */}
+      {sendModalRow && (
+        <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-4 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Enviar Magic Link</h3>
+                  <p className="text-xs text-slate-500 dark:text-gray-400">
+                    Despacha la invitación a cualquier correo real
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSendModalRow(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmSendEmail} className="space-y-4">
+              <div className="rounded-xl bg-slate-50 dark:bg-gray-800/60 p-3 text-xs space-y-1 border border-slate-200/60 dark:border-gray-700">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-gray-400">Orden de Trabajo:</span>
+                  <span className="font-semibold text-orange-600 dark:text-orange-400">{sendModalRow.ot}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-gray-400">Cliente:</span>
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{sendModalRow.client}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 mb-1.5">
+                  Correo Electrónico de Destino (Para recepción real)
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="email"
+                    required
+                    value={sendModalEmail}
+                    onChange={(e) => setSendModalEmail(e.target.value)}
+                    placeholder="ejemplo@correo.com"
+                    className="w-full rounded-xl border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-slate-500 dark:text-gray-400">
+                  Ingresa cualquier correo real (Gmail, institucional, etc.) para recibir el acceso y probarlo.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-gray-700">
+                <button
+                  type="button"
+                  onClick={() => setSendModalRow(null)}
+                  className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingFromModal}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition active:scale-[0.98] disabled:opacity-50"
+                >
+                  {isSendingFromModal ? (
+                    <>
+                      <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      <span>Despachando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      <span>Enviar Ahora</span>
                     </>
                   )}
                 </button>

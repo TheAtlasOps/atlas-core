@@ -54,13 +54,20 @@ async def resend_magic_link(
             detail=f"Orden de trabajo con ID {request.work_order_id} no encontrada"
         )
 
-    if not order.client or not order.client.contact_email:
+    # 2. Determinar correo destinatario (personalizado o el guardado en el cliente)
+    target_email = request.recipient_email or (order.client.contact_email if order.client else None)
+    if not target_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La orden no cuenta con un correo de cliente asociado para la notificación"
+            detail="La orden no cuenta con un correo de cliente y no se especificó un correo de destino"
         )
 
-    # 2. Obtener token activo de Magic Link o auto-generarlo
+    # Si se especificó un correo personalizado y difiere del actual, actualizarlo en el cliente
+    if request.recipient_email and order.client and order.client.contact_email != request.recipient_email:
+        order.client.contact_email = str(request.recipient_email)
+        await db.commit()
+
+    # 3. Obtener token activo de Magic Link o auto-generarlo
     active_token = None
     if order.magic_links:
         for ml in order.magic_links:
@@ -73,10 +80,10 @@ async def resend_magic_link(
         active_token = generated.token
 
     magic_link_url = f"{settings.FRONTEND_PORTAL_URL}/{active_token}"
-    client_name = order.client.contact_person or order.client.business_name
+    client_name = order.client.contact_person or order.client.business_name if order.client else "Estimado Cliente"
     service_type = order.service_type.value.replace("_", " ").title()
     date_str = order.scheduled_date.strftime("%d/%m/%Y a las %H:%M hrs")
-    address = order.address_override or order.client.address
+    address = order.address_override or (order.client.address if order.client else "Dirección de visita")
 
     html_content = build_magic_link_html(
         client_name=client_name,
@@ -90,7 +97,7 @@ async def resend_magic_link(
     subject = f"🌍 Atlas Entel: Seguimiento de tu visita técnica ({order.order_number})"
 
     return await send_transactional_email(
-        to_email=order.client.contact_email,
+        to_email=str(target_email),
         subject=subject,
         html_content=html_content,
     )

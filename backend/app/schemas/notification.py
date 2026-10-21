@@ -28,6 +28,7 @@ class EmailNotificationResponse(BaseModel):
 class ManualNotifyRequest(BaseModel):
     """Solicitud de reenvío manual de enlace o recordatorio por el coordinador (RF-BO-11)."""
     work_order_id: uuid.UUID
+    recipient_email: Optional[EmailStr] = None
     notification_type: str = Field(
         "MAGIC_LINK_INVITATION",
         description="MAGIC_LINK_INVITATION | SERVICE_COMPLETED | REMINDER"

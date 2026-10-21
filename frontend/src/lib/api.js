@@ -44,10 +44,13 @@ export const api = {
       }),
   },
   notifications: {
-    sendMagicLink: (workOrderId) =>
+    sendMagicLink: (workOrderId, recipientEmail = null) =>
       request("/notifications/send-magic-link", {
         method: "POST",
-        body: JSON.stringify({ work_order_id: workOrderId }),
+        body: JSON.stringify({
+          work_order_id: workOrderId,
+          ...(recipientEmail ? { recipient_email: recipientEmail } : {}),
+        }),
       }),
     testEmail: (toEmail) =>
       request(`/notifications/test-email?to_email=${encodeURIComponent(toEmail)}`, {
