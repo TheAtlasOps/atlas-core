@@ -1,49 +1,54 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+/* Tailwind v4: el variant `dark:` se activa con la clase `.dark` en <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
+  /* ── Modo Claro ─────────────────────────────────────────────────────────── */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --background: 210 40% 98%;            /* slate-50   */
+    --foreground: 222.2 47.4% 11.2%;      /* slate-900  */
+    --card: 0 0% 100%;                    /* white      */
+    --card-foreground: 222.2 47.4% 11.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 24.6 95% 53.1%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 24.6 95% 53.1%;            /* orange-500 (Entel) */
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
+    --secondary: 210 40% 96.1%;           /* slate-100  */
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* slate-500 */
     --accent: 24.6 95% 53.1%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
+    --border: 214.3 31.8% 91.4%;          /* slate-200  */
+    --input: 214.3 31.8% 91.4%;
     --ring: 24.6 95% 53.1%;
     --radius: 0.5rem;
   }
 
+  /* ── Modo Oscuro ────────────────────────────────────────────────────────── */
   .dark {
-    --background: 0 0% 4%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 7%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 7%;
-    --popover-foreground: 0 0% 98%;
+    --background: 0 0% 7.1%;              /* #121212    */
+    --foreground: 0 0% 100%;              /* white      */
+    --card: 0 0% 11.8%;                   /* #1e1e1e    */
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 11.8%;
+    --popover-foreground: 0 0% 100%;
     --primary: 24.6 95% 53.1%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
+    --secondary: 0 0% 16.5%;              /* #2a2a2a    */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 16.5%;
+    --muted-foreground: 217.9 10.6% 64.9%; /* gray-400  */
+    --accent: 0 0% 16.5%;
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
+    --border: 216.9 19.1% 26.7%;          /* gray-700   */
+    --input: 216.9 19.1% 26.7%;
     --ring: 24.6 95% 53.1%;
   }
 }
