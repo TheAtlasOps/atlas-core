@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import resend
+import httpx
 from app.core.config import settings
 from app.schemas.notification import EmailNotificationResponse
 
@@ -138,53 +139,101 @@ async def send_transactional_email(
     html_content: str,
 ) -> EmailNotificationResponse:
     """
-    Despacha un correo transaccional utilizando Resend (RF-API-10 / 14-DocArq §3.3).
-    Si la clave de API es de prueba o no está configurada, opera en modo simulación (dev).
+    Despacha un correo transaccional utilizando SendGrid o Resend (RF-API-10 / 14-DocArq §3.3).
+    Si las claves de API no están configuradas, opera en modo simulación para desarrollo local.
     """
     now = datetime.now(timezone.utc)
-    api_key = settings.RESEND_API_KEY.strip() if settings.RESEND_API_KEY else ""
+    sendgrid_key = settings.SENDGRID_API_KEY.strip() if settings.SENDGRID_API_KEY else ""
+    resend_key = settings.RESEND_API_KEY.strip() if settings.RESEND_API_KEY else ""
 
-    # Modo simulación para entornos de desarrollo / pruebas sin API key activa
-    if not api_key or api_key.startswith("re_sample") or api_key == "tu_api_key_aqui":
-        logger.info(
-            f"📧 [DEV MOCK EMAIL] Envío simulado a {to_email} | Asunto: {subject}"
-        )
-        return EmailNotificationResponse(
-            success=True,
-            recipient=to_email,
-            message_id=f"mock_msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            status="simulated",
-            sent_at=now,
-            simulated=True,
-        )
+    # 1. Envío prioritario vía API oficial de SendGrid
+    if sendgrid_key and not sendgrid_key.startswith("SG.sample"):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {sendgrid_key}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "personalizations": [{"to": [{"email": to_email}]}],
+                    "from": {"email": settings.EMAILS_FROM_EMAIL, "name": "Atlas Entel FSM"},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_content}],
+                }
+                res = await client.post("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers)
+                if res.status_code in (200, 202):
+                    msg_id = res.headers.get("X-Message-Id", f"sg_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+                    logger.info(f"✅ Correo enviado exitosamente vía SendGrid a {to_email} (MsgID: {msg_id})")
+                    return EmailNotificationResponse(
+                        success=True,
+                        recipient=to_email,
+                        message_id=msg_id,
+                        status="delivered",
+                        sent_at=now,
+                        simulated=False,
+                    )
+                else:
+                    logger.error(f"❌ Error al enviar con SendGrid ({res.status_code}): {res.text}")
+                    return EmailNotificationResponse(
+                        success=False,
+                        recipient=to_email,
+                        message_id=None,
+                        status=f"error_sendgrid_{res.status_code}: {res.text}",
+                        sent_at=now,
+                        simulated=False,
+                    )
+        except Exception as e:
+            logger.error(f"❌ Excepción de red al enviar con SendGrid a {to_email}: {str(e)}")
+            return EmailNotificationResponse(
+                success=False,
+                recipient=to_email,
+                message_id=None,
+                status=f"error_sendgrid_exception: {str(e)}",
+                sent_at=now,
+                simulated=False,
+            )
 
-    # Envío real con Resend
-    try:
-        resend.api_key = api_key
-        params: resend.Emails.SendParams = {
-            "from": f"Atlas FSM <{settings.EMAILS_FROM_EMAIL}>",
-            "to": [to_email],
-            "subject": subject,
-            "html": html_content,
-        }
-        res = resend.Emails.send(params)
-        message_id = res.get("id") if isinstance(res, dict) else str(res)
+    # 2. Envío secundario vía Resend si está configurado
+    if resend_key and not resend_key.startswith("re_sample") and resend_key != "tu_api_key_aqui":
+        try:
+            resend.api_key = resend_key
+            params: resend.Emails.SendParams = {
+                "from": f"Atlas FSM <{settings.EMAILS_FROM_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            res = resend.Emails.send(params)
+            message_id = res.get("id") if isinstance(res, dict) else str(res)
 
-        return EmailNotificationResponse(
-            success=True,
-            recipient=to_email,
-            message_id=message_id,
-            status="delivered",
-            sent_at=now,
-            simulated=False,
-        )
-    except Exception as e:
-        logger.error(f"❌ Error al enviar correo transaccional a {to_email}: {str(e)}")
-        return EmailNotificationResponse(
-            success=False,
-            recipient=to_email,
-            message_id=None,
-            status=f"error: {str(e)}",
-            sent_at=now,
-            simulated=False,
-        )
+            return EmailNotificationResponse(
+                success=True,
+                recipient=to_email,
+                message_id=message_id,
+                status="delivered",
+                sent_at=now,
+                simulated=False,
+            )
+        except Exception as e:
+            logger.error(f"❌ Error al enviar correo transaccional con Resend a {to_email}: {str(e)}")
+            return EmailNotificationResponse(
+                success=False,
+                recipient=to_email,
+                message_id=None,
+                status=f"error: {str(e)}",
+                sent_at=now,
+                simulated=False,
+            )
+
+    # 3. Modo simulación dev si no hay proveedor configurado
+    logger.info(
+        f"📧 [DEV MOCK EMAIL] Envío simulado a {to_email} | Asunto: {subject}"
+    )
+    return EmailNotificationResponse(
+        success=True,
+        recipient=to_email,
+        message_id=f"mock_msg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+        status="simulated",
+        sent_at=now,
+        simulated=True,
+    )

@@ -74,7 +74,8 @@ class Settings(BaseSettings):
             return v
         return ["*"]
 
-    # Mensajería y Correos Transaccionales (Resend)
+    # Mensajería y Correos Transaccionales (SendGrid / Resend)
+    SENDGRID_API_KEY: str = ""
     RESEND_API_KEY: str = ""
     EMAILS_FROM_EMAIL: str = "notificaciones@atlasops.cl"
 

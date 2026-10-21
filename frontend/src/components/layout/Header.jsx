@@ -1,18 +1,20 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Search, Bell, User, LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import AdminAvatar from "../ui/AdminAvatar";
 import AdminProfileModal from "../ui/AdminProfileModal";
 import { useTheme } from "../../hooks/useTheme";
+import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 
 // Datos por defecto del perfil administrativo (Fallback para Vercel / sin token).
 const DEFAULT_ADMIN_PROFILE = {
-  name: "Diego Jiménez Escobar",
+  name: "Usuario Atlas",
   avatarSrc: "/professional-avatar.png",
   role: "COORDINADOR",
-  roleLabel: "Coordinador de Despacho & Scrum Master",
-  email: "d.jimenez@entel.cl",
+  roleLabel: "Coordinador de Despacho",
+  email: "usuario@atlasops.cl",
   zone: "Región Metropolitana / Central",
 };
 
@@ -22,8 +24,28 @@ export default function Header() {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [profile, setProfile] = useState(DEFAULT_ADMIN_PROFILE);
   const { isDark } = useTheme();
+  const { user: authUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   const fetchCurrentUser = useCallback(async () => {
+    if (authUser) {
+      setProfile({
+        name: authUser.full_name || authUser.name || DEFAULT_ADMIN_PROFILE.name,
+        avatarSrc:
+          authUser.technician_profile?.avatar_url || DEFAULT_ADMIN_PROFILE.avatarSrc,
+        role: (authUser.role || "COORDINADOR").toUpperCase(),
+        roleLabel:
+          authUser.role === "ADMIN"
+            ? "Administrador General Atlas"
+            : authUser.role === "TECNICO"
+            ? "Especialista Técnico en Terreno"
+            : DEFAULT_ADMIN_PROFILE.roleLabel,
+        email: authUser.email || DEFAULT_ADMIN_PROFILE.email,
+        zone: DEFAULT_ADMIN_PROFILE.zone,
+      });
+      return;
+    }
+
     try {
       const token = localStorage.getItem("atlas_token");
       if (!token) {
@@ -48,19 +70,18 @@ export default function Header() {
         });
       }
     } catch {
-      // Fallback a los datos de Diego Jiménez Escobar si falla la API o estamos en Vercel
       setProfile(DEFAULT_ADMIN_PROFILE);
     }
-  }, []);
+  }, [authUser]);
 
   useEffect(() => {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
   const handleLogout = () => {
-    localStorage.removeItem("atlas_token");
-    setProfile(DEFAULT_ADMIN_PROFILE);
     setIsMenuOpen(false);
+    logout();
+    navigate("/login");
   };
 
   return (

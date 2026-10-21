@@ -1,49 +1,10 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
-const DEFAULT_DEMO_EMAIL = "diego.jimenez@atlasops.cl";
-const DEFAULT_DEMO_PASSWORD = "atlas1234";
-
-let loginPromise = null;
-
-async function ensureAuthToken() {
-  const existing = localStorage.getItem("atlas_token");
-  if (existing) return existing;
-
-  if (!loginPromise) {
-    loginPromise = fetch(`${API_BASE}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: DEFAULT_DEMO_EMAIL,
-        password: DEFAULT_DEMO_PASSWORD,
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) return null;
-        const data = await res.json();
-        if (data?.access_token) {
-          localStorage.setItem("atlas_token", data.access_token);
-          return data.access_token;
-        }
-        return null;
-      })
-      .catch(() => null)
-      .finally(() => {
-        loginPromise = null;
-      });
-  }
-
-  return loginPromise;
-}
-
-async function request(endpoint, options = {}, isRetry = false) {
+async function request(endpoint, options = {}) {
   const isPublicEndpoint =
     endpoint === "/auth/login" || endpoint.startsWith("/client/");
 
-  let token = localStorage.getItem("atlas_token");
-  if (!token && !isPublicEndpoint) {
-    token = await ensureAuthToken();
-  }
+  const token = localStorage.getItem("atlas_token");
 
   const headers = {
     "Content-Type": "application/json",
@@ -56,12 +17,12 @@ async function request(endpoint, options = {}, isRetry = false) {
     headers,
   });
 
-  if (response.status === 401 && !isPublicEndpoint && !isRetry) {
+  if (response.status === 401 && !isPublicEndpoint) {
     localStorage.removeItem("atlas_token");
-    const refreshed = await ensureAuthToken();
-    if (refreshed) {
-      return request(endpoint, options, true);
-    }
+    localStorage.removeItem("atlas_user");
+    window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || "Sesión expirada o no autorizada");
   }
 
   if (!response.ok) {
@@ -76,6 +37,22 @@ export const api = {
     login: (email, password) =>
       request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
     me: () => request("/auth/me"),
+    generateMagicLink: (workOrderId, expireHours = 48) =>
+      request("/auth/magic-link/generate", {
+        method: "POST",
+        body: JSON.stringify({ work_order_id: workOrderId, expire_hours: expireHours }),
+      }),
+  },
+  notifications: {
+    sendMagicLink: (workOrderId) =>
+      request("/notifications/send-magic-link", {
+        method: "POST",
+        body: JSON.stringify({ work_order_id: workOrderId }),
+      }),
+    testEmail: (toEmail) =>
+      request(`/notifications/test-email?to_email=${encodeURIComponent(toEmail)}`, {
+        method: "POST",
+      }),
   },
   orders: {
     getAll: (params = {}) => {

@@ -13,6 +13,7 @@ from app.schemas.notification import (
     ManualNotifyRequest,
     EmailNotificationResponse,
 )
+from app.services.auth_service import generate_magic_link_for_order
 from app.services.email_service import (
     send_transactional_email,
     build_magic_link_html,
@@ -59,7 +60,7 @@ async def resend_magic_link(
             detail="La orden no cuenta con un correo de cliente asociado para la notificación"
         )
 
-    # 2. Obtener token activo de Magic Link
+    # 2. Obtener token activo de Magic Link o auto-generarlo
     active_token = None
     if order.magic_links:
         for ml in order.magic_links:
@@ -68,10 +69,8 @@ async def resend_magic_link(
                 break
 
     if not active_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No existe un Magic Link activo para esta orden. Debe generarlo previamente."
-        )
+        generated = await generate_magic_link_for_order(db=db, work_order_id=order.id)
+        active_token = generated.token
 
     magic_link_url = f"{settings.FRONTEND_PORTAL_URL}/{active_token}"
     client_name = order.client.contact_person or order.client.business_name
