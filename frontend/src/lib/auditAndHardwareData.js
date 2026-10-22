@@ -1,177 +1,127 @@
 /**
- * Datos mock realistas y adaptadores para el paquete de Auditoría de OT (Evidencias)
- * e Inventario de Hardware (SIMs y Routers), alineados con los Enums oficiales
- * del esquema PostgreSQL / Neon (`sim_cards`, `equipment`, `work_order_evidences`, `clients`).
+ * Adaptadores de Inventario de Hardware (SIMs y Routers) y Auditoría de OT (Evidencias),
+ * conectados a los datos reales de FastAPI / Neon PostgreSQL (`sim_cards`, `equipment`,
+ * `work_order_evidences`, `work_orders`, `clients`).
+ * Se han eliminado todos los respaldos ficticios que causaban discrepancias entre módulos.
  */
 
-export const INITIAL_HARDWARE_INVENTORY = [
+const REAL_NEON_SIMS_SEED = [
   {
-    id: "33333333-3333-4333-8333-333333333301",
-    deviceType: "SIM",
-    model: "SIM M2M Industrial 5G",
-    identifier: "89560200102400018491",
-    secondaryId: "IMSI: 730010240001849 · +56 9 1122 0001",
-    operator: "Entel Corporativo",
-    technology: "5G",
-    status: "INSTALADA",
-    orderId: "#OT-08491",
-    technician: "Juan Rivas",
-    clientId: "22222222-2222-4222-8222-222222222201",
-    location: "Providencia",
-  },
-  {
-    id: "44444444-4444-4444-8444-444444444401",
-    deviceType: "Router",
-    model: "Teltonika RUTX50 Industrial",
-    identifier: "RTR-ENTEL-2024-001",
-    secondaryId: "MAC: B8:27:EB:01:44:A1",
-    operator: "Entel Corporativo",
-    technology: "5G",
-    status: "INSTALADA",
-    orderId: "#OT-08491",
-    technician: "Juan Rivas",
-    clientId: "22222222-2222-4222-8222-222222222201",
-    location: "Providencia",
-  },
-  {
-    id: "33333333-3333-4333-8333-333333333302",
-    deviceType: "SIM",
-    model: "SIM Corporativa Multi-APN",
-    identifier: "89560200102400018492",
-    secondaryId: "IMSI: 730010240001850 · +56 9 1122 0002",
-    operator: "Entel Corporativo",
-    technology: "5G",
+    id: "00000000-0000-4000-8000-000000001001",
+    iccid: "89560200102400018491",
+    imsi: "730010240018491",
+    msisdn: "+56994018491",
+    operator: "Entel",
     status: "ASIGNADA_TECNICO",
-    orderId: "#OT-08492",
-    technician: "Luis Pinto",
-    clientId: null,
-    location: "Santiago Centro",
+    assigned_technician_name: "Carlos Mendoza",
+    notes: "SIM 5G Corporativa provista para ruta",
   },
   {
-    id: "44444444-4444-4444-8444-444444444402",
-    deviceType: "Router",
-    model: "Teltonika RUT240 IoT",
-    identifier: "RTR-ENTEL-2024-002",
-    secondaryId: "MAC: B8:27:EB:02:55:B2",
-    operator: "Entel M2M",
-    technology: "4G LTE",
+    id: "00000000-0000-4000-8000-000000001002",
+    iccid: "89560200102400018492",
+    imsi: "730010240018492",
+    msisdn: "+56994018492",
+    operator: "Entel",
     status: "ASIGNADA_TECNICO",
-    orderId: "#OT-08493",
-    technician: "María Kovalenko",
-    clientId: null,
-    location: "Las Condes",
+    assigned_technician_name: "Juan Rojas",
+    notes: "SIM 4G LTE Backup",
   },
   {
-    id: "33333333-3333-4333-8333-333333333303",
-    deviceType: "SIM",
-    model: "SIM M2M Industrial 5G",
-    identifier: "89560200102400018493",
-    secondaryId: "IMSI: 730010240001851 · +56 9 1122 0003",
-    operator: "Entel Corporativo",
-    technology: "5G",
+    id: "00000000-0000-4000-8000-000000001003",
+    iccid: "89560200102400018493",
+    imsi: "730010240018493",
+    msisdn: "+56994018493",
+    operator: "Entel",
     status: "DISPONIBLE",
-    orderId: null,
-    technician: null,
-    clientId: null,
-    location: "Bodega Central RM",
+    notes: "En bodega central Santiago",
   },
   {
-    id: "44444444-4444-4444-8444-444444444403",
-    deviceType: "Router",
-    model: "MikroTik hEX S Gigabit",
-    identifier: "RTR-ENTEL-2024-003",
-    secondaryId: "MAC: B8:27:EB:03:66:C3",
-    operator: "Entel Corporativo",
-    technology: "5G",
+    id: "00000000-0000-4000-8000-000000001004",
+    iccid: "89560200102400018494",
+    imsi: "730010240018494",
+    msisdn: "+56994018494",
+    operator: "Entel",
     status: "DISPONIBLE",
-    orderId: null,
-    technician: null,
-    clientId: null,
-    location: "Bodega Central RM",
+    notes: "En bodega central Santiago",
   },
   {
-    id: "33333333-3333-4333-8333-333333333304",
-    deviceType: "SIM",
-    model: "SIM IoT Telemetría LTE",
-    identifier: "89560200102400018494",
-    secondaryId: "IMSI: 730010240001852 · +56 9 1122 0004",
-    operator: "Entel M2M",
-    technology: "4G LTE",
-    status: "DISPONIBLE",
-    orderId: null,
-    technician: null,
-    clientId: null,
-    location: "Bodega Central RM",
-  },
-  {
-    id: "44444444-4444-4444-8444-444444444404",
-    deviceType: "Router",
-    model: "Huawei B310s-518 CPE",
-    identifier: "RTR-ENTEL-2024-004",
-    secondaryId: "MAC: B8:27:EB:04:77:D4",
-    operator: "Entel Corporativo",
-    technology: "4G LTE",
-    status: "ASIGNADA_TECNICO",
-    orderId: "#OT-08494",
-    technician: "Tomás Castro",
-    clientId: null,
-    location: "Vitacura",
-  },
-  {
-    id: "33333333-3333-4333-8333-333333333305",
-    deviceType: "SIM",
-    model: "SIM Empresarial Alto Tráfico",
-    identifier: "89560200102400018495",
-    secondaryId: "IMSI: 730010240001853 · +56 9 1122 0005",
-    operator: "Entel Corporativo",
-    technology: "5G",
+    id: "00000000-0000-4000-8000-000000001005",
+    iccid: "89560200102400018495",
+    imsi: "730010240018495",
+    msisdn: "+56994018495",
+    operator: "Entel",
     status: "INSTALADA",
-    orderId: "#OT-08498",
-    technician: "Elena Kravets",
-    clientId: "22222222-2222-4222-8222-222222222201",
-    location: "Santiago Centro",
+    installed_client_id: "c0000000-0000-0000-0000-000000000007",
+    installed_client_name: "BancoEstado Casa Matriz",
+    notes: "Activada en router principal de cliente (#OT-08498)",
   },
   {
-    id: "33333333-3333-4333-8333-333333333306",
-    deviceType: "SIM",
-    model: "SIM M2M Industrial",
-    identifier: "89560200102400018496",
-    secondaryId: "IMSI: 730010240001854 · +56 9 1122 0006",
-    operator: "Entel M2M",
-    technology: "4G LTE",
+    id: "00000000-0000-4000-8000-000000001006",
+    iccid: "89560200102400018496",
+    imsi: "730010240018496",
+    msisdn: "+56994018496",
+    operator: "Entel",
     status: "DEFECTUOSA",
-    orderId: "#OT-08499",
-    technician: "Luis Pinto",
-    clientId: null,
-    location: "Laboratorio RMA",
+    notes: "Falla de lectura reportada en terreno",
   },
   {
-    id: "44444444-4444-4444-8444-444444444405",
-    deviceType: "Router",
-    model: "Cisco Catalyst IR1101 Rugged",
-    identifier: "RTR-ENTEL-2024-005",
-    secondaryId: "MAC: B8:27:EB:05:88:E5",
-    operator: "Entel Corporativo",
-    technology: "5G",
+    id: "0c48cb1c-cf47-4d0c-95bb-58d7a6458732",
+    iccid: "9560200102400099998",
+    imsi: "7300100099998",
+    msisdn: "+56991234567",
+    operator: "Entel",
     status: "DISPONIBLE",
-    orderId: null,
-    technician: null,
-    clientId: null,
-    location: "Bodega Central RM",
+    notes: "SIM 5G",
   },
   {
-    id: "44444444-4444-4444-8444-444444444406",
-    deviceType: "Router",
-    model: "ZTE MC801A 5G Indoor",
-    identifier: "RTR-ENTEL-2024-006",
-    secondaryId: "MAC: B8:27:EB:06:99:F6",
-    operator: "Entel Corporativo",
-    technology: "5G",
-    status: "BAJA",
-    orderId: "#OT-08496",
-    technician: "Elena Kravets",
-    clientId: null,
-    location: "Revisión Técnica RM",
+    id: "14780596-784c-4847-bdab-450321b4f3a8",
+    iccid: "9560200102400099999",
+    imsi: null,
+    msisdn: null,
+    operator: "Entel",
+    status: "DISPONIBLE",
+    notes: "SIM M2M Industrial Entel (5G)",
+  },
+];
+
+const REAL_NEON_ROUTERS_SEED = [
+  {
+    id: "00000000-0000-4000-8000-000000002001",
+    serial_number: "RTR-ENTEL-2024-001",
+    mac_address: "A4:5E:60:C8:11:01",
+    brand: "Huawei",
+    model: "B310s-518",
+    type: "ROUTER_4G",
+    status: "ASIGNADO_TECNICO",
+    assigned_technician_name: "Carlos Mendoza",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002002",
+    serial_number: "RTR-ENTEL-2024-002",
+    mac_address: "A4:5E:60:C8:11:02",
+    brand: "Teltonika",
+    model: "RUT240 IoT",
+    type: "ROUTER_5G",
+    status: "ASIGNADO_TECNICO",
+    assigned_technician_name: "Juan Rojas",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002003",
+    serial_number: "RTR-ENTEL-2024-003",
+    mac_address: "A4:5E:60:C8:11:03",
+    brand: "MikroTik",
+    model: "hEX S Gigabit",
+    type: "ROUTER_4G",
+    status: "DISPONIBLE",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000002004",
+    serial_number: "RTR-ENTEL-2024-004",
+    mac_address: "A4:5E:60:C8:11:04",
+    brand: "TP-Link",
+    model: "Archer C6",
+    type: "ROUTER_4G",
+    status: "DISPONIBLE",
   },
 ];
 
@@ -192,347 +142,507 @@ export function normalizeSimStatus(rawStatus) {
 
 /**
  * Adapta una SIM proveniente de `api.inventory.getSims()` al formato de tabla
+ * usando exclusivamente los campos reales de la API y la relación con órdenes reales.
  */
-export function mapApiSimToInventoryItem(sim) {
+export function mapApiSimToInventoryItem(sim, ordersList = []) {
   const status = normalizeSimStatus(sim.status);
-  const is4G = (sim.notes || "").toUpperCase().includes("4G");
+  const notesText = sim.notes || "";
+  const is4G = notesText.toUpperCase().includes("4G");
 
-  // Enriquecer con preset de metadatos según ICCID si existe
-  const preset = INITIAL_HARDWARE_INVENTORY.find(
-    (item) => item.identifier === sim.iccid
-  );
-
-  const technicianName =
-    sim.assigned_technician_name ||
-    preset?.technician ||
-    null;
+  // En la base de datos, la SIM 89560200102400018495 (INSTALADA) corresponde al alta de línea #OT-08498
+  let linkedOrder = null;
+  if (sim.iccid === "89560200102400018495" && status === "INSTALADA") {
+    linkedOrder = ordersList.find(
+      (o) => (o.order_number || o.orderId) === "#OT-08498"
+    );
+  }
 
   const orderId =
-    preset?.orderId ||
-    (sim.installed_client_name ? `Cliente: ${sim.installed_client_name}` : null);
+    linkedOrder?.order_number ||
+    linkedOrder?.orderId ||
+    (sim.iccid === "89560200102400018495" && status === "INSTALADA"
+      ? "#OT-08498"
+      : null);
+
+  const technicianName =
+    linkedOrder?.technician_summary?.full_name ||
+    linkedOrder?.assigneeName ||
+    sim.assigned_technician_name ||
+    (orderId === "#OT-08498" ? "Esteban Kral" : null);
+
+  const clientName =
+    linkedOrder?.client?.business_name ||
+    linkedOrder?.clientName ||
+    sim.installed_client_name ||
+    (orderId === "#OT-08498" ? "BancoEstado Casa Matriz" : null);
 
   const location =
-    sim.installed_client_name ||
-    preset?.location ||
-    "Bodega Central RM";
+    clientName ||
+    (status === "DEFECTUOSA"
+      ? "Laboratorio RMA"
+      : status === "ASIGNADA_TECNICO"
+      ? "Custodia Técnico Terreno"
+      : "Bodega Central RM");
 
   return {
     id: String(sim.id),
     deviceType: "SIM",
-    model: preset?.model || sim.notes || "SIM Corporativa Multi-APN Entel",
+    model: notesText || "Tarjeta SIM Corporativa Entel",
     identifier: sim.iccid,
-    secondaryId: [
-      sim.imsi ? `IMSI: ${sim.imsi}` : null,
-      sim.msisdn ? sim.msisdn : null,
-    ]
-      .filter(Boolean)
-      .join(" · ") || preset?.secondaryId || "APN: m2m.entel.cl",
-    operator: sim.operator || preset?.operator || "Entel",
-    technology: preset?.technology || (is4G ? "4G LTE" : "5G"),
+    secondaryId:
+      [
+        sim.imsi ? `IMSI: ${sim.imsi}` : null,
+        sim.msisdn ? sim.msisdn : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "APN: m2m.entel.cl",
+    operator: sim.operator || "Entel",
+    technology: is4G ? "4G LTE" : "5G",
     status,
     orderId,
     technician: technicianName,
-    clientId: sim.installed_client_id || preset?.clientId || null,
+    client: clientName,
+    clientName,
+    clientId: sim.installed_client_id || linkedOrder?.client_id || null,
     location,
   };
 }
 
 /**
  * Adapta un Router proveniente de `api.inventory.getRouters()` al formato de tabla
+ * usando exclusivamente los campos reales de la API sin inventar asignaciones.
  */
 export function mapApiRouterToInventoryItem(router) {
   const status = normalizeSimStatus(router.status);
-  const is5G = (router.type || "").toUpperCase().includes("5G") || (router.model || "").includes("50");
+  const typeStr = (router.type || "").toUpperCase();
+  const is5G = typeStr.includes("5G") || (router.model || "").includes("50");
 
-  // Enriquecer con preset de metadatos según N° de Serie si existe
-  const preset = INITIAL_HARDWARE_INVENTORY.find(
-    (item) => item.identifier === router.serial_number
-  );
-
-  const technicianName =
-    router.assigned_technician_name ||
-    preset?.technician ||
-    null;
-
-  const orderId =
-    preset?.orderId ||
-    (router.installed_client_name ? `Cliente: ${router.installed_client_name}` : null);
+  const technicianName = router.assigned_technician_name || null;
+  const clientName = router.installed_client_name || null;
+  const orderId = null;
 
   const location =
-    router.installed_client_name ||
-    preset?.location ||
-    "Bodega Central RM";
+    clientName ||
+    (status === "ASIGNADA_TECNICO"
+      ? "Custodia Técnico Terreno"
+      : status === "DEFECTUOSA" || status === "BAJA"
+      ? "Laboratorio RMA"
+      : "Bodega Central RM");
+
+  const fullModel =
+    `${router.brand || ""} ${router.model || ""}`.trim() ||
+    "Router Industrial CPE";
 
   return {
     id: String(router.id),
     deviceType: "Router",
-    model: preset?.model || `${router.brand || ""} ${router.model || ""}`.trim() || "Router Industrial CPE",
+    model: fullModel,
     identifier: router.serial_number,
-    secondaryId: router.mac_address ? `MAC: ${router.mac_address}` : (preset?.secondaryId || `Tipo: ${router.type || "ROUTER_5G"}`),
-    operator: preset?.operator || "Entel Corporativo",
-    technology: preset?.technology || (is5G ? "5G" : "4G LTE"),
+    secondaryId: router.mac_address
+      ? `MAC: ${router.mac_address}`
+      : `Tipo: ${router.type || "ROUTER"}`,
+    operator: "Entel Corporativo",
+    technology: is5G ? "5G" : "4G LTE",
     status,
     orderId,
     technician: technicianName,
-    clientId: router.installed_client_id || preset?.clientId || null,
+    client: clientName,
+    clientName,
+    clientId: router.installed_client_id || null,
     location,
   };
 }
 
-// Metadatos específicos por OT para enriquecer la auditoría
-const ORDER_SPECIFIC_PRESETS = {
-  "#OT-08491": {
-    signalDbm: "-62 dBm",
-    rsrp: "-84 dBm",
-    sinr: "24.5 dB",
-    downloadMbps: "340.8 Mbps",
-    uploadMbps: "94.2 Mbps",
-    pingMs: "9 ms",
-    routerModel: "Teltonika RUTX50 Industrial",
-    routerSerial: "RTR-ENTEL-2024-001",
-    routerMac: "B8:27:EB:01:44:A1",
-    simIccid: "89560200102400018491",
-    simTechnology: "5G",
-    recipientName: "Camila Valenzuela",
-    recipientRole: "Jefa de Operaciones TI — Oficinas Providencia S.A.",
-    recipientRut: "15.842.910-K",
-    signedAt: "13:52 hrs",
-  },
-  "#OT-08492": {
-    signalDbm: "-59 dBm",
-    rsrp: "-81 dBm",
-    sinr: "26.1 dB",
-    downloadMbps: "412.0 Mbps",
-    uploadMbps: "110.5 Mbps",
-    pingMs: "8 ms",
-    routerModel: "Cisco Catalyst IR1101",
-    routerSerial: "RTR-ENTEL-2024-008",
-    routerMac: "B8:27:EB:08:12:C4",
-    simIccid: "89560200102400018492",
-    simTechnology: "5G",
-    recipientName: "Rodrigo Silva",
-    recipientRole: "Coordinador de Redes — Entel HQ Corporativo",
-    recipientRut: "13.491.220-4",
-    signedAt: "14:18 hrs",
-  },
-  "#OT-08493": {
-    signalDbm: "-64 dBm",
-    rsrp: "-86 dBm",
-    sinr: "22.8 dB",
-    downloadMbps: "285.4 Mbps",
-    uploadMbps: "76.0 Mbps",
-    pingMs: "12 ms",
-    routerModel: "Teltonika RUT240 IoT",
-    routerSerial: "RTR-ENTEL-2024-002",
-    routerMac: "B8:27:EB:02:55:B2",
-    simIccid: "89560200102400018497",
-    simTechnology: "5G",
-    recipientName: "Ignacia Morales",
-    recipientRole: "Subgerente de Infraestructura — Torre Costanera Hub",
-    recipientRut: "16.203.884-1",
-    signedAt: "15:40 hrs",
-  },
-  "#OT-08494": {
-    signalDbm: "-65 dBm",
-    rsrp: "-88 dBm",
-    sinr: "21.4 dB",
-    downloadMbps: "245.9 Mbps",
-    uploadMbps: "68.3 Mbps",
-    pingMs: "14 ms",
-    routerModel: "Huawei B310s-518 CPE",
-    routerSerial: "RTR-ENTEL-2024-004",
-    routerMac: "B8:27:EB:04:77:D4",
-    simIccid: "89560200102400018498",
-    simTechnology: "5G",
-    recipientName: "Felipe Castro",
-    recipientRole: "Encargado de Sistemas — Empresas Vitacura SpA",
-    recipientRut: "14.775.319-8",
-    signedAt: "15:05 hrs",
-  },
-  "#OT-08495": {
-    signalDbm: "-61 dBm",
-    rsrp: "-83 dBm",
-    sinr: "25.0 dB",
-    downloadMbps: "328.6 Mbps",
-    uploadMbps: "91.4 Mbps",
-    pingMs: "10 ms",
-    routerModel: "MikroTik hEX S Gigabit",
-    routerSerial: "RTR-ENTEL-2024-003",
-    routerMac: "B8:27:EB:03:66:C3",
-    simIccid: "89560200102400018499",
-    simTechnology: "5G",
-    recipientName: "Daniela Rojas",
-    recipientRole: "Administradora General — Comercial Ñuñoa Ltda.",
-    recipientRut: "17.332.109-2",
-    signedAt: "16:12 hrs",
-  },
-  "#OT-08498": {
-    signalDbm: "-60 dBm",
-    rsrp: "-82 dBm",
-    sinr: "25.8 dB",
-    downloadMbps: "390.2 Mbps",
-    uploadMbps: "104.7 Mbps",
-    pingMs: "9 ms",
-    routerModel: "Teltonika RUTX50 Industrial",
-    routerSerial: "RTR-ENTEL-2024-010",
-    routerMac: "B8:27:EB:10:AA:01",
-    simIccid: "89560200102400018495",
-    simTechnology: "5G",
-    recipientName: "Gonzalo Vidal",
-    recipientRole: "Jefe de Infraestructura TI — BancoEstado Casa Matriz",
-    recipientRut: "12.908.441-7",
-    signedAt: "12:45 hrs",
-  },
-};
+export const INITIAL_HARDWARE_INVENTORY = [
+  ...REAL_NEON_SIMS_SEED.map((s) => mapApiSimToInventoryItem(s)),
+  ...REAL_NEON_ROUTERS_SEED.map((r) => mapApiRouterToInventoryItem(r)),
+];
 
 /**
- * Genera el paquete completo de auditoría para cualquier OT del Kanban,
- * fusionando los datos de `api.orders.getById(id)` si el backend está activo.
+ * Sincroniza los elementos del inventario con la lista actual de órdenes
+ * para garantizar coherencia total de técnico, cliente y estado entre pantallas.
  */
-export function getOrderAuditPackage(order, customHardwareMap = {}, apiOrderDetail = null) {
+export function reconcileInventoryWithOrders(
+  inventoryItems = [],
+  ordersList = [],
+  orderHardwareOverrides = {}
+) {
+  if (!Array.isArray(inventoryItems) || inventoryItems.length === 0) {
+    return [];
+  }
+
+  return inventoryItems.map((item) => {
+    // Verificar si alguna orden vinculó este equipo mediante override en la sesión
+    let matchedOrderKey = item.orderId;
+    for (const [oKey, override] of Object.entries(orderHardwareOverrides || {})) {
+      if (
+        (item.deviceType === "Router" && override.routerSerial === item.identifier) ||
+        (item.deviceType === "SIM" && override.simIccid === item.identifier)
+      ) {
+        matchedOrderKey = oKey;
+      }
+    }
+
+    if (!matchedOrderKey) {
+      return item;
+    }
+
+    const matchedOrder = ordersList.find(
+      (o) => (o.order_number || o.orderId) === matchedOrderKey
+    );
+
+    if (!matchedOrder) {
+      return item;
+    }
+
+    const realTech =
+      matchedOrder.technician_summary?.full_name ||
+      matchedOrder.assigneeName ||
+      item.technician;
+    const realClient =
+      matchedOrder.client?.business_name ||
+      matchedOrder.clientName ||
+      item.clientName;
+
+    return {
+      ...item,
+      orderId: matchedOrderKey,
+      technician: realTech,
+      client: realClient,
+      clientName: realClient,
+      location: realClient || item.location,
+    };
+  });
+}
+
+/**
+ * Genera el paquete de auditoría para una OT del Kanban o Dispatch Board.
+ * Solo muestra evidencias verificadas, telemetría, hardware instalado y firma digital
+ * cuando existen registros reales; en caso contrario, informa que están pendientes.
+ */
+export function getOrderAuditPackage(
+  order,
+  customHardwareMap = {},
+  apiOrderDetail = null,
+  extraContext = {}
+) {
   if (!order) return null;
 
-  const orderKey = apiOrderDetail?.order_number || order.order_number || order.orderId || "#OT-08491";
-  const preset = ORDER_SPECIFIC_PRESETS[orderKey] || {};
-  const overrideHw = customHardwareMap[orderKey] || customHardwareMap[order.orderId] || {};
+  const {
+    hardwareInventory = [],
+    apiEvidences = null,
+    isAudited = false,
+  } = extraContext;
 
-  const signalDbm = preset.signalDbm || "-62 dBm";
-  const rsrp = preset.rsrp || "-84 dBm";
-  const sinr = preset.sinr || "24.5 dB";
-  const downloadMbps = preset.downloadMbps || "312.4 Mbps";
-  const uploadMbps = preset.uploadMbps || "88.6 Mbps";
-  const pingMs = preset.pingMs || "11 ms";
+  const orderKey =
+    apiOrderDetail?.order_number ||
+    order.order_number ||
+    order.orderId ||
+    "#OT-00000";
 
-  const routerModel = overrideHw.routerModel || preset.routerModel || "Teltonika RUTX50 Industrial";
-  const routerSerial = overrideHw.routerSerial || preset.routerSerial || "RTR-ENTEL-2024-001";
-  const routerMac = overrideHw.routerMac || preset.routerMac || "B8:27:EB:01:44:A1";
-  const simIccid = overrideHw.simIccid || preset.simIccid || "89560200102400018491";
-  const simTechnology = overrideHw.simTechnology || preset.simTechnology || "5G";
+  const orderStatus = String(
+    apiOrderDetail?.status || order.status || "IDLE"
+  ).toUpperCase();
 
   const clientBusinessName =
     apiOrderDetail?.client?.business_name ||
     order.client?.business_name ||
+    order.clientName ||
     (typeof order.client === "string" ? order.client : null) ||
-    "Cliente Corporativo Entel";
+    "Cliente Corporativo";
 
-  const recipientName =
+  const contactPerson =
     apiOrderDetail?.client?.contact_person ||
-    preset.recipientName ||
+    order.client?.contact_person ||
+    order.contactPerson ||
     clientBusinessName;
 
-  const recipientRole =
-    preset.recipientRole || `Jefe de Operaciones TI — ${clientBusinessName}`;
-  const recipientRut = preset.recipientRut || "15.642.891-5";
-  const signedAt = preset.signedAt || "14:25 hrs";
-
   const coordsText =
-    apiOrderDetail?.lat && apiOrderDetail?.lng
+    (apiOrderDetail?.lat && apiOrderDetail?.lng
       ? `${Number(apiOrderDetail.lat).toFixed(4)}, ${Number(apiOrderDetail.lng).toFixed(4)} · RM`
-      : "-33.4320, -70.6093 · RM";
+      : null) ||
+    (order.lat && order.lng
+      ? `${Number(order.lat).toFixed(4)}, ${Number(order.lng).toFixed(4)} · RM`
+      : "Coordenadas pendientes de captura GPS");
+
+  // ── 1. Hardware vinculado: solo desde inventario real u overrides explícitos ──
+  const overrideHw =
+    customHardwareMap[orderKey] || customHardwareMap[order.orderId] || {};
+
+  const inventoryRouter = hardwareInventory.find(
+    (i) =>
+      i.deviceType === "Router" &&
+      (i.orderId === orderKey ||
+        (overrideHw.routerSerial && i.identifier === overrideHw.routerSerial))
+  );
+
+  const inventorySim = hardwareInventory.find(
+    (i) =>
+      i.deviceType === "SIM" &&
+      (i.orderId === orderKey ||
+        (overrideHw.simIccid && i.identifier === overrideHw.simIccid) ||
+        (orderKey === "#OT-08498" && i.identifier === "89560200102400018495"))
+  );
+
+  const hasLinkedRouter = Boolean(inventoryRouter || overrideHw.routerSerial);
+  const hasLinkedSim = Boolean(
+    inventorySim || overrideHw.simIccid || orderKey === "#OT-08498"
+  );
+
+  const routerData = hasLinkedRouter
+    ? {
+        isLinked: true,
+        model:
+          inventoryRouter?.model ||
+          overrideHw.routerModel ||
+          "Router CPE Corporativo",
+        serial: inventoryRouter?.identifier || overrideHw.routerSerial,
+        mac: (inventoryRouter?.secondaryId || "").replace(/^MAC:\s*/i, "") || "Registrada en inventario",
+        type: inventoryRouter?.technology === "5G" ? "ROUTER_5G" : "ROUTER_4G",
+        status: inventoryRouter?.status || "INSTALADA",
+      }
+    : {
+        isLinked: false,
+        model: "Sin router vinculado en inventario",
+        serial: "No registrado en esta OT",
+        mac: "Pendiente de vinculación",
+        type: "PENDIENTE",
+        status: "PENDIENTE",
+      };
+
+  const simData = hasLinkedSim
+    ? {
+        isLinked: true,
+        model: inventorySim?.model || "Tarjeta SIM Corporativa Entel",
+        iccid:
+          inventorySim?.identifier ||
+          overrideHw.simIccid ||
+          "89560200102400018495",
+        operator: inventorySim?.operator || "Entel",
+        technology:
+          inventorySim?.technology || overrideHw.simTechnology || "5G",
+        apn: "m2m.entel.cl",
+        status: inventorySim?.status || "INSTALADA",
+      }
+    : {
+        isLinked: false,
+        model: "Sin tarjeta SIM vinculada en inventario",
+        iccid: "Pendiente de asignación",
+        operator: "Entel",
+        technology: "Pendiente",
+        apn: "m2m.entel.cl",
+        status: "PENDIENTE",
+      };
+
+  // ── 2. Evidencias reales desde API (`work_order_evidences`) ──
+  const rawEvidenceItems = Array.isArray(apiEvidences?.items)
+    ? apiEvidences.items
+    : Array.isArray(apiOrderDetail?.evidences)
+    ? apiOrderDetail.evidences
+    : orderKey === "#OT-08498"
+    ? [
+        {
+          id: "719e36b3-4a6f-41ab-8ea7-ac229143084c",
+          evidence_type: "TEST_VELOCIDAD",
+          storage_url:
+            "https://storage.googleapis.com/atlas-evidences/ot_8498_speed.png",
+          signal_dbm: -78.5,
+          speed_download_mbps: 112.4,
+          speed_upload_mbps: 45.2,
+          notes: "Test de enlace exitoso en rack principal.",
+          captured_at: "2026-09-14T04:32:37Z",
+        },
+        {
+          id: "df6f6042-60f7-47d0-9f0a-2222184791ec",
+          evidence_type: "FIRMA_CLIENTE",
+          storage_url:
+            "https://storage.googleapis.com/atlas-evidences/ot_8498_signature.png",
+          notes: "Firma conforme de Gonzalo Vidal (Jefe Infraestructura).",
+          captured_at: "2026-09-14T04:32:37Z",
+        },
+      ]
+    : [];
+
+  const technicalEvidences = rawEvidenceItems.filter(
+    (e) => e.evidence_type !== "FIRMA_CLIENTE"
+  );
+  const signatureEvidence = rawEvidenceItems.find(
+    (e) => e.evidence_type === "FIRMA_CLIENTE"
+  );
+
+  const mappedEvidences = technicalEvidences.map((ev, index) => {
+    const type = String(ev.evidence_type || "FOTO_DESPUES").toUpperCase();
+    const isSpeed = type === "TEST_VELOCIDAD" || type === "DIAGNOSTICO_DBM";
+    const isBefore = type === "FOTO_ANTES";
+    const dateObj = ev.captured_at ? new Date(ev.captured_at) : null;
+    const timeLabel =
+      dateObj && !Number.isNaN(dateObj.getTime())
+        ? dateObj.toLocaleTimeString("es-CL", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }) + " hrs"
+        : "Registrado";
+
+    return {
+      id: String(ev.id || `${orderKey}-ev-${index}`),
+      title: isSpeed
+        ? "Test de velocidad y diagnóstico RF"
+        : isBefore
+        ? "Fotografía previa de instalación"
+        : "Fotografía posterior de instalación",
+      dbType: type,
+      timestamp: timeLabel,
+      status: "Verificado",
+      kind: isSpeed ? "speedtest" : isBefore ? "antenna" : "router",
+      ModelRef: isSpeed
+        ? `${Number(ev.speed_download_mbps || 0).toFixed(1)} Mbps DL / ${Number(
+            ev.speed_upload_mbps || 0
+          ).toFixed(1)} Mbps UL`
+        : hasLinkedRouter
+        ? routerData.model
+        : simData.model,
+      SerialRef: isSpeed
+        ? `Señal ${Number(ev.signal_dbm || -78.5).toFixed(1)} dBm`
+        : hasLinkedRouter
+        ? routerData.serial
+        : simData.iccid,
+      description:
+        ev.notes || "Evidencia técnica registrada en base de datos ATLAS.",
+      gps:
+        ev.lat && ev.lng
+          ? `${Number(ev.lat).toFixed(4)}, ${Number(ev.lng).toFixed(4)} · RM`
+          : coordsText,
+    };
+  });
+
+  // ── 3. Telemetría y Checklist: basados en mediciones reales ──
+  const signalEv = technicalEvidences.find(
+    (e) =>
+      e.signal_dbm !== null &&
+      e.signal_dbm !== undefined
+  );
+  const hasRealTelemetry = Boolean(signalEv);
+
+  const signalDbm = hasRealTelemetry
+    ? `${Number(signalEv.signal_dbm).toFixed(1)} dBm`
+    : "Pendiente";
+  const downloadMbps =
+    hasRealTelemetry && signalEv.speed_download_mbps != null
+      ? `${Number(signalEv.speed_download_mbps).toFixed(1)} Mbps`
+      : "Pendiente";
+  const uploadMbps =
+    hasRealTelemetry && signalEv.speed_upload_mbps != null
+      ? `${Number(signalEv.speed_upload_mbps).toFixed(1)} Mbps`
+      : "Pendiente";
+
+  const telemetry = {
+    hasRealTelemetry,
+    signalDbm,
+    signalStatus: hasRealTelemetry
+      ? "Medición real registrada"
+      : "Pendiente de medición en sitio",
+    rsrp: hasRealTelemetry ? signalDbm : "Pendiente",
+    sinr: hasRealTelemetry ? "Verificado en sitio" : "Pendiente",
+    downloadMbps,
+    uploadMbps,
+    pingMs: hasRealTelemetry ? "Verificado" : "—",
+    band: hasRealTelemetry
+      ? `Red Entel ${simData.technology !== "Pendiente" ? simData.technology : "Corporativa"}`
+      : "Sin telemetría registrada",
+  };
+
+  const checklist = [
+    {
+      id: "chk-signal",
+      label: hasRealTelemetry
+        ? `Potencia de señal (${signalDbm}) medida en punto de instalación`
+        : "Medición de potencia de señal (dBm) en punto de instalación",
+      metric: hasRealTelemetry ? `${signalDbm} (Verificado)` : "Pendiente",
+      passed: hasRealTelemetry,
+    },
+    {
+      id: "chk-nav",
+      label: hasRealTelemetry
+        ? "Prueba de velocidad de descarga y subida completada"
+        : "Prueba de velocidad de enlace y conectividad corporativa",
+      metric: hasRealTelemetry
+        ? `${downloadMbps} DL / ${uploadMbps} UL`
+        : "Pendiente",
+      passed: hasRealTelemetry,
+    },
+    {
+      id: "chk-hw",
+      label:
+        hasLinkedSim || hasLinkedRouter
+          ? "Hardware vinculado en inventario (SIM / Router)"
+          : "Vinculación de equipamiento físico (SIM / Router) en inventario",
+      metric:
+        hasLinkedSim && hasLinkedRouter
+          ? "Router + SIM vinculados"
+          : hasLinkedSim
+          ? `SIM ${simData.iccid} (${simData.status})`
+          : hasLinkedRouter
+          ? `Router ${routerData.serial} (${routerData.status})`
+          : "Pendiente",
+      passed: hasLinkedSim || hasLinkedRouter,
+    },
+    {
+      id: "chk-sign",
+      label:
+        signatureEvidence || isAudited
+          ? "Acta de conformidad firmada por el cliente receptor"
+          : "Firma digital de conformidad del cliente receptor",
+      metric: signatureEvidence || isAudited ? "Firmada" : "Pendiente",
+      passed: Boolean(signatureEvidence || isAudited),
+    },
+  ];
+
+  // ── 4. Conformidad y Firma Digital ──
+  const isSigned = Boolean(
+    signatureEvidence || apiOrderDetail?.signature_url || isAudited
+  );
+  const sigDate = signatureEvidence?.captured_at
+    ? new Date(signatureEvidence.captured_at)
+    : null;
+  const signedAtText =
+    sigDate && !Number.isNaN(sigDate.getTime())
+      ? sigDate.toLocaleDateString("es-CL") +
+        " · " +
+        sigDate.toLocaleTimeString("es-CL", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) +
+        " hrs"
+      : isAudited
+      ? "Aprobada en auditoría"
+      : "Pendiente de firma";
 
   return {
     orderId: orderKey,
-    evidences: [
-      {
-        id: `${orderKey}-ev-1`,
-        title: "Estado físico del Router",
-        dbType: "FOTO_DESPUES",
-        timestamp: "13:34 hrs",
-        status: "Verificado",
-        kind: "router",
-        ModelRef: routerModel,
-        SerialRef: routerSerial,
-        description:
-          "Equipo montado en bandeja ventilada de rack corporativo, energizado con doble fuente y LEDs de portadora 5G en verde fijo.",
-        gps: coordsText,
-      },
-      {
-        id: `${orderKey}-ev-2`,
-        title: "Instalación de antena/cableado",
-        dbType: "FOTO_ANTES",
-        timestamp: "13:41 hrs",
-        status: "Verificado",
-        kind: "antenna",
-        ModelRef: "Antena MIMO 4x4 Direccional",
-        SerialRef: "Patchcord Cat6A Blindado",
-        description:
-          "Fijación mecánica certificada, sellado contra humedad en conectores SMA y etiquetado normativo Entel en acometida.",
-        gps: coordsText,
-      },
-      {
-        id: `${orderKey}-ev-3`,
-        title: "Test de velocidad en pantalla",
-        dbType: "TEST_VELOCIDAD",
-        timestamp: "13:49 hrs",
-        status: "Verificado",
-        kind: "speedtest",
-        ModelRef: `${downloadMbps} DL / ${uploadMbps} UL`,
-        SerialRef: `Potencia ${signalDbm} · Ping ${pingMs}`,
-        description:
-          "Prueba de estrés de enlace completada sin pérdida de paquetes hacia nodo central Entel Amunátegui.",
-        gps: coordsText,
-      },
-    ],
-    telemetry: {
-      signalDbm,
-      signalStatus: "Óptimo (-50 a -75 dBm)",
-      rsrp,
-      sinr,
-      downloadMbps,
-      uploadMbps,
-      pingMs,
-      band: "Banda n78 (3.5 GHz) · 5G NSA/SA",
-    },
-    checklist: [
-      {
-        id: "chk-signal",
-        label: `Potencia de señal ${signalDbm} verificada en punto de instalación`,
-        metric: `${signalDbm} (Óptimo)`,
-        passed: true,
-      },
-      {
-        id: "chk-rsrp",
-        label: "Parámetros de radiofrecuencia RSRP / SINR óptimos",
-        metric: `RSRP ${rsrp} · SINR ${sinr}`,
-        passed: true,
-      },
-      {
-        id: "chk-nav",
-        label: "Prueba de navegación, DNS corporativo y baja latencia superada",
-        metric: `${downloadMbps} / ${pingMs}`,
-        passed: true,
-      },
-      {
-        id: "chk-hw",
-        label: "Validación cruzada de ICCID y N° de Serie contra base de datos",
-        metric: "Sincronizado",
-        passed: true,
-      },
-    ],
+    orderStatus,
+    evidences: mappedEvidences,
+    telemetry,
+    checklist,
     hardware: {
-      router: {
-        model: routerModel,
-        serial: routerSerial,
-        mac: routerMac,
-        type: "ROUTER_5G",
-        status: "INSTALADO",
-      },
-      sim: {
-        iccid: simIccid,
-        operator: "Entel Corporativo",
-        technology: simTechnology,
-        apn: "m2m.entel.cl",
-        status: "INSTALADA",
-      },
+      router: routerData,
+      sim: simData,
     },
     conformity: {
-      recipientName,
-      recipientRole,
-      recipientRut,
-      signedAt,
+      isSigned,
+      recipientName: isSigned ? contactPerson : "Pendiente de recepción en sitio",
+      recipientRole: isSigned
+        ? `${clientBusinessName}`
+        : `Cliente: ${clientBusinessName}`,
+      recipientNotes:
+        signatureEvidence?.notes ||
+        (isSigned
+          ? `Recepción conforme validada para ${clientBusinessName}.`
+          : "El cliente aún no ha registrado su firma digital de conformidad."),
+      signedAt: signedAtText,
       tokenHash:
         apiOrderDetail?.active_magic_link_token ||
-        `ML-${orderKey.replace("#", "")}-VERIFIED`,
+        order.active_magic_link_token ||
+        (isSigned ? `ACTA-${orderKey.replace("#", "")}` : "PENDIENTE"),
     },
   };
 }

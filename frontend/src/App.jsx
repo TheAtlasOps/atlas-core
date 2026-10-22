@@ -19,9 +19,11 @@ export default function AtlasDashboard() {
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             <Routes>
               <Route path="/" element={<DispatchBoard />} />
+              <Route path="/dashboard" element={<DispatchBoard />} />
               <Route path="/work-orders" element={<WorkOrders />} />
               <Route path="/technicians" element={<Technicians />} />
               <Route path="/sim-inventory" element={<SimInventory />} />
+              <Route path="/inventory" element={<SimInventory />} />
               <Route path="/magic-links" element={<MagicLinks />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

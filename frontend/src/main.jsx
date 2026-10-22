@@ -20,8 +20,11 @@ createRoot(document.getElementById('root')).render(
 
             {/* ── Portal público del cliente (sin dashboard shell / acceso con Magic Link) ── */}
             <Route path="/status/:uuid" element={<CustomerTrackingView />} />
+            <Route path="/status" element={<CustomerTrackingView />} />
+            <Route path="/ml/:uuid" element={<CustomerTrackingView />} />
             <Route path="/tracking/:uuid" element={<CustomerTrackingView />} />
             <Route path="/tracking" element={<CustomerTrackingView />} />
+            <Route path="/portal/:uuid" element={<CustomerTrackingView />} />
             <Route path="/portal" element={<CustomerTrackingView />} />
 
             {/* ── Dashboard interno de Atlas resguardado con ProtectedRoute ── */}

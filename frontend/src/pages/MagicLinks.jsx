@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Link } from "react-router-dom";
 import {
   Copy,
   Link2,
@@ -10,12 +11,10 @@ import {
   X,
   Send,
   Sparkles,
-  Shield,
-  Clock,
-  Building,
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import { api } from "../lib/api";
+import { buildOrderMagicToken } from "../lib/magicLinksData";
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 function MagicLinksSkeleton() {
@@ -29,7 +28,7 @@ function MagicLinksSkeleton() {
                 Cliente
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                OT
+                OT / Enlace Único
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
                 Técnico Asignado
@@ -38,7 +37,7 @@ function MagicLinksSkeleton() {
                 Estado
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                Creado hace
+                Progreso
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
                 Acciones
@@ -78,17 +77,24 @@ function MagicLinksSkeleton() {
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const isActive = status === "Activo" || status === "ACTIVO";
+  const isCompleted = status === "Completado";
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${
         isActive
           ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-emerald-500/25"
+          : isCompleted
+          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-blue-500/25"
           : "bg-gray-500/15 text-slate-500 dark:text-gray-400 ring-gray-500/25"
       }`}
     >
       <span
         className={`h-1.5 w-1.5 rounded-full ${
-          isActive ? "bg-emerald-400" : "bg-gray-500"
+          isActive
+            ? "bg-emerald-400"
+            : isCompleted
+            ? "bg-blue-400"
+            : "bg-gray-500"
         }`}
       />
       {status}
@@ -97,21 +103,20 @@ function StatusBadge({ status }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Vista principal — Magic Links con Envío Real SendGrid
+// Vista principal — Magic Links con Enlace Único por Orden
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MagicLinks() {
   const [isLoading, setIsLoading] = useState(true);
   const [linksList, setLinksList] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sendingEmailId, setSendingEmailId] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Estado para el modal de generar link
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [customEmail, setCustomEmail] = useState("");
-  const [sendImmediately, setSendImmediately] = useState(true);
+  const [sendImmediately, setSendImmediately] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Estado para el modal de envío de correo personalizado
@@ -142,29 +147,27 @@ export default function MagicLinks() {
 
         const dynamicLinks = res.items.map((o) => {
           const otNum = o.order_number;
-          const token =
-            o.active_magic_link_token ||
-            (o.magic_links && o.magic_links[0]?.token) ||
-            "xK9pQ2";
+          const token = buildOrderMagicToken(o);
           const clientName =
             o.client?.contact_person ||
             o.client?.business_name ||
-            "Diego Jiménez Escobar";
-          const clientEmail = o.client?.contact_email || "di.jimeneze@duocuc.cl";
-          const company = o.client?.business_name || "Entel B2B / Redes SpA";
+            "Contacto Corporativo";
+          const clientEmail = o.client?.contact_email || "";
+          const company = o.client?.business_name || "Cliente Corporativo";
           const phone = o.client?.contact_phone || "+56 9 8765 4321";
 
           const techName =
-            o.technician_summary?.full_name || "Alexander Sáez López";
-          const techInitials = o.technician_summary?.initials || "AS";
+            o.technician_summary?.full_name || "Sin técnico asignado";
+          const techInitials = o.technician_summary?.initials || "TC";
           const credentialId = o.technician_summary?.vehicle_plate
             ? `TEC-ENT-${o.technician_summary.vehicle_plate}`
-            : "TEC-ENT-GG-WP-24";
+            : "TEC-ENT-PENDIENTE";
 
           return {
             id: o.id,
             workOrderId: o.id,
             token,
+            hasPersistedToken: Boolean(o.active_magic_link_token),
             client: clientName,
             clientEmail,
             company,
@@ -178,8 +181,9 @@ export default function MagicLinks() {
                 : o.status === "CANCELADA"
                 ? "Inactivo"
                 : "Activo",
-            status_key: (o.status || "EN_RUTA").toLowerCase(),
+            status_key: (o.status || "IDLE").toLowerCase(),
             createdAgo: `Visita ${o.status || "En curso"}`,
+            path: `/status/${token}`,
             url: `${window.location.origin}/status/${token}`,
             serviceType: o.title || "Servicio Técnico Atlas",
             technician: {
@@ -215,6 +219,7 @@ export default function MagicLinks() {
         item.client.toLowerCase().includes(q) ||
         item.company.toLowerCase().includes(q) ||
         item.ot.toLowerCase().includes(q) ||
+        item.token.toLowerCase().includes(q) ||
         item.technician?.name.toLowerCase().includes(q)
     );
   }, [searchQuery, linksList]);
@@ -222,13 +227,16 @@ export default function MagicLinks() {
   const isEmpty = filteredLinks.length === 0;
 
   const handleCopy = (url) => {
-    navigator.clipboard.writeText(url).then(() => {
-      setToast({
-        type: "success",
-        title: "Enlace copiado",
-        message: "El Magic Link ha sido copiado al portapapeles.",
-      });
-    }).catch(() => {});
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        setToast({
+          type: "success",
+          title: "Enlace copiado",
+          message: "El Magic Link único de la orden fue copiado al portapapeles.",
+        });
+      })
+      .catch(() => {});
   };
 
   // ── Abrir modal para elegir correo destino real ──
@@ -261,7 +269,10 @@ export default function MagicLinks() {
 
     setIsSendingFromModal(true);
     try {
-      const res = await api.notifications.sendMagicLink(sendModalRow.workOrderId, target);
+      const res = await api.notifications.sendMagicLink(
+        sendModalRow.workOrderId,
+        target
+      );
       if (res?.success) {
         setToast({
           type: "success",
@@ -269,7 +280,6 @@ export default function MagicLinks() {
           message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid.`,
         });
 
-        // Actualizar el correo visualmente en la fila
         setLinksList((prev) =>
           prev.map((item) =>
             item.id === sendModalRow.id ? { ...item, clientEmail: target } : item
@@ -304,24 +314,21 @@ export default function MagicLinks() {
 
     setIsGenerating(true);
     try {
-      // 1. Generar token criptográfico
-      const genRes = await api.auth.generateMagicLink(selectedOrderId, 48);
+      await api.auth.generateMagicLink(selectedOrderId, 48);
 
-      // 2. Si marcó enviar por correo inmediatamente, usar customEmail
       let emailSent = false;
-      let emailMsg = "";
       const targetEmail = customEmail.trim();
       if (sendImmediately && targetEmail) {
         try {
-          const notifRes = await api.notifications.sendMagicLink(selectedOrderId, targetEmail);
+          const notifRes = await api.notifications.sendMagicLink(
+            selectedOrderId,
+            targetEmail
+          );
           if (notifRes?.success) {
             emailSent = true;
-            emailMsg = notifRes.simulated
-              ? `(Envío simulado a ${notifRes.recipient})`
-              : `(Entregado a ${notifRes.recipient} vía SendGrid)`;
           }
-        } catch (emailErr) {
-          emailMsg = `(Aviso: No se pudo despachar el correo: ${emailErr.message})`;
+        } catch {
+          // continúa si el envío por correo falla
         }
       }
 
@@ -340,7 +347,8 @@ export default function MagicLinks() {
       setToast({
         type: "error",
         title: "Error al generar link",
-        message: err.message || "No se pudo generar el Magic Link en la base de datos.",
+        message:
+          err.message || "No se pudo generar el Magic Link en la base de datos.",
       });
     } finally {
       setIsGenerating(false);
@@ -366,7 +374,9 @@ export default function MagicLinks() {
             <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
           )}
           <div className="flex-1">
-            <p className="text-xs font-bold uppercase tracking-wider">{toast.title}</p>
+            <p className="text-xs font-bold uppercase tracking-wider">
+              {toast.title}
+            </p>
             <p className="text-xs opacity-90 mt-0.5">{toast.message}</p>
           </div>
           <button
@@ -386,7 +396,7 @@ export default function MagicLinks() {
             Magic Links
           </h1>
           <p className="text-sm text-muted-foreground">
-            Generación y seguimiento de enlaces seguros sin contraseña con entrega vía SendGrid.
+            Generación y seguimiento de enlaces únicos por orden sin contraseña con entrega vía SendGrid.
           </p>
         </div>
 
@@ -426,14 +436,14 @@ export default function MagicLinks() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por cliente, OT o técnico..."
+                placeholder="Buscar por cliente, OT, token o técnico..."
                 className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-2 pl-9 pr-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition"
               />
             </div>
             <div className="flex-1" />
             <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400">
               <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-              <span>SendGrid Conectado</span>
+              <span>1 enlace único por orden</span>
             </div>
           </div>
 
@@ -446,7 +456,7 @@ export default function MagicLinks() {
                     Cliente
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                    OT
+                    OT / Enlace Único
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
                     Técnico Asignado
@@ -455,7 +465,7 @@ export default function MagicLinks() {
                     Estado
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                    Creado hace
+                    Progreso
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
                     Acciones
@@ -465,7 +475,10 @@ export default function MagicLinks() {
               <tbody className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
                 {filteredLinks.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-8 text-center text-sm text-slate-500 dark:text-gray-400">
+                    <td
+                      colSpan={6}
+                      className="px-5 py-8 text-center text-sm text-slate-500 dark:text-gray-400"
+                    >
                       No se encontraron enlaces para &quot;{searchQuery}&quot;
                     </td>
                   </tr>
@@ -492,11 +505,20 @@ export default function MagicLinks() {
                         </div>
                       </td>
 
-                      {/* OT */}
+                      {/* OT + Token Único */}
                       <td className="px-5 py-4">
-                        <span className="font-mono text-xs font-semibold text-orange-600 dark:text-orange-400">
-                          {row.ot}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs font-semibold text-orange-600 dark:text-orange-400">
+                            {row.ot}
+                          </span>
+                          <Link
+                            to={row.path}
+                            className="font-mono text-[11px] text-slate-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 truncate max-w-[180px]"
+                            title={`Abrir ${row.path}`}
+                          >
+                            {row.path}
+                          </Link>
+                        </div>
                       </td>
 
                       {/* Técnico */}
@@ -535,18 +557,18 @@ export default function MagicLinks() {
                           <button
                             type="button"
                             onClick={() => handleOpenSendModal(row)}
-                            title={`Enviar Magic Link a un correo real (SendGrid)`}
+                            title="Enviar Magic Link a un correo (SendGrid)"
                             className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
                           >
                             <Mail className="h-4 w-4" />
                           </button>
 
-                          {/* Abrir vista */}
+                          {/* Abrir vista de la orden */}
                           <a
-                            href={`/status/${row.token}`}
+                            href={row.path}
                             target="_blank"
                             rel="noreferrer"
-                            title={`Abrir vista de seguimiento para ${row.client}`}
+                            title={`Abrir vista de seguimiento para ${row.ot} (${row.company})`}
                             className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors"
                           >
                             <ExternalLink className="h-4 w-4" />
@@ -596,7 +618,7 @@ export default function MagicLinks() {
                 <div>
                   <h3 className="text-lg font-bold">Generar Magic Link</h3>
                   <p className="text-xs text-slate-500 dark:text-gray-400">
-                    Emite un token efímero y envíalo al cliente vía SendGrid
+                    Emite un token efímero exclusivo para la orden seleccionada
                   </p>
                 </div>
               </div>
@@ -651,7 +673,7 @@ export default function MagicLinks() {
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">
-                  Puedes ingresar tu propio correo para probar la recepción en tu bandeja.
+                  Opcional: correo para envío de notificación transaccional.
                 </p>
               </div>
 
@@ -697,7 +719,7 @@ export default function MagicLinks() {
                   ) : (
                     <>
                       <Send className="h-4 w-4" />
-                      <span>Generar y Despachar</span>
+                      <span>Generar Enlace</span>
                     </>
                   )}
                 </button>

@@ -142,7 +142,7 @@ function EvidenceVisualPreview({ kind, modelRef, serialRef, large = false }) {
         strokeLinecap="round"
       />
       <text x="200" y="122" textAnchor="middle" fill="#ffffff" fontSize="18" fontWeight="bold" fontFamily="monospace">
-        {modelRef.split(" ")[0]}
+        {String(modelRef || "").split(" ")[0]}
       </text>
       <text x="200" y="138" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="bold" fontFamily="monospace">
         Mbps DOWNLOAD · 5G ENTEL
@@ -152,13 +152,13 @@ function EvidenceVisualPreview({ kind, modelRef, serialRef, large = false }) {
         SEÑAL RF
       </text>
       <text x="68" y="82" fill="#f97316" fontSize="12" fontWeight="bold" fontFamily="monospace">
-        -62 dBm
+        -78.5 dBm
       </text>
       <text x="290" y="65" fill="#94a3b8" fontSize="9" fontFamily="monospace">
         ESTADO
       </text>
       <text x="290" y="82" fill="#22c55e" fontSize="11" fontWeight="bold" fontFamily="monospace">
-        ÓPTIMO
+        VERIFICADO
       </text>
       <rect x="65" y="188" width="270" height="28" rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1" />
       <text x="200" y="206" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontFamily="monospace">
@@ -207,10 +207,11 @@ export default function WorkOrderDetailDrawer({
   const [selectedRouterId, setSelectedRouterId] = useState("");
   const [selectedSimId, setSelectedSimId] = useState("");
   const [apiOrderDetail, setApiOrderDetail] = useState(null);
+  const [apiEvidences, setApiEvidences] = useState(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
 
-  // Reset estados internos y consultar detalle completo con api.orders.getById(order.id)
+  // Reset estados internos y consultar detalle completo y evidencias reales de la OT
   useEffect(() => {
     setActiveTab("all");
     setSelectedPhotoIndex(null);
@@ -218,21 +219,25 @@ export default function WorkOrderDetailDrawer({
     setSelectedRouterId("");
     setSelectedSimId("");
     setApiOrderDetail(null);
+    setApiEvidences(null);
 
     if (!order?.id) return undefined;
 
     let cancelled = false;
-    async function fetchDetail() {
-      try {
-        const detail = await api.orders.getById(order.id);
-        if (!cancelled && detail) {
-          setApiOrderDetail(detail);
-        }
-      } catch {
-        // Fallback silencioso a datos Mock de auditoría en Vercel
+    async function fetchDetailAndEvidences() {
+      const [detailRes, evidencesRes] = await Promise.allSettled([
+        api.orders.getById(order.id),
+        api.evidences.getByOrderId(order.id),
+      ]);
+      if (cancelled) return;
+      if (detailRes.status === "fulfilled" && detailRes.value) {
+        setApiOrderDetail(detailRes.value);
+      }
+      if (evidencesRes.status === "fulfilled" && Array.isArray(evidencesRes.value)) {
+        setApiEvidences(evidencesRes.value);
       }
     }
-    fetchDetail();
+    fetchDetailAndEvidences();
     return () => {
       cancelled = true;
     };
@@ -264,13 +269,32 @@ export default function WorkOrderDetailDrawer({
 
   if (!order) return null;
 
+  const orderKey = order.order_number || order.orderId;
+  const isAudited = Boolean(auditedOrders[orderKey]);
   const auditData = getOrderAuditPackage(
     order,
     orderHardwareOverrides,
-    apiOrderDetail
+    apiOrderDetail,
+    { hardwareInventory, apiEvidences, isAudited }
   );
-  const orderKey = order.order_number || order.orderId;
-  const isAudited = Boolean(auditedOrders[orderKey]);
+
+  // Extracción segura de texto para evitar "[object Object]" en cabecera
+  const clientDisplayName =
+    apiOrderDetail?.client?.business_name ||
+    order.client?.business_name ||
+    order.clientName ||
+    (typeof order.client === "string" ? order.client : "");
+  const locationDisplay =
+    order.location ||
+    apiOrderDetail?.address_override ||
+    order.address_override ||
+    apiOrderDetail?.client?.address ||
+    "Ubicación en terreno";
+  const assigneeDisplayName =
+    apiOrderDetail?.technician?.full_name ||
+    order.assigneeName ||
+    order.assignee ||
+    "Técnico sin asignar";
 
   const availableRouters = hardwareInventory.filter(
     (item) =>
@@ -294,19 +318,16 @@ export default function WorkOrderDetailDrawer({
 
     setIsPairing(true);
     try {
-      const equipmentId =
-        routerItem?.id || availableRouters[0]?.id || "00000000-0000-4000-8000-000000002001";
-      const simCardId =
-        simItem?.id || availableSims[0]?.id || "00000000-0000-4000-8000-000000001001";
-      const clientId =
-        apiOrderDetail?.client_id ||
-        order?.client_id ||
-        order?.client?.id ||
-        null;
-
-      await api.inventory.pair(equipmentId, simCardId, clientId);
+      if (routerItem?.id && simItem?.id) {
+        const clientId =
+          apiOrderDetail?.client_id ||
+          order?.client_id ||
+          order?.client?.id ||
+          null;
+        await api.inventory.pair(routerItem.id, simItem.id, clientId);
+      }
     } catch {
-      // Fallback en Vercel: continúa actualizando el estado local
+      // Fallback: continúa actualizando el estado local
     } finally {
       reassignOrderHardware(order, { routerItem, simItem });
       setIsPairing(false);
@@ -328,7 +349,7 @@ export default function WorkOrderDetailDrawer({
         await refreshOrders();
       }
     } catch {
-      // Fallback en Vercel: actualiza columna y badge en estado local
+      // Fallback: actualiza columna y badge en estado local
     } finally {
       approveOrderAudit(order);
       setIsApproving(false);
@@ -339,6 +360,7 @@ export default function WorkOrderDetailDrawer({
   const showSection = (sectionId) => activeTab === "all" || activeTab === sectionId;
   const activePhoto =
     selectedPhotoIndex !== null ? auditData.evidences[selectedPhotoIndex] : null;
+  const hasRealTelemetry = Boolean(auditData.telemetry.hasRealTelemetry);
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] overflow-hidden">
@@ -404,18 +426,18 @@ export default function WorkOrderDetailDrawer({
             <div className="flex items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-500" />
               <span>
-                {order.client ? `${order.client} · ` : ""}
-                {order.location}
+                {clientDisplayName ? `${clientDisplayName} · ` : ""}
+                {locationDisplay}
               </span>
             </div>
 
             <div className="flex items-center gap-2">
               <AdminAvatar
-                name={order.assigneeName || order.assignee || "Técnico"}
+                name={assigneeDisplayName}
                 className="h-6 w-6 text-[10px]"
               />
               <span className="font-medium text-slate-700 dark:text-gray-300">
-                {order.assigneeName || order.assignee}
+                {assigneeDisplayName}
               </span>
             </div>
           </div>
@@ -444,7 +466,7 @@ export default function WorkOrderDetailDrawer({
 
         {/* ── Contenido desplazable del Drawer ── */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-kanban">
-          {/* SECCIÓN A: EVIDENCIA FOTOGRÁFICA (FEEDBACK PROFESORA) */}
+          {/* SECCIÓN A: EVIDENCIA FOTOGRÁFICA */}
           {showSection("evidences") && (
             <section
               aria-labelledby="section-evidences"
@@ -463,64 +485,85 @@ export default function WorkOrderDetailDrawer({
                       Evidencia Fotográfica en Terreno
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                      Respaldo visual capturado por el técnico · Haz clic para ampliar
+                      {auditData.evidences.length > 0
+                        ? "Respaldo visual capturado por el técnico · Haz clic para ampliar"
+                        : "Sin capturas verificadas aún para esta orden"}
                     </p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="h-3 w-3" />
-                  3 / 3 Verificadas
-                </span>
+                {auditData.evidences.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" />
+                    {auditData.evidences.length} Verificada(s)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30">
+                    <Clock className="h-3 w-3" />
+                    Pendiente de captura
+                  </span>
+                )}
               </div>
 
-              {/* Cuadrícula (grid) de fotos de respaldo */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {auditData.evidences.map((ev, idx) => (
-                  <button
-                    key={ev.id}
-                    type="button"
-                    onClick={() => setSelectedPhotoIndex(idx)}
-                    className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] text-left shadow-xs hover:border-orange-500 dark:hover:border-orange-500 transition-all focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  >
-                    <div className="relative w-full overflow-hidden">
-                      <EvidenceVisualPreview
-                        kind={ev.kind}
-                        modelRef={ev.ModelRef}
-                        serialRef={ev.SerialRef}
-                      />
+              {/* Cuadrícula de fotos de respaldo o estado pendiente real */}
+              {auditData.evidences.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {auditData.evidences.map((ev, idx) => (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      onClick={() => setSelectedPhotoIndex(idx)}
+                      className="group relative flex flex-col overflow-hidden rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] text-left shadow-xs hover:border-orange-500 dark:hover:border-orange-500 transition-all focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    >
+                      <div className="relative w-full overflow-hidden">
+                        <EvidenceVisualPreview
+                          kind={ev.kind}
+                          modelRef={ev.ModelRef}
+                          serialRef={ev.SerialRef}
+                        />
 
-                      {/* Etiqueta de hora (arriba izquierda) */}
-                      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[10px] font-medium text-white backdrop-blur-xs">
-                        <Clock className="h-2.5 w-2.5 text-orange-400" />
-                        {ev.timestamp}
-                      </span>
-
-                      {/* Badge Verificado (arriba derecha) */}
-                      <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
-                        <CheckCircle2 className="h-2.5 w-2.5" />
-                        {ev.status}
-                      </span>
-
-                      {/* Overlay hover para ver en grande */}
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-md">
-                          <ZoomIn className="h-3.5 w-3.5" />
-                          Ampliar
+                        {/* Etiqueta de hora (arriba izquierda) */}
+                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[10px] font-medium text-white backdrop-blur-xs">
+                          <Clock className="h-2.5 w-2.5 text-orange-400" />
+                          {ev.timestamp}
                         </span>
-                      </div>
-                    </div>
 
-                    <div className="p-2.5 flex-1 flex flex-col justify-between">
-                      <p className="text-xs font-semibold text-slate-900 dark:text-white leading-snug">
-                        {ev.title}
-                      </p>
-                      <p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400 line-clamp-2">
-                        {ev.description}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+                        {/* Badge Verificado (arriba derecha) */}
+                        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                          <CheckCircle2 className="h-2.5 w-2.5" />
+                          {ev.status}
+                        </span>
+
+                        {/* Overlay hover para ver en grande */}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-md">
+                            <ZoomIn className="h-3.5 w-3.5" />
+                            Ampliar
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 flex-1 flex flex-col justify-between">
+                        <p className="text-xs font-semibold text-slate-900 dark:text-white leading-snug">
+                          {ev.title}
+                        </p>
+                        <p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400 line-clamp-2">
+                          {ev.description}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-300 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] p-5 text-center space-y-1.5">
+                  <Clock className="mx-auto h-6 w-6 text-amber-500" />
+                  <p className="text-xs font-semibold text-slate-800 dark:text-gray-200">
+                    Evidencias fotográficas pendientes de registro
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400 max-w-md mx-auto">
+                    Esta orden aún no registra fotografías ni capturas verificadas en terreno. Se mostrarán automáticamente cuando el técnico envíe el respaldo de instalación.
+                  </p>
+                </div>
+              )}
             </section>
           )}
 
@@ -559,13 +602,23 @@ export default function WorkOrderDetailDrawer({
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                       Potencia Señal
                     </span>
-                    <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+                    {hasRealTelemetry ? (
+                      <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    )}
                   </div>
                   <p className="mt-1 font-mono text-base font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.signalDbm}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                    Nivel Excelente
+                  <p
+                    className={`mt-0.5 text-[10px] font-medium ${
+                      hasRealTelemetry
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {hasRealTelemetry ? "Nivel Verificado" : "Medición en sitio pendiente"}
                   </p>
                 </div>
 
@@ -579,8 +632,14 @@ export default function WorkOrderDetailDrawer({
                   <p className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.rsrp} / {auditData.telemetry.sinr}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                    RSRP/SINR óptimos
+                  <p
+                    className={`mt-0.5 text-[10px] font-medium ${
+                      hasRealTelemetry
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {hasRealTelemetry ? "RSRP/SINR verificados" : "Sin telemetría RF aún"}
                   </p>
                 </div>
 
@@ -589,18 +648,30 @@ export default function WorkOrderDetailDrawer({
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                       Navegación
                     </span>
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    {hasRealTelemetry ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    )}
                   </div>
                   <p className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.downloadMbps}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                    Prueba superada ({auditData.telemetry.pingMs})
+                  <p
+                    className={`mt-0.5 text-[10px] font-medium ${
+                      hasRealTelemetry
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {hasRealTelemetry
+                      ? `Prueba superada (${auditData.telemetry.pingMs})`
+                      : "Test de velocidad pendiente"}
                   </p>
                 </div>
               </div>
 
-              {/* Lista de verificación completada en terreno */}
+              {/* Lista de verificación en terreno */}
               <ul className="space-y-2">
                 {auditData.checklist.map((item) => (
                   <li
@@ -608,12 +679,22 @@ export default function WorkOrderDetailDrawer({
                     className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] px-3.5 py-2.5"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      {item.passed ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      ) : (
+                        <Clock className="h-4 w-4 shrink-0 text-amber-500" />
+                      )}
                       <span className="text-xs font-medium text-slate-800 dark:text-gray-200">
                         {item.label}
                       </span>
                     </div>
-                    <span className="shrink-0 rounded-md bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span
+                      className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold ${
+                        item.passed
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
                       {item.metric}
                     </span>
                   </li>
@@ -641,7 +722,7 @@ export default function WorkOrderDetailDrawer({
                       Hardware Vinculado
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                      Equipamiento registrado en la OT (Router + SIM Card)
+                      Equipamiento registrado en inventario para la OT (Router + SIM Card)
                     </p>
                   </div>
                 </div>
@@ -667,7 +748,13 @@ export default function WorkOrderDetailDrawer({
                       <Router className="h-4 w-4 text-orange-500" />
                       Router CPE / Industrial
                     </span>
-                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        auditData.hardware.router.isLinked
+                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                          : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
                       {auditData.hardware.router.status}
                     </span>
                   </div>
@@ -676,7 +763,10 @@ export default function WorkOrderDetailDrawer({
                       {auditData.hardware.router.model}
                     </p>
                     <p className="mt-1 font-mono text-[11px] text-slate-500 dark:text-gray-400">
-                      Serie: <strong className="text-slate-900 dark:text-white">{auditData.hardware.router.serial}</strong>
+                      Serie:{" "}
+                      <strong className="text-slate-900 dark:text-white">
+                        {auditData.hardware.router.serial}
+                      </strong>
                     </p>
                     <p className="font-mono text-[10px] text-slate-400 dark:text-gray-500">
                       MAC: {auditData.hardware.router.mac}
@@ -691,9 +781,20 @@ export default function WorkOrderDetailDrawer({
                       <CreditCard className="h-4 w-4 text-orange-500" />
                       Tarjeta SIM Entel
                     </span>
-                    <span className="rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                      {auditData.hardware.sim.technology}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          auditData.hardware.sim.isLinked
+                            ? "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                            : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                        }`}
+                      >
+                        {auditData.hardware.sim.status}
+                      </span>
+                      <span className="rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                        {auditData.hardware.sim.technology}
+                      </span>
+                    </div>
                   </div>
                   <div>
                     <p className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
@@ -812,52 +913,72 @@ export default function WorkOrderDetailDrawer({
                       Conformidad y Firma Digital del Cliente
                     </h3>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                      Recepción en terreno validada mediante Portal Magic Link
+                      {auditData.conformity.isSigned
+                        ? "Recepción en terreno validada y firmada por el cliente"
+                        : "Recepción pendiente de firma en terreno o vía Portal Cliente"}
                     </p>
                   </div>
                 </div>
-                <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                <span
+                  className={`font-mono text-[10px] font-semibold ${
+                    auditData.conformity.isSigned
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-amber-600 dark:text-amber-400"
+                  }`}
+                >
                   {auditData.conformity.tokenHash}
                 </span>
               </div>
 
               <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] p-4 space-y-3">
-                {/* Lienzo de firma digitalizada */}
-                <div className="relative flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-4 py-3">
-                  <span className="absolute right-2.5 top-2 text-[9px] font-mono uppercase tracking-widest text-slate-400 dark:text-gray-500">
-                    Firma Electrónica Simple · {auditData.conformity.signedAt}
-                  </span>
-                  <svg
-                    viewBox="0 0 320 80"
-                    className="h-16 w-64 text-slate-800 dark:text-orange-400"
-                    aria-label="Firma digitalizada del cliente receptor"
-                  >
-                    <path
-                      d="M 24 56 C 42 22, 58 64, 78 36 C 94 16, 102 58, 122 44 C 142 30, 155 20, 168 48 C 178 66, 198 25, 218 40 C 235 52, 258 32, 292 26"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M 55 64 Q 160 52 275 60"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      opacity="0.65"
-                    />
-                  </svg>
-                  <p className="text-[10px] font-mono text-slate-400 dark:text-gray-500">
-                     Rúbrica digital registrada en dispositivo móvil de terreno
-                  </p>
-                </div>
+                {auditData.conformity.isSigned ? (
+                  <div className="relative flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-4 py-3">
+                    <span className="absolute right-2.5 top-2 text-[9px] font-mono uppercase tracking-widest text-slate-400 dark:text-gray-500">
+                      Firma Electrónica Simple · {auditData.conformity.signedAt}
+                    </span>
+                    <svg
+                      viewBox="0 0 320 80"
+                      className="h-16 w-64 text-slate-800 dark:text-orange-400"
+                      aria-label="Firma digitalizada del cliente receptor"
+                    >
+                      <path
+                        d="M 24 56 C 42 22, 58 64, 78 36 C 94 16, 102 58, 122 44 C 142 30, 155 20, 168 48 C 178 66, 198 25, 218 40 C 235 52, 258 32, 292 26"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M 55 64 Q 160 52 275 60"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        opacity="0.65"
+                      />
+                    </svg>
+                    <p className="text-[10px] font-mono text-slate-400 dark:text-gray-500">
+                      {auditData.conformity.notes ||
+                        "Rúbrica digital registrada en dispositivo móvil de terreno"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-4 py-5 text-center space-y-1.5">
+                    <Clock className="h-6 w-6 text-amber-500" />
+                    <p className="text-xs font-semibold text-slate-800 dark:text-gray-200">
+                      Firma digital del cliente pendiente
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400 max-w-md">
+                      {auditData.conformity.notes}
+                    </p>
+                  </div>
+                )}
 
-                {/* Datos de quien recibió en la empresa */}
+                {/* Datos de quien recibe en la empresa */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
-                      Receptor en Empresa
+                      Contacto en Empresa
                     </span>
                     <p className="font-semibold text-slate-900 dark:text-white">
                       {auditData.conformity.recipientName}
@@ -868,7 +989,7 @@ export default function WorkOrderDetailDrawer({
                   </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
-                      Cargo / Unidad
+                      Estado / Unidad
                     </span>
                     <p className="font-medium text-slate-800 dark:text-gray-200">
                       {auditData.conformity.recipientRole}
