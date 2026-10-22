@@ -755,7 +755,7 @@ export default function WorkOrderDetailDrawer({
                           : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                       }`}
                     >
-                      {auditData.hardware.router.status}
+                      {STATUS_LABELS[auditData.hardware.router.status] || auditData.hardware.router.status}
                     </span>
                   </div>
                   <div>
@@ -789,7 +789,7 @@ export default function WorkOrderDetailDrawer({
                             : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                         }`}
                       >
-                        {auditData.hardware.sim.status}
+                        {STATUS_LABELS[auditData.hardware.sim.status] || auditData.hardware.sim.status}
                       </span>
                       <span className="rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
                         {auditData.hardware.sim.technology}
@@ -848,7 +848,7 @@ export default function WorkOrderDetailDrawer({
                         <option value="">Mantener router actual</option>
                         {availableRouters.map((r) => (
                           <option key={r.id} value={r.id}>
-                            {r.identifier} — {r.model} ({r.status})
+                            {r.identifier} — {r.model} ({STATUS_LABELS[r.status] || r.status})
                           </option>
                         ))}
                       </select>
@@ -866,7 +866,7 @@ export default function WorkOrderDetailDrawer({
                         <option value="">Mantener SIM actual</option>
                         {availableSims.map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.identifier} ({s.technology} · {s.status})
+                            {s.identifier} ({s.technology} · {STATUS_LABELS[s.status] || s.status})
                           </option>
                         ))}
                       </select>

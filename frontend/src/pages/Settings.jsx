@@ -10,7 +10,7 @@ function SettingsSkeleton() {
     <div className="flex flex-col gap-2">
       {/* Page header */}
       <div>
-        <h1 className="text-xl font-bold text-foreground">Settings</h1>
+        <h1 className="text-xl font-bold text-foreground">Configuración</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
           Administra tus preferencias de cuenta y notificaciones del sistema.
         </p>
@@ -169,7 +169,7 @@ export default function Settings() {
     <div className="flex flex-col gap-2">
       {/* ── Page Header ── */}
       <div>
-        <h1 className="text-xl font-bold text-foreground">Settings</h1>
+        <h1 className="text-xl font-bold text-foreground">Configuración</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
           Administra tus preferencias de cuenta y notificaciones del sistema.
         </p>
@@ -355,7 +355,7 @@ export default function Settings() {
               Cambios guardados
             </>
           ) : (
-            "Guardar Cambios"
+            "Guardar cambios"
           )}
         </button>
       </div>

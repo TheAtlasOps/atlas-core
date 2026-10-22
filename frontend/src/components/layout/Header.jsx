@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, BellOff, CheckCheck, User, LogOut } from "lucide-react";
+import { Search, Bell, BellOff, User, LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import AdminAvatar from "../ui/AdminAvatar";
 import AdminProfileModal from "../ui/AdminProfileModal";
@@ -19,6 +19,7 @@ const DEFAULT_ADMIN_PROFILE = {
 };
 
 export default function Header() {
+  const [globalSearch, setGlobalSearch] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -96,6 +97,13 @@ export default function Header() {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
+  const handleGlobalSearchSubmit = (e) => {
+    e.preventDefault();
+    const query = globalSearch.trim();
+    if (!query) return;
+    navigate(`/work-orders?search=${encodeURIComponent(query)}`);
+  };
+
   const handleLogout = () => {
     setIsMenuOpen(false);
     logout();
@@ -111,16 +119,18 @@ export default function Header() {
           </span>
         </div>
 
-        {/* Search */}
-        <div className="relative flex-1 max-w-xl mx-auto">
+        {/* Search global funcional */}
+        <form onSubmit={handleGlobalSearchSubmit} className="relative flex-1 max-w-xl mx-auto">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
-            placeholder="Buscar ordenes, tecnicos o SIMs..."
-            aria-label="Search"
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Buscar órdenes, técnicos o SIMs..."
+            aria-label="Buscar órdenes, técnicos o SIMs en la plataforma"
             className="w-full rounded-md border border-border bg-secondary py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
-        </div>
+        </form>
 
         <div className="flex items-center gap-3">
           {/* Notifications */}

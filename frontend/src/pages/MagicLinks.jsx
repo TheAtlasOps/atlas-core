@@ -105,6 +105,26 @@ function StatusBadge({ status }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Vista principal — Magic Links con Enlace Único por Orden
 // ═══════════════════════════════════════════════════════════════════════════════
+function formatRelativeTime(dateString) {
+  if (!dateString) return "Reciente";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "Reciente";
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return "Hoy";
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMin < 1) return "Hace un momento";
+  if (diffMin < 60) return `Hace ${diffMin} min`;
+  if (diffHours < 24) return `Hace ${diffHours} ${diffHours === 1 ? "hora" : "horas"}`;
+  if (diffDays === 1) return "Hace 1 día";
+  if (diffDays < 30) return `Hace ${diffDays} días`;
+  return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short" });
+}
+
 export default function MagicLinks() {
   const [isLoading, setIsLoading] = useState(true);
   const [linksList, setLinksList] = useState([]);
@@ -182,7 +202,7 @@ export default function MagicLinks() {
                 ? "Inactivo"
                 : "Activo",
             status_key: (o.status || "IDLE").toLowerCase(),
-            createdAgo: `Visita ${o.status || "En curso"}`,
+            createdAgo: formatRelativeTime(o.created_at || o.scheduled_date),
             path: `/status/${token}`,
             url: `${window.location.origin}/status/${token}`,
             serviceType: o.title || "Servicio Técnico Atlas",
@@ -200,7 +220,7 @@ export default function MagicLinks() {
         setLinksList([]);
       }
     } catch (err) {
-      console.error("Error al cargar ordenes:", err);
+      console.error("Error al cargar órdenes:", err);
       setLinksList([]);
     } finally {
       setIsLoading(false);
@@ -245,7 +265,7 @@ export default function MagicLinks() {
     setSendModalEmail(row.clientEmail || "");
   };
 
-  // ── Confirmar y despachar vía SendGrid a la dirección ingresada ──
+  // ── Confirmar y despachar vía Resend a la dirección ingresada ──
   const handleConfirmSendEmail = async (e) => {
     e.preventDefault();
     if (!sendModalRow?.workOrderId) {
@@ -277,7 +297,7 @@ export default function MagicLinks() {
         setToast({
           type: "success",
           title: "¡Correo enviado con éxito!",
-          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid.`,
+          message: `Magic Link entregado exitosamente a ${res.recipient} vía Resend.`,
         });
 
         setLinksList((prev) =>
@@ -336,7 +356,7 @@ export default function MagicLinks() {
         type: "success",
         title: "¡Magic Link generado con éxito!",
         message: emailSent
-          ? `Notificación de visita técnica despachada a ${targetEmail} vía SendGrid.`
+          ? `Notificación de visita técnica despachada a ${targetEmail} vía Resend.`
           : "El enlace interactivo de seguimiento ha sido activado para la orden de trabajo.",
       });
 
@@ -396,7 +416,7 @@ export default function MagicLinks() {
             Magic Links
           </h1>
           <p className="text-sm text-muted-foreground">
-            Generación y seguimiento de enlaces únicos por orden sin contraseña con entrega vía SendGrid.
+            Generación y seguimiento de enlaces únicos por orden sin contraseña con entrega vía Resend.
           </p>
         </div>
 
@@ -553,11 +573,11 @@ export default function MagicLinks() {
                       {/* Acciones */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Botón Enviar Correo vía SendGrid a dirección personalizada */}
+                          {/* Botón Enviar Correo vía Resend a dirección personalizada */}
                           <button
                             type="button"
                             onClick={() => handleOpenSendModal(row)}
-                            title="Enviar Magic Link a un correo (SendGrid)"
+                            title="Enviar Magic Link a un correo (Resend)"
                             className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
                           >
                             <Mail className="h-4 w-4" />
@@ -688,7 +708,7 @@ export default function MagicLinks() {
                   />
                   <div>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Despachar notificación por correo ahora (SendGrid)
+                      Despachar notificación por correo ahora (Resend)
                     </span>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400">
                       Envía la plantilla interactiva de visita técnica al correo del cliente.

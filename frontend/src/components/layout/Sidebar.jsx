@@ -2,12 +2,12 @@ import { LayoutDashboard, ClipboardList, Database, Link2, Settings, Users } from
 import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { label: "Dispatch Board", icon: LayoutDashboard, path: "/" },
-  { label: "Work Orders", icon: ClipboardList, path: "/work-orders" },
-  { label: "Technicians", icon: Users, path: "/technicians" },
-  { label: "SIM Inventory", icon: Database, path: "/sim-inventory" },
+  { label: "Tablero de Despacho", icon: LayoutDashboard, path: "/" },
+  { label: "Órdenes de Trabajo", icon: ClipboardList, path: "/work-orders" },
+  { label: "Técnicos", icon: Users, path: "/technicians" },
+  { label: "Inventario SIM", icon: Database, path: "/sim-inventory" },
   { label: "Magic Links", icon: Link2, path: "/magic-links" },
-  { label: "Settings", icon: Settings, path: "/settings" },
+  { label: "Configuración", icon: Settings, path: "/settings" },
 ];
 
 export default function Sidebar() {

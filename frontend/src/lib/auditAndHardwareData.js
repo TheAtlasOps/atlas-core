@@ -1,3 +1,22 @@
+export const STATUS_LABELS = {
+  DISPONIBLE: "Disponible",
+  ASIGNADA_TECNICO: "Asignada a técnico",
+  ASIGNADO_TECNICO: "Asignada a técnico",
+  ASIGNADA: "Asignada",
+  ASIGNADO: "Asignado",
+  INSTALADA: "Instalada en cliente",
+  INSTALADO: "Instalado en cliente",
+  DEFECTUOSA: "Defectuosa",
+  DEFECTUOSO: "Defectuoso",
+  BAJA: "Dada de baja",
+  IDLE: "Pendiente",
+  CONFIRMADA: "Confirmada",
+  EN_RUTA: "En ruta",
+  EN_SITIO: "En sitio",
+  COMPLETADA: "Completada",
+  CANCELADA: "Cancelada",
+};
+
 /**
  * Adaptadores de Inventario de Hardware (SIMs y Routers) y Auditoría de OT (Evidencias),
  * conectados a los datos reales de FastAPI / Neon PostgreSQL (`sim_cards`, `equipment`,
