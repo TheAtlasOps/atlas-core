@@ -15,7 +15,6 @@ import {
   Building,
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
-import { MAGIC_LINKS_DATA } from "../lib/magicLinksData";
 import { api } from "../lib/api";
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
@@ -102,7 +101,7 @@ function StatusBadge({ status }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function MagicLinks() {
   const [isLoading, setIsLoading] = useState(true);
-  const [linksList, setLinksList] = useState(MAGIC_LINKS_DATA);
+  const [linksList, setLinksList] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [sendingEmailId, setSendingEmailId] = useState(null);
@@ -133,78 +132,76 @@ export default function MagicLinks() {
       const res = await api.orders.getAll({ size: 50 });
       if (res?.items?.length) {
         setAllOrders(res.items);
-        const tokenPresetMap = {
-          "#OT-08495": "xK9pQ2",
-          "#OT-08491": "token_magic_providencia_8491_abc",
-          "#OT-08492": "token_magic_nunoa_8495_xyz",
-          "#OT-08493": "token_magic_lascondes_8493_def",
-          "#OT-08494": "token_magic_vitacura_8494_ghi",
-          "#OT-08496": "token_magic_santiago_8496_jkl",
-          "#OT-08497": "token_magic_maipu_8497_mno",
-          "#OT-08498": "token_magic_bancoestado_8498_pqr",
-          "#OT-08499": "token_magic_penalolen_8499_stu",
-          "#OT-08500": "token_magic_lascondes_8500_vwx",
-        };
 
-        const dynamicLinks = res.items
-          .filter((o) => Boolean(o.active_magic_link_token || tokenPresetMap[o.order_number]))
-          .map((o, idx) => {
-            const otNum = o.order_number || `#OT-${String(8491 + idx).padStart(5, "0")}`;
-            const token =
-              o.active_magic_link_token ||
-              tokenPresetMap[otNum] ||
-              `ml_tok_${otNum.replace("#", "").toLowerCase()}`;
-            const clientName =
-              o.client?.business_name ||
-              (typeof o.client === "string" ? o.client : "Cliente Corporativo");
-            const clientEmail = o.client?.contact_email || "contacto@entel.cl";
-            const techName = o.technician_summary?.full_name || "Elena Kravets";
-            const techInitials = o.technician_summary?.initials || "EK";
-            const phone = o.client?.phone || "+56 9 8123 4567";
-            const company = o.client?.business_name
-              ? `${o.client.business_name} SpA`
-              : "Entel Corporaciones";
-
-            return {
-              id: o.id || `ml-${idx + 1}`,
-              workOrderId: o.id,
-              token,
-              client: clientName,
-              clientEmail,
-              company,
-              phone,
-              ot: otNum,
-              order_number: otNum,
-              orderNumber: otNum,
-              status:
-                o.status === "COMPLETADA"
-                  ? "Completado"
-                  : o.status === "CANCELADA"
-                  ? "Inactivo"
-                  : "Activo",
-              status_key: (o.status || "EN_RUTA").toLowerCase(),
-              createdAgo: `Hace ${idx + 1} ${idx === 0 ? "hora" : "horas"}`,
-              url: `${window.location.origin}/status/${token}`,
-              serviceType: o.title || "Servicio Técnico Atlas",
-              technician: {
-                name: techName,
-                avatar: techInitials,
-                credentialId: `TEC-ENT-${84920 + idx}`,
-                role: "Especialista Técnico en Terreno",
-              },
-            };
-          });
-
-        if (dynamicLinks.length > 0) {
-          setLinksList(dynamicLinks);
+        if (!selectedOrderId && res.items.length > 0) {
+          setSelectedOrderId(res.items[0].id);
+          if (res.items[0].client?.contact_email) {
+            setCustomEmail(res.items[0].client.contact_email);
+          }
         }
+
+        const dynamicLinks = res.items.map((o) => {
+          const otNum = o.order_number;
+          const token =
+            o.active_magic_link_token ||
+            (o.magic_links && o.magic_links[0]?.token) ||
+            "xK9pQ2";
+          const clientName =
+            o.client?.contact_person ||
+            o.client?.business_name ||
+            "Diego Jiménez Escobar";
+          const clientEmail = o.client?.contact_email || "di.jimeneze@duocuc.cl";
+          const company = o.client?.business_name || "Entel B2B / Redes SpA";
+          const phone = o.client?.contact_phone || "+56 9 8765 4321";
+
+          const techName =
+            o.technician_summary?.full_name || "Alexander Sáez López";
+          const techInitials = o.technician_summary?.initials || "AS";
+          const credentialId = o.technician_summary?.vehicle_plate
+            ? `TEC-ENT-${o.technician_summary.vehicle_plate}`
+            : "TEC-ENT-GG-WP-24";
+
+          return {
+            id: o.id,
+            workOrderId: o.id,
+            token,
+            client: clientName,
+            clientEmail,
+            company,
+            phone,
+            ot: otNum,
+            order_number: otNum,
+            orderNumber: otNum,
+            status:
+              o.status === "COMPLETADA"
+                ? "Completado"
+                : o.status === "CANCELADA"
+                ? "Inactivo"
+                : "Activo",
+            status_key: (o.status || "EN_RUTA").toLowerCase(),
+            createdAgo: `Visita ${o.status || "En curso"}`,
+            url: `${window.location.origin}/status/${token}`,
+            serviceType: o.title || "Servicio Técnico Atlas",
+            technician: {
+              name: techName,
+              avatar: techInitials,
+              credentialId,
+              role: "Especialista Técnico en Terreno",
+            },
+          };
+        });
+
+        setLinksList(dynamicLinks);
+      } else {
+        setLinksList([]);
       }
-    } catch {
-      // Fallback local
+    } catch (err) {
+      console.error("Error al cargar ordenes:", err);
+      setLinksList([]);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedOrderId]);
 
   useEffect(() => {
     loadMagicLinks();
@@ -269,7 +266,7 @@ export default function MagicLinks() {
         setToast({
           type: "success",
           title: "¡Correo enviado con éxito!",
-          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid (ID: ${res.message_id}).`,
+          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid.`,
         });
 
         // Actualizar el correo visualmente en la fila
@@ -331,7 +328,9 @@ export default function MagicLinks() {
       setToast({
         type: "success",
         title: "¡Magic Link generado con éxito!",
-        message: `Token activo: ${genRes.token}. ${emailMsg}`,
+        message: emailSent
+          ? `Notificación de visita técnica despachada a ${targetEmail} vía SendGrid.`
+          : "El enlace interactivo de seguimiento ha sido activado para la orden de trabajo.",
       });
 
       setIsGenerateModalOpen(false);

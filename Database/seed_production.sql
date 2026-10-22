@@ -53,15 +53,15 @@ ON CONFLICT (email) DO NOTHING;
 -- 2. TECNICOS EN TERRENO (USUARIOS + PERFIL DE TECNICO)
 -- =============================================================================
 
--- Usuario para Técnico 1
+-- Usuario para Técnico: Alexander Sáez López
 INSERT INTO users (id, email, password_hash, full_name, phone, role, is_active)
 VALUES
     (
         'b0000000-0000-0000-0000-000000000001',
-        'tecnico1@atlasops.cl',
+        'al.saezl@duocuc.cl',
         crypt('TecnicoAtlas2026!', gen_salt('bf', 12)),
-        'Carlos Morales Vera',
-        '+56 9 3456 7890',
+        'Alexander Sáez López',
+        '+56 9 1234 5678',
         'TECNICO',
         TRUE
     )
@@ -72,8 +72,8 @@ INSERT INTO technicians (id, rut, initials, vehicle_plate, current_lat, current_
 VALUES
     (
         'b0000000-0000-0000-0000-000000000001',
-        '18.765.432-1',
-        'CM',
+        '19.876.543-2',
+        'AS',
         'GG-WP-24',
         -33.4372000,
         -70.6506000,
@@ -89,12 +89,12 @@ INSERT INTO clients (id, rut, business_name, contact_person, contact_phone, cont
 VALUES
     (
         'c0000000-0000-0000-0000-000000000001',
-        '76.543.210-K',
-        'Entel Empresas B2B',
-        'Contacto Técnico Entel',
-        '+56 9 9988 7766',
-        'alexander.saez.lopez@gmail.com', -- Cambiar por correo real de prueba
-        'Av. Costanera Sur 2730, Las Condes',
+        '18.987.654-3',
+        'Entel B2B - Soluciones SpA',
+        'Diego Jiménez Escobar',
+        '+56 9 8765 4321',
+        'di.jimeneze@duocuc.cl',
+        'Av. Vitacura 2939, Torre Entel',
         'Las Condes',
         'Metropolitana',
         -33.4140000,
