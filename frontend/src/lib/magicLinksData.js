@@ -33,17 +33,10 @@ export function buildOrderMagicToken(order) {
     return String(activeToken).trim();
   }
 
-  const rawOt = String(order.order_number || order.orderId || "ot-00000")
-    .replace("#", "")
-    .trim()
-    .toLowerCase();
-  const idSuffix =
-    String(order.id || "")
-      .replace(/-/g, "")
-      .slice(-6)
-      .toLowerCase() || "000000";
-
-  return `atlas_${rawOt}_${idSuffix}`;
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `tk_${crypto.randomUUID().replace(/-/g, "")}`;
+  }
+  return `tk_${Math.random().toString(36).substring(2, 15)}${Date.now().toString(36)}`;
 }
 
 export function parseDeterministicMagicToken(token) {
@@ -96,9 +89,9 @@ function formatScheduledDateDisplay(rawDate) {
   }
 }
 
-export function computeStepsFromStatusKey(statusKey) {
+export function computeStepsFromStatusKey(statusKey, hasAssignedTech = false) {
   const rankMap = {
-    idle: 0,
+    idle: hasAssignedTech ? 1 : 0,
     confirmada: 1,
     en_ruta: 2,
     en_sitio: 3,
@@ -110,9 +103,12 @@ export function computeStepsFromStatusKey(statusKey) {
   const definitions = [
     {
       key: "confirmada",
-      label: "Visita Confirmada",
+      label: hasAssignedTech && statusKey === "idle" ? "Técnico Asignado" : "Visita Confirmada",
       rank: 1,
-      description: "Cita agendada y aprobada",
+      description:
+        hasAssignedTech && statusKey === "idle"
+          ? "Especialista asignado · En espera de salida a terreno"
+          : "Cita agendada y aprobada",
     },
     {
       key: "en_ruta",
@@ -130,7 +126,10 @@ export function computeStepsFromStatusKey(statusKey) {
       key: "completada",
       label: "Servicio Completado",
       rank: 4,
-      description: "Protocolo finalizado y acta disponible",
+      description:
+        currentRank >= 4
+          ? "Protocolo finalizado y acta disponible"
+          : "Pendiente de ejecución y cierre técnico",
     },
   ];
 
@@ -139,8 +138,18 @@ export function computeStepsFromStatusKey(statusKey) {
     label: def.label,
     title: def.label,
     description: def.description,
-    timestamp: currentRank >= def.rank ? "Verificado" : "Pendiente",
-    time: currentRank >= def.rank ? "Verificado" : "Pendiente",
+    timestamp:
+      currentRank >= def.rank
+        ? currentRank === def.rank && statusKey !== "completada"
+          ? "En curso"
+          : "Verificado"
+        : "Pendiente",
+    time:
+      currentRank >= def.rank
+        ? currentRank === def.rank && statusKey !== "completada"
+          ? "En curso"
+          : "Verificado"
+        : "Pendiente",
     completed: currentRank >= def.rank && currentRank !== -1,
     current: currentRank === def.rank,
   }));
@@ -233,6 +242,18 @@ export function mapApiSummaryToTrackingOrder(summary) {
 
   const orderNumber = summary.order_number || "#OT-00000";
   const statusKey = (summary.status_key || "idle").toLowerCase();
+  const tech = summary.technician || null;
+  const techName = tech?.name || "Sin técnico asignado";
+  const hasAssignedTech = Boolean(techName && techName !== "Sin técnico asignado");
+
+  let statusLabel = STATUS_KEY_LABELS[statusKey] || "Visita Técnica Programada";
+  if (statusKey === "idle") {
+    if (hasAssignedTech) {
+      statusLabel = "Técnico Asignado · Pendiente de Inicio";
+    } else {
+      statusLabel = "Pendiente de Asignación";
+    }
+  }
 
   const timelineSteps =
     Array.isArray(summary.timeline_steps) && summary.timeline_steps.length > 0
@@ -246,10 +267,7 @@ export function mapApiSummaryToTrackingOrder(summary) {
           completed: Boolean(s.completed),
           current: Boolean(s.current),
         }))
-      : computeStepsFromStatusKey(statusKey);
-
-  const tech = summary.technician || null;
-  const techName = tech?.name || "Sin técnico asignado";
+      : computeStepsFromStatusKey(statusKey, hasAssignedTech);
   const techPlate = tech?.vehicle_plate || "Por asignar";
 
   const etaLabel =

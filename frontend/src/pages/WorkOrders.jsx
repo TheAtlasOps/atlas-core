@@ -318,7 +318,7 @@ export default function WorkOrders() {
       {/* Barra superior */}
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Work Orders</h1>
+          <h1 className="text-xl font-bold text-foreground">Órdenes de trabajo</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             Órdenes activas · {totalOrders} órdenes totales · Haz clic en cualquier tarjeta para auditar
           </p>

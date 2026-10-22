@@ -37,7 +37,7 @@ function MagicLinksSkeleton() {
                 Estado
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                Progreso
+                Fecha Programada
               </th>
               <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
                 Acciones
@@ -183,11 +183,23 @@ export default function MagicLinks() {
             ? `TEC-ENT-${o.technician_summary.vehicle_plate}`
             : "TEC-ENT-PENDIENTE";
 
+          const scheduledDateDisplay = o.scheduled_date
+            ? new Date(o.scheduled_date).toLocaleDateString("es-CL", {
+                timeZone: "America/Santiago",
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Por coordinar";
+
           return {
             id: o.id,
             workOrderId: o.id,
             token,
             hasPersistedToken: Boolean(o.active_magic_link_token),
+            scheduledDateDisplay,
             client: clientName,
             clientEmail,
             company,
@@ -485,7 +497,7 @@ export default function MagicLinks() {
                     Estado
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
-                    Progreso
+                    Fecha Programada
                   </th>
                   <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
                     Acciones
@@ -565,9 +577,16 @@ export default function MagicLinks() {
                         <StatusBadge status={row.status} />
                       </td>
 
-                      {/* Creado hace */}
-                      <td className="px-5 py-4 text-xs text-slate-500 dark:text-gray-400 whitespace-nowrap">
-                        {row.createdAgo}
+                      {/* Fecha Programada */}
+                      <td className="px-5 py-4 text-xs whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-slate-800 dark:text-slate-200">
+                            {row.scheduledDateDisplay || "Fecha por coordinar"}
+                          </span>
+                          <span className="text-[10px] text-slate-500 dark:text-gray-400 font-mono">
+                            {row.createdAgo}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Acciones */}
