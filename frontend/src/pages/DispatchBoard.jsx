@@ -53,6 +53,7 @@ const DEFAULT_MAP_MARKERS = [
     id: "d0000000-0000-4000-8000-000000000001",
     orderNumber: "#OT-08491",
     title: "Instalación fibra óptica — Providencia",
+    client: "Enel Distribución Chile",
     label: "Providencia",
     lat: -33.432,
     lng: -70.6093,
@@ -62,6 +63,7 @@ const DEFAULT_MAP_MARKERS = [
     id: "d0000000-0000-4000-8000-000000000002",
     orderNumber: "#OT-08492",
     title: "Cambio de SIM corporativa — Santiago Centro",
+    client: "Falabella Retail S.A.",
     label: "Santiago Centro",
     lat: -33.4489,
     lng: -70.6693,
@@ -71,6 +73,7 @@ const DEFAULT_MAP_MARKERS = [
     id: "d0000000-0000-4000-8000-000000000003",
     orderNumber: "#OT-08493",
     title: "Revisión antena 4G — Providencia",
+    client: "Torre Costanera Hub",
     label: "Providencia",
     lat: -33.4172,
     lng: -70.606,
@@ -80,6 +83,7 @@ const DEFAULT_MAP_MARKERS = [
     id: "d0000000-0000-4000-8000-000000000005",
     orderNumber: "#OT-08495",
     title: "Activación Magic Link — Ñuñoa",
+    client: "Clínica Alemana Vitacura",
     label: "Ñuñoa",
     lat: -33.4569,
     lng: -70.599,
@@ -89,12 +93,45 @@ const DEFAULT_MAP_MARKERS = [
     id: "d0000000-0000-4000-8000-000000000008",
     orderNumber: "#OT-08498",
     title: "Reemplazo router con falla — Santiago Centro",
+    client: "BancoEstado Casa Matriz",
     label: "Santiago Centro",
     lat: -33.442,
     lng: -70.654,
     status: "COMPLETADA",
   },
 ];
+
+// Componente auxiliar para ajustar encuadre a marcadores reales
+function MapAutoBounds({ markers }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!markers || markers.length === 0) return;
+    const valid = markers.filter(
+      (m) =>
+        typeof m.lat === "number" &&
+        !isNaN(m.lat) &&
+        typeof m.lng === "number" &&
+        !isNaN(m.lng)
+    );
+    if (valid.length > 0) {
+      const bounds = L.latLngBounds(valid.map((m) => [m.lat, m.lng]));
+      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+    }
+  }, [map, markers]);
+  return null;
+}
+
+// Recalcula el tamaño del canvas al abrir el modal expandido
+function MapResizeHandler() {
+  const map = useMap();
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [map]);
+  return null;
+}
 
 function getMarkerHexByStatus(status, fallbackHex) {
   if (fallbackHex) return fallbackHex;
@@ -177,10 +214,11 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
                 attributionControl={false}
               >
                 <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  subdomains="abcd"
+                  url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                   maxZoom={19}
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
+                <MapAutoBounds markers={markers} />
 
                 {markers.map((m) => {
                   const hex = getMarkerHexByStatus(m.status, m.hex);
@@ -198,13 +236,15 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
                             minWidth: "140px",
                           }}
                         >
-                          <strong>
-                            {m.orderNumber
-                              ? `${m.orderNumber} · ${m.title || m.label || ""}`
-                              : m.label}
+                          <strong className="block text-slate-900 font-bold">
+                            {m.orderNumber || m.id}
                           </strong>
-                          <br />
-                          <span style={{ color: hex, fontWeight: "600" }}>{m.status}</span>
+                          <span className="block text-slate-600 text-[11px] mt-0.5">
+                            {m.client || m.title || m.label}
+                          </span>
+                          <span className="block mt-1 text-[11px]" style={{ color: hex, fontWeight: "700" }}>
+                            Estado: {m.status}
+                          </span>
                         </div>
                       </Popup>
                     </Marker>
@@ -247,12 +287,7 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
               </button>
             </div>
 
-            {/* Aviso informativo sobre cartografía y proveedores externos */}
-            <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
-              <span>
-                ℹ️ Cartografía urbana de alta legibilidad provista vía CARTO Voyager / OpenStreetMap. Para incorporar capas satelitales privadas o tráfico vehicular en vivo, configure la variable de entorno <code>VITE_MAPBOX_TOKEN</code>.
-              </span>
-            </div>
+
 
             {/* Mapa interactivo expandido */}
             <div className="relative flex-1 w-full z-0 isolate">
@@ -264,11 +299,12 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
                 zoomControl={true}
               >
                 <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  subdomains="abcd"
+                  url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                   maxZoom={19}
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
+                <MapAutoBounds markers={markers} />
+                <MapResizeHandler />
 
                 {markers.map((m) => {
                   const hex = getMarkerHexByStatus(m.status, m.hex);
@@ -279,10 +315,11 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
                       icon={makeIcon(hex)}
                     >
                       <Popup>
-                        <div style={{ fontSize: "12px", minWidth: "160px" }}>
-                          <p className="font-bold text-slate-900">{m.orderNumber || m.id}</p>
-                          <p className="text-slate-600 mt-0.5">{m.title || m.label}</p>
-                          <p className="mt-1" style={{ color: hex, fontWeight: "600" }}>{m.status}</p>
+                        <div style={{ fontSize: "12px", minWidth: "180px" }}>
+                          <p className="font-bold text-slate-900 text-sm">{m.orderNumber || m.id}</p>
+                          <p className="font-medium text-slate-800 mt-0.5">{m.client || "Cliente Corporativo"}</p>
+                          <p className="text-slate-500 text-[11px]">{m.title || m.label}</p>
+                          <p className="mt-1.5 text-xs" style={{ color: hex, fontWeight: "700" }}>Estado: {m.status}</p>
                           {onSelectOrderId && (
                             <button
                               onClick={() => {
@@ -502,7 +539,7 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
           <h2 className="text-sm font-semibold text-foreground">
             Próximas visitas
           </h2>
-          <p className="text-xs text-muted-foreground">Agenda operativa — hoy</p>
+          <p className="text-xs text-muted-foreground">Agenda operativa de visitas registradas</p>
         </div>
         <Link
           to="/work-orders"
@@ -547,34 +584,39 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
               <li
                 key={visit.id || idx}
                 onClick={() => onSelectOrderId?.(visit.id)}
-                className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-1.5 -mx-1.5 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-2.5 -mx-2 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
                 title={`Auditar ${visit.id}`}
               >
-                <span className="w-12 shrink-0 text-xs text-orange-600 dark:text-orange-400 font-semibold tabular-nums font-mono pt-0.5">
-                  {visit.id}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground leading-snug line-clamp-2" title={visit.service}>
-                    {visit.service}
-                  </p>
-                  <div className="text-xs text-muted-foreground mt-1 line-clamp-2" title={`${visit.client}${visit.technician ? ` · Técnico: ${visit.technician}` : ""}`}>
-                    <span className="font-medium text-slate-700 dark:text-slate-300">{visit.client}</span>
-                    {visit.technician && (
-                      <span className="block text-[11px] text-muted-foreground mt-0.5">
-                        Técnico: <span className="text-foreground/80">{visit.technician}</span>
-                      </span>
-                    )}
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <span className="w-16 shrink-0 text-xs text-orange-600 dark:text-orange-400 font-bold tabular-nums font-mono pt-0.5">
+                    {visit.id}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground leading-snug" title={visit.service}>
+                      {visit.service}
+                    </p>
+                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="font-medium text-slate-700 dark:text-slate-300">{visit.client}</span>
+                      {visit.technician && (
+                        <span>
+                          · Técnico: <strong className="text-foreground/90 font-medium">{visit.technician}</strong>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <span
-                  className={`
-                    shrink-0 self-center rounded-full px-2 py-0.5
-                    text-[10px] font-semibold uppercase tracking-wide
-                    ${visit.statusStyle}
-                  `}
-                >
-                  {visit.status}
-                </span>
+                <div className="flex items-center gap-3 shrink-0 self-end sm:self-center pl-8 sm:pl-0">
+                  {visit.time && (
+                    <span className="text-xs text-slate-500 dark:text-gray-400 font-mono">
+                      {visit.time}
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${visit.statusStyle}`}
+                  >
+                    {visit.status}
+                  </span>
+                </div>
               </li>
             ))}
           </ol>
@@ -791,10 +833,10 @@ function AiInsights({
           </div>
           <div>
             <h2 className="text-sm font-semibold text-foreground">
-              Atlas AI - Field Insights
+              Alertas operativas
             </h2>
             <p className="text-[11px] text-muted-foreground">
-              Alertas calculadas sobre datos reales
+              Reglas y diagnósticos sobre datos reales
             </p>
           </div>
         </div>
@@ -820,20 +862,22 @@ function AiInsights({
               key={insight.id}
               className="rounded-lg border border-border bg-background/40 p-3"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                  <p className="text-xs font-semibold text-foreground truncate">
-                    {insight.title}
-                  </p>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-0.5" />
+                    <p className="text-xs font-semibold text-foreground leading-snug">
+                      {insight.title}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-orange-600 dark:text-orange-400">
+                    {insight.badge}
+                  </span>
                 </div>
-                <span className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-orange-600 dark:text-orange-400">
-                  {insight.badge}
-                </span>
+                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                  {insight.body}
+                </p>
               </div>
-              <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
-                {insight.body}
-              </p>
             </div>
           ))}
         </div>
@@ -916,6 +960,7 @@ export default function DispatchBoard() {
                 id: o.id,
                 orderNumber: o.order_number,
                 title: o.title,
+                client: o.client?.business_name || o.client?.name || o.client_name || "Cliente Corporativo",
                 lat: parseFloat(o.lat),
                 lng: parseFloat(o.lng),
                 status: o.status,
@@ -1058,9 +1103,9 @@ export default function DispatchBoard() {
         icon: ClipboardList,
       },
       {
-        label: "Técnicos en Campo",
-        value: String(techStats.availableCount),
-        delta: `${techStats.assignedActiveCount} con OT activas hoy`,
+        label: "Técnicos en Terreno",
+        value: `${statusCounts.enRuta} en ruta`,
+        delta: `${techStats.availableCount} técnicos disponibles en total`,
         icon: Users,
       },
       {
@@ -1073,9 +1118,9 @@ export default function DispatchBoard() {
         icon: CreditCard,
       },
       {
-        label: "Completadas Hoy",
+        label: "Órdenes Completadas",
         value: String(completedOrdersCount),
-        delta: `${completedOrdersCount} de ${totalCycleOrders} órdenes del ciclo`,
+        delta: `${completedOrdersCount} de ${totalCycleOrders} órdenes registradas`,
         icon: CheckCircle2,
       },
     ],
@@ -1330,7 +1375,7 @@ export default function DispatchBoard() {
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3.5 py-2 text-xs text-orange-700 dark:text-orange-300">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">Filtros activos:</span>
-                    <span>{filteredVisits.length} visitas</span>
+                    <span>{filteredVisits.length} visitas registradas</span>
                     <span>·</span>
                     <span>{filteredActivityLog.length} actividades</span>
                     {search.trim() && (
@@ -1363,13 +1408,17 @@ export default function DispatchBoard() {
             {/* KPIs — muestra skeleton mientras carga */}
             <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} />
 
-            {/* Cuadrícula analítica de 3 columnas */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Fila 1: Mapa geoespacial y Distribución de estado */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} onSelectOrderId={handleSelectOrderId} />
               <DonutChartCard
                 isLoading={isLoading}
                 statusCounts={statusCounts}
               />
+            </div>
+
+            {/* Fila 2: Agenda operativa de visitas con ancho completo para máxima legibilidad */}
+            <div className="w-full">
               <UpcomingVisitsCard
                 isLoading={isLoading}
                 visits={filteredVisits}

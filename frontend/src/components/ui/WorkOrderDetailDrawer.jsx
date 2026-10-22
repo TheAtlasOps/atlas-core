@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -21,7 +21,26 @@ import {
   ExternalLink,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
-import { getOrderAuditPackage } from "../../lib/auditAndHardwareData";
+import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
+
+const SAFE_STATUS_LABELS = STATUS_LABELS || {
+  DISPONIBLE: "Disponible",
+  ASIGNADA_TECNICO: "Asignada a técnico",
+  ASIGNADO_TECNICO: "Asignada a técnico",
+  ASIGNADA: "Asignada",
+  ASIGNADO: "Asignado",
+  INSTALADA: "Instalada en cliente",
+  INSTALADO: "Instalado en cliente",
+  DEFECTUOSA: "Defectuosa",
+  DEFECTUOSO: "Defectuoso",
+  BAJA: "Dada de baja",
+  IDLE: "Pendiente",
+  CONFIRMADA: "Confirmada",
+  EN_RUTA: "En ruta",
+  EN_SITIO: "En sitio",
+  COMPLETADA: "Completada",
+  CANCELADA: "Cancelada",
+};
 import { useWorkOrders } from "../../context/WorkOrderContext";
 import { api } from "../../lib/api";
 
@@ -187,7 +206,7 @@ const TABS = [
   { id: "signature", label: "Firma" },
 ];
 
-export default function WorkOrderDetailDrawer({
+function WorkOrderDetailDrawerContent({
   order,
   onClose,
   onOpenInventoryModal,
@@ -755,7 +774,7 @@ export default function WorkOrderDetailDrawer({
                           : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                       }`}
                     >
-                      {STATUS_LABELS[auditData.hardware.router.status] || auditData.hardware.router.status}
+                      {SAFE_STATUS_LABELS[auditData.hardware.router.status] || auditData.hardware.router.status}
                     </span>
                   </div>
                   <div>
@@ -789,7 +808,7 @@ export default function WorkOrderDetailDrawer({
                             : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
                         }`}
                       >
-                        {STATUS_LABELS[auditData.hardware.sim.status] || auditData.hardware.sim.status}
+                        {SAFE_STATUS_LABELS[auditData.hardware.sim.status] || auditData.hardware.sim.status}
                       </span>
                       <span className="rounded-md bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">
                         {auditData.hardware.sim.technology}
@@ -848,7 +867,7 @@ export default function WorkOrderDetailDrawer({
                         <option value="">Mantener router actual</option>
                         {availableRouters.map((r) => (
                           <option key={r.id} value={r.id}>
-                            {r.identifier} — {r.model} ({STATUS_LABELS[r.status] || r.status})
+                            {r.identifier} — {r.model} ({SAFE_STATUS_LABELS[r.status] || r.status})
                           </option>
                         ))}
                       </select>
@@ -866,7 +885,7 @@ export default function WorkOrderDetailDrawer({
                         <option value="">Mantener SIM actual</option>
                         {availableSims.map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.identifier} ({s.technology} · {STATUS_LABELS[s.status] || s.status})
+                            {s.identifier} ({s.technology} · {SAFE_STATUS_LABELS[s.status] || s.status})
                           </option>
                         ))}
                       </select>
@@ -1110,5 +1129,56 @@ export default function WorkOrderDetailDrawer({
       </aside>
     </div>,
     document.body
+  );
+}
+
+
+class DrawerErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Error en WorkOrderDetailDrawer:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-rose-500/40 bg-white p-6 shadow-2xl dark:bg-[#1e1e1e]">
+            <h3 className="text-base font-bold text-rose-600 dark:text-rose-400">
+              Error al desplegar auditoría
+            </h3>
+            <p className="mt-2 text-xs text-slate-600 dark:text-gray-400">
+              Ocurrió un inconveniente al renderizar la ficha técnica de la orden. El tablero de control sigue operativo.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                this.props.onClose?.();
+              }}
+              className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 dark:bg-gray-800 dark:hover:bg-gray-700"
+            >
+              Cerrar panel
+            </button>
+          </div>
+        </div>,
+        document.body
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function WorkOrderDetailDrawer(props) {
+  if (!props.order) return null;
+  return (
+    <DrawerErrorBoundary onClose={props.onClose}>
+      <WorkOrderDetailDrawerContent {...props} />
+    </DrawerErrorBoundary>
   );
 }

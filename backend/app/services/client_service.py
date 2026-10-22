@@ -244,6 +244,13 @@ async def confirm_client_visit(
     """
     magic_link = await validate_magic_link_token(db, token)
     order = magic_link.work_order
+
+    if order.status not in (OrderStatusEnum.EN_SITIO, OrderStatusEnum.COMPLETADA):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede firmar la conformidad de un servicio que aún no ha sido ejecutado en terreno."
+        )
+
     now_utc = datetime.now(timezone.utc)
 
     # 1. Registrar confirmación en el token

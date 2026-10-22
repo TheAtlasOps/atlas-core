@@ -735,44 +735,66 @@ export default function CustomerTrackingView() {
             </div>
           )}
 
-          {/* Bloque B: Firma digital de acta de conformidad */}
-          {!isSigned ? (
-            <form
-              onSubmit={handleSignConformity}
-              className="pt-3 border-t border-slate-100 dark:border-gray-800 space-y-2.5"
-            >
-              <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
-                Firmar recepción conforme del servicio técnico:
-              </label>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input
-                  type="text"
-                  value={signedByName}
-                  onChange={(e) => setSignedByName(e.target.value)}
-                  placeholder={`Nombre receptor (${order.client})`}
-                  className="flex-1 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
-                />
-                <button
-                  type="submit"
-                  disabled={isSigning}
-                  className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-60"
-                >
-                  <FileSignature className="h-3.5 w-3.5" />
-                  {isSigning ? "Firmando..." : "Firmar Conformidad"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 px-3 py-2.5 text-xs text-orange-700 dark:text-orange-300 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
-                <span>
-                  Acta de conformidad firmada digitalmente por{" "}
-                  <strong>{signedByName || order.client}</strong>.
-                </span>
-              </div>
-            </div>
-          )}
+          {/* Bloque B: Firma digital de acta condicionada a que la atención se haya realizado */}
+          {(() => {
+            const raw = String(order.raw_status || order.status_key || "").toUpperCase();
+            const canSign = ["EN_SITIO", "COMPLETADA"].includes(raw) || order.is_completed;
+
+            if (isSigned) {
+              return (
+                <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 px-3 py-2.5 text-xs text-orange-700 dark:text-orange-300 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
+                    <span>
+                      Acta de conformidad firmada digitalmente por{" "}
+                      <strong>{signedByName || order.client}</strong>.
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            if (!canSign) {
+              return (
+                <div className="pt-3 border-t border-slate-100 dark:border-gray-800">
+                  <div className="rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-gray-800 px-3.5 py-2.5 text-xs text-slate-500 dark:text-gray-400 flex items-center gap-2.5">
+                    <FileSignature className="h-4 w-4 shrink-0 text-slate-400" />
+                    <span>
+                      La firma digital de recepción conforme se habilitará una vez que el especialista técnico arribe al sitio y complete la atención.
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <form
+                onSubmit={handleSignConformity}
+                className="pt-3 border-t border-slate-100 dark:border-gray-800 space-y-2.5"
+              >
+                <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
+                  Firmar recepción conforme del servicio técnico realizado:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={signedByName}
+                    onChange={(e) => setSignedByName(e.target.value)}
+                    placeholder={`Nombre receptor (${order.client})`}
+                    className="flex-1 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isSigning}
+                    className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-60"
+                  >
+                    <FileSignature className="h-3.5 w-3.5" />
+                    {isSigning ? "Firmando..." : "Firmar Conformidad"}
+                  </button>
+                </div>
+              </form>
+            );
+          })()}
         </section>
 
         {/* Canales de Asistencia Directa */}
