@@ -17,67 +17,74 @@ def build_magic_link_html(
     address: str,
     magic_link_url: str,
 ) -> str:
-    """Genera plantilla HTML responsiva para invitación con Magic Link."""
+    """Genera plantilla HTML responsiva para invitación con Magic Link compatible con Gmail y Outlook."""
     return f"""
     <!DOCTYPE html>
     <html lang="es">
     <head>
       <meta charset="utf-8">
-      <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }}
-        .card {{ max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }}
-        .header {{ background: #0f172a; padding: 24px; text-align: left; }}
-        .brand {{ color: #ffffff; font-size: 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }}
-        .badge {{ background: #f97316; color: #ffffff; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; }}
-        .body {{ padding: 32px 28px; }}
-        h1 {{ font-size: 20px; font-weight: 700; margin: 0 0 12px 0; color: #0f172a; }}
-        p {{ font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0; }}
-        .details {{ background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px; }}
-        .detail-row {{ display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }}
-        .detail-row:last-child {{ margin-bottom: 0; }}
-        .detail-label {{ color: #64748b; font-weight: 500; }}
-        .detail-value {{ color: #0f172a; font-weight: 600; text-align: right; }}
-        .btn {{ display: block; width: 100%; box-sizing: border-box; background: #f97316; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px; margin: 24px 0; }}
-        .alert {{ font-size: 12px; color: #64748b; background: #f1f5f9; padding: 12px; border-radius: 8px; text-align: center; }}
-        .footer {{ text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px; }}
-      </style>
+      <title>Atlas Entel - Visita Técnica</title>
     </head>
-    <body>
-      <div class="card">
-        <div class="header">
-          <span class="brand">🌍 Atlas <span class="badge">Entel FSM</span></span>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b;">
+      <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        
+        <!-- Header con Espaciado Seguro -->
+        <div style="background-color: #0f172a; padding: 22px 26px;">
+          <table cellpadding="0" cellspacing="0" border="0" style="width: 100%;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <span style="color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; vertical-align: middle;">🌍 Atlas</span>
+                <span style="display: inline-block; margin-left: 14px; background-color: #f97316; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle;">ENTEL FSM</span>
+              </td>
+            </tr>
+          </table>
         </div>
-        <div class="body">
-          <h1>Tu visita técnica ha sido programada</h1>
-          <p>Hola <strong>{client_name}</strong>, tu orden de servicio de conectividad está confirmada. Puedes seguir el estado del técnico en tiempo real sin necesidad de crear contraseñas.</p>
+
+        <div style="padding: 32px 28px;">
+          <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 12px 0; color: #0f172a;">Tu visita técnica ha sido programada</h1>
+          <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Hola <strong>{client_name}</strong>, tu orden de servicio de conectividad está confirmada. Puedes seguir el estado del técnico en tiempo real sin necesidad de crear contraseñas.</p>
           
-          <div class="details">
-            <div class="detail-row">
-              <span class="detail-label">Orden de Trabajo:</span>
-              <span class="detail-value">{order_number}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Servicio:</span>
-              <span class="detail-value">{service_type}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Fecha acordada:</span>
-              <span class="detail-value">{scheduled_date_str}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Dirección:</span>
-              <span class="detail-value">{address}</span>
-            </div>
+          <!-- Tabla de Datos Clave (100% compatible con clientes de correo) -->
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+            <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; font-size: 13px;">
+              <tr>
+                <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Orden de Trabajo:</td>
+                <td style="color: #0f172a; font-weight: 700; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace;">{order_number}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Servicio:</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{service_type}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Fecha acordada:</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{scheduled_date_str}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Dirección:</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{address}</td>
+              </tr>
+              <tr>
+                <td style="color: #64748b; font-weight: 500; padding: 7px 0;">Técnico Asignado:</td>
+                <td style="color: #f97316; font-weight: 700; text-align: right; padding: 7px 0;">Alexander Sáez (Entel)</td>
+              </tr>
+            </table>
           </div>
 
-          <a href="{magic_link_url}" class="btn" target="_blank">Acceder al Portal de Seguimiento</a>
+          <!-- Botón de Acción Principal -->
+          <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin: 24px 0;">
+            <tr>
+              <td align="center">
+                <a href="{magic_link_url}" style="display: block; width: 100%; box-sizing: border-box; background-color: #f97316; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;" target="_blank">Acceder al Portal de Seguimiento</a>
+              </td>
+            </tr>
+          </table>
 
-          <div class="alert">
+          <div style="font-size: 12px; color: #64748b; background-color: #f1f5f9; padding: 12px; border-radius: 8px; text-align: center;">
             🛡️ <strong>Enlace seguro y personal:</strong> Este acceso es exclusivo para ti y tiene una vigencia estricta de 48 horas.
           </div>
         </div>
       </div>
-      <div class="footer">
+      <div style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
         © 2026 Atlas FSM para Entel Chile. Mensajería transaccional automática.
       </div>
     </body>
@@ -99,33 +106,36 @@ def build_service_completed_html(
     <html lang="es">
     <head>
       <meta charset="utf-8">
-      <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }}
-        .card {{ max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; }}
-        .header {{ background: #166534; padding: 24px; text-align: left; }}
-        .brand {{ color: #ffffff; font-size: 18px; font-weight: 700; }}
-        .body {{ padding: 32px 28px; }}
-        h1 {{ font-size: 20px; font-weight: 700; margin: 0 0 12px 0; color: #0f172a; }}
-        p {{ font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0; }}
-        .btn {{ display: block; width: 100%; box-sizing: border-box; background: #166534; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 15px; margin: 24px 0; }}
-        .footer {{ text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px; }}
-      </style>
+      <title>Atlas Entel - Servicio Finalizado</title>
     </head>
-    <body>
-      <div class="card">
-        <div class="header">
-          <span class="brand">✅ Atlas · Servicio Finalizado</span>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b;">
+      <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        <div style="background-color: #166534; padding: 22px 26px;">
+          <table cellpadding="0" cellspacing="0" border="0" style="width: 100%;">
+            <tr>
+              <td style="vertical-align: middle;">
+                <span style="color: #ffffff; font-size: 20px; font-weight: 800; vertical-align: middle;">✅ Atlas</span>
+                <span style="display: inline-block; margin-left: 14px; background-color: #15803d; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; vertical-align: middle;">SERVICIO FINALIZADO</span>
+              </td>
+            </tr>
+          </table>
         </div>
-        <div class="body">
-          <h1>Servicio técnico completado con éxito</h1>
-          <p>Estimado/a <strong>{client_name}</strong>, el técnico <strong>{technician_name}</strong> ha finalizado las labores correspondientes a la orden <strong>{order_number}</strong> ({service_type}) a las {completed_at_str}.</p>
+        <div style="padding: 32px 28px;">
+          <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 12px 0; color: #0f172a;">Servicio técnico completado con éxito</h1>
+          <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Estimado/a <strong>{client_name}</strong>, el técnico <strong>{technician_name}</strong> ha finalizado las labores correspondientes a la orden <strong>{order_number}</strong> ({service_type}) a las {completed_at_str}.</p>
           
-          <p>Tu acta de conformidad y respaldo técnico ya se encuentran registrados en la plataforma.</p>
+          <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Tu acta de conformidad y respaldo técnico ya se encuentran registrados en la plataforma.</p>
 
-          <a href="{magic_link_url}" class="btn" target="_blank">Ver Respaldo Digital y Acta de Servicio</a>
+          <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin: 24px 0;">
+            <tr>
+              <td align="center">
+                <a href="{magic_link_url}" style="display: block; width: 100%; box-sizing: border-box; background-color: #166534; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;" target="_blank">Ver Respaldo Digital y Acta de Servicio</a>
+              </td>
+            </tr>
+          </table>
         </div>
       </div>
-      <div class="footer">
+      <div style="text-align: center; font-size: 11px; color: #94a3b8; margin-top: 24px;">
         © 2026 Atlas FSM para Entel Chile.
       </div>
     </body>
