@@ -21,6 +21,7 @@ import { api } from "../../lib/api";
 import {
   mapApiSimToInventoryItem,
   mapApiRouterToInventoryItem,
+  STATUS_LABELS,
 } from "../../lib/auditAndHardwareData";
 
 // SimStatusEnum oficial del backend FastAPI / Neon DB
@@ -404,7 +405,7 @@ export function HardwareInventoryContent({ onClose }) {
               <option value="">Seleccionar Router...</option>
               {availableRouters.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.identifier} — {r.model} ({r.status})
+                  {r.identifier} — {r.model} ({STATUS_LABELS[r.status] || r.status})
                 </option>
               ))}
             </select>
@@ -423,7 +424,7 @@ export function HardwareInventoryContent({ onClose }) {
               <option value="">Seleccionar SIM (ICCID)...</option>
               {availableSims.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.identifier} ({s.technology} · {s.status})
+                  {s.identifier} ({s.technology} · {STATUS_LABELS[s.status] || s.status})
                 </option>
               ))}
             </select>
@@ -581,7 +582,7 @@ export function HardwareInventoryContent({ onClose }) {
             {STATUS_OPTIONS.map((status) => (
               <FilterPill
                 key={status}
-                label={status}
+                label={STATUS_LABELS[status] || status}
                 active={statusFilter === status}
                 onClick={() =>
                   setStatusFilter((cur) => (cur === status ? null : status))
@@ -760,7 +761,7 @@ export function HardwareInventoryContent({ onClose }) {
                             STATUS_BADGE_STYLES.DISPONIBLE
                           }`}
                         >
-                          {item.status}
+                          {STATUS_LABELS[item.status] || item.status}
                         </span>
                       </td>
 

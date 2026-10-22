@@ -11,8 +11,7 @@ import {
   Car,
   RefreshCw,
   CheckCircle2,
-  XCircle,
-  ToggleLeft,
+    ToggleLeft,
   ToggleRight,
 } from "lucide-react";
 import { api } from "../lib/api";
@@ -243,14 +242,24 @@ export default function Technicians() {
             <Users className="h-6 w-6" />
           </div>
           <p className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
-            No se encontraron técnicos
+            {filterAvailability === "UNAVAILABLE"
+              ? "No hay técnicos no disponibles"
+              : filterAvailability === "AVAILABLE"
+              ? "No hay técnicos disponibles"
+              : searchQuery
+              ? "No se encontraron técnicos"
+              : "No hay técnicos registrados"}
           </p>
           <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
-            {searchQuery
-              ? "Prueba cambiando el término de búsqueda o filtro."
+            {filterAvailability === "UNAVAILABLE"
+              ? "Todos los técnicos registrados se encuentran actualmente con disponibilidad operativa activa."
+              : filterAvailability === "AVAILABLE"
+              ? "Todos los técnicos registrados se encuentran actualmente ocupados en servicios o no disponibles."
+              : searchQuery
+              ? `Ningún técnico coincide con "${searchQuery}". Prueba cambiando el término de búsqueda o filtro.`
               : "Comienza registrando al primer técnico de cuadrilla en terreno."}
           </p>
-          {!searchQuery && (
+          {!searchQuery && filterAvailability === "ALL" && totalCount === 0 && (
             <button
               onClick={() => setIsModalOpen(true)}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600"

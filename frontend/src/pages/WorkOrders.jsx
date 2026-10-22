@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Filter, Plus, Inbox, Search, X, CheckCircle2, Cpu } from "lucide-react";
 import TaskCard from "../components/ui/TaskCard";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
@@ -10,7 +11,7 @@ import { useWorkOrders } from "../context/WorkOrderContext";
 // Opciones de filtro por Estado (OrderStatusEnum oficial + columnas Kanban)
 const STATUS_FILTERS = [
   { id: "CONFIRMADA", label: "Confirmada / Asignada", columnId: "asignada" },
-  { id: "IDLE", label: "Idle (Sin asignar)", columnId: "asignada" },
+  { id: "IDLE", label: "Pendiente (Sin asignar)", columnId: "asignada" },
   { id: "EN_RUTA", label: "En Ruta", columnId: "en-transito" },
   { id: "EN_SITIO", label: "En Sitio", columnId: "en-transito" },
   { id: "COMPLETADA", label: "Completada", columnId: "completada" },
@@ -182,7 +183,22 @@ export default function WorkOrders() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryParam = searchParams.get("search") || "";
+  const [search, setSearch] = useState(queryParam);
+
+  useEffect(() => {
+    setSearch(queryParam);
+  }, [queryParam]);
+
+  const handleSearchChange = (val) => {
+    setSearch(val);
+    if (val.trim()) {
+      setSearchParams({ search: val.trim() });
+    } else {
+      setSearchParams({});
+    }
+  };
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null); // OrderStatusEnum | null
   const [priorityFilter, setPriorityFilter] = useState(null); // OrderPriorityEnum | null
@@ -317,7 +333,7 @@ export default function WorkOrders() {
             <input
               type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Buscar OT, cliente o técnico..."
               aria-label="Buscar órdenes de trabajo"
               className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
@@ -456,6 +472,7 @@ export default function WorkOrders() {
             type="button"
             onClick={() => {
               setSearch("");
+              setSearchParams({});
               clearFilters();
             }}
             className="font-semibold text-orange-600 dark:text-orange-400 hover:underline"

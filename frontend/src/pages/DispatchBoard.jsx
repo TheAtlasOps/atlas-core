@@ -124,102 +124,204 @@ function makeIcon(hex) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS }) {
+function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrderId }) {
   const { isDark } = useTheme();
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              Zonas activas
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Distribución geográfica de OT ({markers.length} georreferenciadas)
-            </p>
+    <>
+      <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Zonas activas
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Distribución geográfica de órdenes ({markers.length} georreferenciadas)
+              </p>
+            </div>
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"
+              aria-label="En vivo"
+            />
           </div>
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"
-            aria-label="En vivo"
-          />
+          <button
+            type="button"
+            onClick={() => setIsExpanded(true)}
+            aria-label="Expandir mapa"
+            title="Expandir mapa a pantalla completa"
+            className="flex items-center justify-center rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label="Expandir mapa"
-          className="flex items-center justify-center rounded-md p-1 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-        >
-          <Maximize2 className="h-4 w-4" />
-        </button>
+
+        {isLoading ? (
+          <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+            <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
+          </div>
+        ) : (
+          <>
+            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
+              <MapContainer
+                center={[-33.4489, -70.6693]}
+                zoom={12}
+                scrollWheelZoom={false}
+                style={{
+                  height: "100%",
+                  width: "100%",
+                  background: isDark ? "#1a1a1a" : "#f1f5f9",
+                }}
+                zoomControl={false}
+                attributionControl={false}
+              >
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  subdomains="abcd"
+                  maxZoom={19}
+                />
+
+                {markers.map((m) => {
+                  const hex = getMarkerHexByStatus(m.status, m.hex);
+                  return (
+                    <Marker
+                      key={m.id}
+                      position={[m.lat, m.lng]}
+                      icon={makeIcon(hex)}
+                    >
+                      <Popup>
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            lineHeight: "1.5",
+                            minWidth: "140px",
+                          }}
+                        >
+                          <strong>
+                            {m.orderNumber
+                              ? `${m.orderNumber} · ${m.title || m.label || ""}`
+                              : m.label}
+                          </strong>
+                          <br />
+                          <span style={{ color: hex, fontWeight: "600" }}>{m.status}</span>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <LegendDot color="bg-primary" label="En camino / En sitio" />
+              <LegendDot color="bg-emerald-400" label="Completada" />
+              <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
+              <LegendDot color="bg-rose-400" label="Cancelada" />
+            </div>
+          </>
+        )}
       </div>
 
-      {isLoading ? (
-        <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
-          <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
+      {/* Modal de Mapa Expandido */}
+      {isExpanded && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative flex h-[90vh] w-full max-w-5xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#1e1e1e] overflow-hidden">
+            {/* Cabecera del modal */}
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-foreground">
+                  Distribución geográfica de órdenes de trabajo en terreno
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {markers.length} órdenes georreferenciadas en Región Metropolitana
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="rounded-lg p-2 text-muted-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                aria-label="Cerrar mapa"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Aviso informativo sobre cartografía y proveedores externos */}
+            <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+              <span>
+                ℹ️ Cartografía urbana de alta legibilidad provista vía CARTO Voyager / OpenStreetMap. Para incorporar capas satelitales privadas o tráfico vehicular en vivo, configure la variable de entorno <code>VITE_MAPBOX_TOKEN</code>.
+              </span>
+            </div>
+
+            {/* Mapa interactivo expandido */}
+            <div className="relative flex-1 w-full z-0 isolate">
+              <MapContainer
+                center={[-33.4489, -70.6693]}
+                zoom={13}
+                scrollWheelZoom={true}
+                style={{ height: "100%", width: "100%" }}
+                zoomControl={true}
+              >
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  subdomains="abcd"
+                  maxZoom={19}
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                />
+
+                {markers.map((m) => {
+                  const hex = getMarkerHexByStatus(m.status, m.hex);
+                  return (
+                    <Marker
+                      key={m.id}
+                      position={[m.lat, m.lng]}
+                      icon={makeIcon(hex)}
+                    >
+                      <Popup>
+                        <div style={{ fontSize: "12px", minWidth: "160px" }}>
+                          <p className="font-bold text-slate-900">{m.orderNumber || m.id}</p>
+                          <p className="text-slate-600 mt-0.5">{m.title || m.label}</p>
+                          <p className="mt-1" style={{ color: hex, fontWeight: "600" }}>{m.status}</p>
+                          {onSelectOrderId && (
+                            <button
+                              onClick={() => {
+                                setIsExpanded(false);
+                                onSelectOrderId(m.orderNumber || m.id);
+                              }}
+                              className="mt-2 w-full rounded bg-orange-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-orange-600"
+                            >
+                              Ver detalles de la orden
+                            </button>
+                          )}
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+
+            {/* Pie con leyenda */}
+            <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">
+              <div className="flex flex-wrap gap-4">
+                <LegendDot color="bg-primary" label="En camino / En sitio" />
+                <LegendDot color="bg-emerald-400" label="Completada" />
+                <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
+                <LegendDot color="bg-rose-400" label="Cancelada" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-slate-100 dark:hover:bg-white/5"
+              >
+                Cerrar vista
+              </button>
+            </div>
+          </div>
         </div>
-      ) : (
-        <>
-          <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
-            <MapContainer
-              center={[-33.4489, -70.6693]}
-              zoom={12}
-              scrollWheelZoom={false}
-              style={{
-                height: "100%",
-                width: "100%",
-                background: isDark ? "#0d0d0d" : "#e2e8f0",
-              }}
-              zoomControl={false}
-              attributionControl={false}
-            >
-              <TileLayer
-                key={isDark ? "dark" : "light"}
-                url={`https://{s}.basemaps.cartocdn.com/rastertiles/${
-                  isDark ? "dark_all" : "light_all"
-                }/{z}/{x}/{y}.png`}
-                subdomains="abcd"
-                maxZoom={19}
-              />
-
-              {markers.map((m) => {
-                const hex = getMarkerHexByStatus(m.status, m.hex);
-                return (
-                  <Marker
-                    key={m.id}
-                    position={[m.lat, m.lng]}
-                    icon={makeIcon(hex)}
-                  >
-                    <Popup>
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          lineHeight: "1.5",
-                          minWidth: "120px",
-                        }}
-                      >
-                        <strong>
-                          {m.orderNumber
-                            ? `${m.orderNumber} · ${m.title || m.label || ""}`
-                            : m.label}
-                        </strong>
-                        <br />
-                        <span style={{ color: hex }}>{m.status}</span>
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })}
-            </MapContainer>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <LegendDot color="bg-primary" label="En camino / En sitio" />
-            <LegendDot color="bg-emerald-400" label="Completada" />
-            <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
-            <LegendDot color="bg-rose-400" label="Cancelada" />
-          </div>
-        </>
       )}
-    </div>
+    </>
   );
 }
 
@@ -452,13 +554,17 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
                   {visit.id}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground leading-snug truncate">
+                  <p className="text-sm font-medium text-foreground leading-snug line-clamp-2" title={visit.service}>
                     {visit.service}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {visit.client}{" "}
-                    {visit.technician && `· Técnico: ${visit.technician}`}
-                  </p>
+                  <div className="text-xs text-muted-foreground mt-1 line-clamp-2" title={`${visit.client}${visit.technician ? ` · Técnico: ${visit.technician}` : ""}`}>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{visit.client}</span>
+                    {visit.technician && (
+                      <span className="block text-[11px] text-muted-foreground mt-0.5">
+                        Técnico: <span className="text-foreground/80">{visit.technician}</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <span
                   className={`
@@ -946,13 +1052,13 @@ export default function DispatchBoard() {
   const dynamicKpiData = useMemo(
     () => [
       {
-        label: "Ordenes Activas",
+        label: "Órdenes Activas",
         value: String(activeOrdersCount),
         delta: `${statusCounts.enRuta} en ruta · ${statusCounts.pendientes} pendientes`,
         icon: ClipboardList,
       },
       {
-        label: "Tecnicos en Campo",
+        label: "Técnicos en Campo",
         value: String(techStats.availableCount),
         delta: `${techStats.assignedActiveCount} con OT activas hoy`,
         icon: Users,
@@ -1095,10 +1201,10 @@ export default function DispatchBoard() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h1 className="text-2xl font-semibold tracking-tight text-balance">
-                    Dispatch Board
+                    Tablero de Despacho
                   </h1>
                   <p className="text-sm text-muted-foreground">
-                    Estado en tiempo real de las ordenes de trabajo Entel.
+                    Estado en tiempo real de las órdenes de trabajo Entel.
                   </p>
                 </div>
 
@@ -1259,7 +1365,7 @@ export default function DispatchBoard() {
 
             {/* Cuadrícula analítica de 3 columnas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} />
+              <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} onSelectOrderId={handleSelectOrderId} />
               <DonutChartCard
                 isLoading={isLoading}
                 statusCounts={statusCounts}
