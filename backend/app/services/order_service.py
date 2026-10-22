@@ -14,7 +14,7 @@ from app.models.user import User, Technician
 from app.models.magic_link import MagicLink
 from app.models.evidence import WorkOrderEvidence
 from app.models.inventory import SimCard
-from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum, SimStatusEnum
+from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum, SimStatusEnum, UserRoleEnum
 from app.schemas.work_order import (
     WorkOrderCreate,
     WorkOrderStatusUpdate,
@@ -22,8 +22,12 @@ from app.schemas.work_order import (
     SyncBatchRequest,
     SyncBatchResponse,
     DispatchKPIsResponse,
+    TechnicianSummary,
+    TechnicianCreate,
+    ClientSummary,
 )
 from app.services.auth_service import generate_magic_link_for_order
+from app.core.security import get_password_hash
 
 
 async def list_orders(
@@ -489,3 +493,119 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
         delayed_orders=delayed_orders,
         status_distribution=status_distribution,
     )
+
+
+async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
+    """Retorna el listado de técnicos activos consultando la base de datos."""
+    result = await db.execute(
+        select(Technician).options(selectinload(Technician.user))
+    )
+    technicians = result.scalars().all()
+    return [
+        TechnicianSummary(
+            id=t.id,
+            full_name=t.user.full_name if t.user else "Técnico",
+            rut=t.rut,
+            initials=t.initials,
+            phone=t.user.phone if t.user else None,
+            vehicle_plate=t.vehicle_plate,
+            is_available=t.is_available,
+        )
+        for t in technicians
+    ]
+
+
+async def list_clients(db: AsyncSession) -> List[ClientSummary]:
+    """Retorna el listado de clientes empresariales registrados."""
+    result = await db.execute(select(Client).order_by(Client.business_name))
+    clients = result.scalars().all()
+    return [ClientSummary.model_validate(c) for c in clients]
+
+
+async def create_technician(db: AsyncSession, tech_in: TechnicianCreate) -> TechnicianSummary:
+    """
+    Registra un nuevo técnico en el sistema creando su cuenta de usuario
+    y perfil de técnico en terreno con contraseña encriptada (bcrypt).
+    """
+    # 1. Validar que email no exista
+    existing_user = await db.execute(select(User).where(User.email == tech_in.email))
+    if existing_user.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El correo electrónico '{tech_in.email}' ya está registrado en el sistema."
+        )
+
+    # 2. Validar que RUT no exista
+    existing_rut = await db.execute(select(Technician).where(Technician.rut == tech_in.rut))
+    if existing_rut.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El RUT '{tech_in.rut}' ya está registrado con otro técnico."
+        )
+
+    # 3. Calcular iniciales si no vienen
+    initials = tech_in.initials
+    if not initials:
+        words = tech_in.full_name.strip().split()
+        initials = "".join(w[0].upper() for w in words[:2])
+
+    # 4. Crear usuario con rol TECNICO
+    new_user = User(
+        email=tech_in.email,
+        password_hash=get_password_hash(tech_in.password),
+        full_name=tech_in.full_name,
+        phone=tech_in.phone,
+        role=UserRoleEnum.TECNICO,
+        is_active=True,
+    )
+    db.add(new_user)
+    await db.flush()
+
+    # 5. Crear perfil de técnico
+    new_tech = Technician(
+        id=new_user.id,
+        rut=tech_in.rut,
+        initials=initials,
+        vehicle_plate=tech_in.vehicle_plate.upper() if tech_in.vehicle_plate else None,
+        is_available=True,
+    )
+    db.add(new_tech)
+    await db.commit()
+    await db.refresh(new_tech)
+    await db.refresh(new_user)
+
+    return TechnicianSummary(
+        id=new_tech.id,
+        full_name=new_user.full_name,
+        rut=new_tech.rut,
+        initials=new_tech.initials,
+        phone=new_user.phone,
+        vehicle_plate=new_tech.vehicle_plate,
+        is_available=new_tech.is_available,
+    )
+
+
+async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.UUID) -> TechnicianSummary:
+    """Alterna el estado de disponibilidad en campo de un técnico."""
+    result = await db.execute(
+        select(Technician).options(selectinload(Technician.user)).where(Technician.id == technician_id)
+    )
+    tech = result.scalar_one_or_none()
+    if not tech:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Técnico no encontrado")
+
+    tech.is_available = not tech.is_available
+    await db.commit()
+    await db.refresh(tech)
+
+    return TechnicianSummary(
+        id=tech.id,
+        full_name=tech.user.full_name if tech.user else "Técnico",
+        rut=tech.rut,
+        initials=tech.initials,
+        phone=tech.user.phone if tech.user else None,
+        vehicle_plate=tech.vehicle_plate,
+        is_available=tech.is_available,
+    )
+
+

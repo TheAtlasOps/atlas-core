@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional, Dict
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum
 
 
@@ -31,6 +31,17 @@ class TechnicianSummary(BaseModel):
     is_available: bool = True
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TechnicianCreate(BaseModel):
+    full_name: str = Field(..., min_length=3, max_length=150, description="Nombre completo del técnico")
+    email: EmailStr = Field(..., description="Correo de acceso corporativo")
+    password: str = Field(..., min_length=6, description="Contraseña temporal para la app móvil")
+    rut: str = Field(..., min_length=7, max_length=20, description="RUT chileno del técnico")
+    phone: Optional[str] = Field(None, max_length=50, description="Teléfono de contacto")
+    vehicle_plate: Optional[str] = Field(None, max_length=20, description="Patente del vehículo asignado")
+    initials: Optional[str] = Field(None, max_length=10, description="Iniciales del técnico")
+
 
 
 class OrderStatusHistoryResponse(BaseModel):

@@ -24,6 +24,7 @@ export const SERVICE_TYPES = ["Fibra", "SIM", "Red", "Hardware", "Magic Link"];
 export const PRIORITIES = ["BAJA", "MEDIA", "ALTA", "URGENTE"];
 
 export const TECHNICIANS = [
+  "Alexander Sáez López",
   "Juan Rojas",
   "Luis Paredes",
   "Matías Koch",
@@ -34,6 +35,7 @@ export const TECHNICIANS = [
 ];
 
 export const TECHNICIAN_UUID_MAP = {
+  "Alexander Sáez López": "b0000000-0000-0000-0000-000000000001",
   "Carlos Mendoza": "b0000000-0000-0000-0000-000000000001",
   "Juan Rojas": "b0000000-0000-0000-0000-000000000002",
   "Juan Rivas": "b0000000-0000-0000-0000-000000000002",

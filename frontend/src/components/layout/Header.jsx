@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, User, LogOut } from "lucide-react";
+import { Search, Bell, BellOff, CheckCheck, User, LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import AdminAvatar from "../ui/AdminAvatar";
 import AdminProfileModal from "../ui/AdminProfileModal";
@@ -22,10 +22,28 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [profile, setProfile] = useState(DEFAULT_ADMIN_PROFILE);
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
   const { isDark } = useTheme();
   const { user: authUser, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Cerrar menús al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setIsNotifOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchCurrentUser = useCallback(async () => {
     if (authUser) {
@@ -106,39 +124,79 @@ export default function Header() {
 
         <div className="flex items-center gap-3">
           {/* Notifications */}
-          <div className="relative">
+          <div className="relative" ref={notifRef}>
             <button
               id="btn-notifications"
               aria-label="Notifications"
               aria-expanded={isNotifOpen}
               onClick={() => {
-                setIsNotifOpen((prev) => !prev);
+                setIsNotifOpen((prev) => {
+                  const next = !prev;
+                  if (next) setUnreadCount(0);
+                  return next;
+                });
                 setIsMenuOpen(false);
               }}
               className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             >
               <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-primary" />
+              {unreadCount > 0 && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-[#1e1e1e]" />
+              )}
             </button>
 
             {isNotifOpen && (
               <div
                 role="dialog"
                 aria-label="Notifications panel"
-                className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-card p-4 shadow-xl"
+                className="absolute right-0 top-11 z-50 w-72 sm:w-80 rounded-xl border border-border bg-card p-4 shadow-xl"
               >
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Notificaciones
-                </p>
-                <p className="mt-3 text-center text-sm text-muted-foreground">
-                  No hay notificaciones nuevas
-                </p>
+                <div className="flex items-center justify-between pb-2.5 border-b border-border">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Notificaciones
+                  </p>
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setNotifications([]);
+                        setUnreadCount(0);
+                      }}
+                      className="text-[11px] text-orange-500 hover:text-orange-600 font-medium transition"
+                    >
+                      Limpiar todas
+                    </button>
+                  )}
+                </div>
+
+                {notifications.length === 0 ? (
+                  <div className="py-6 flex flex-col items-center justify-center text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-muted-foreground mb-2">
+                      <BellOff className="h-5 w-5 opacity-70" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Sin notificaciones
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      No tienes alertas ni avisos pendientes.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 divide-y divide-border max-h-60 overflow-y-auto">
+                    {notifications.map((n) => (
+                      <div key={n.id} className="py-2.5 text-xs">
+                        <p className="font-semibold text-foreground">{n.title}</p>
+                        <p className="text-muted-foreground mt-0.5">{n.message}</p>
+                        <span className="text-[10px] text-slate-400 mt-1 block">{n.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Profile */}
-          <div className="relative">
+          <div className="relative" ref={profileRef}>
             <button
               id="btn-profile"
               aria-label="Your profile"

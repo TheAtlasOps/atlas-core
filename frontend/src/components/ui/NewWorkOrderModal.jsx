@@ -34,6 +34,35 @@ function NewWorkOrderForm({ onClose, onCreate }) {
   const { refreshOrders } = useWorkOrders();
   const [form, setForm] = useState(INITIAL_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableTechs, setAvailableTechs] = useState([]);
+  const [availableClients, setAvailableClients] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchMetadata() {
+      try {
+        const [techsRes, clientsRes] = await Promise.allSettled([
+          api.orders.getTechnicians(),
+          api.orders.getClients(),
+        ]);
+        if (isMounted) {
+          if (techsRes.status === "fulfilled" && Array.isArray(techsRes.value)) {
+            setAvailableTechs(techsRes.value);
+            // Si hay técnicos y el formulario no tiene seleccionado ninguno, podemos preseleccionar o esperar selección
+          }
+          if (clientsRes.status === "fulfilled" && Array.isArray(clientsRes.value)) {
+            setAvailableClients(clientsRes.value);
+          }
+        }
+      } catch (err) {
+        console.warn("No se pudieron cargar técnicos en vivo:", err);
+      }
+    }
+    fetchMetadata();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const setField = (field) => (e) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -48,16 +77,31 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         ? addressParts[addressParts.length - 1].trim()
         : "Santiago";
 
-    const technicianId =
-      TECHNICIAN_UUID_MAP[form.technician] ||
-      "b0000000-0000-0000-0000-000000000002";
+    // Determinar ID del técnico seleccionado (UUID directo o mapeo por nombre)
+    const matchedTech = availableTechs.find(
+      (t) => t.id === form.technician || t.full_name === form.technician
+    );
+    const technicianId = matchedTech
+      ? matchedTech.id
+      : (TECHNICIAN_UUID_MAP[form.technician] ||
+         form.technician ||
+         availableTechs[0]?.id ||
+         "b0000000-0000-0000-0000-000000000001");
+
+    // Determinar ID del cliente (por coincidencia o primer cliente disponible)
+    const matchedClient = availableClients.find(
+      (c) => c.business_name.toLowerCase() === form.clientName.trim().toLowerCase()
+    );
+    const clientId = matchedClient
+      ? matchedClient.id
+      : (availableClients[0]?.id || DEFAULT_CLIENT_UUID);
 
     const orderPayload = {
       title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
       description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
       service_type: mapServiceTagToEnum(form.serviceType),
       priority: String(form.priority || "MEDIA").toUpperCase(),
-      client_id: DEFAULT_CLIENT_UUID,
+      client_id: clientId,
       client_name: form.clientName.trim(),
       technician_id: technicianId,
       scheduled_date: new Date().toISOString(),
@@ -147,11 +191,31 @@ function NewWorkOrderForm({ onClose, onCreate }) {
             id="new-wo-client"
             type="text"
             required
+            list="clients-datalist"
             value={form.clientName}
-            onChange={setField("clientName")}
-            placeholder="Ej: Sr. Ramírez"
+            onChange={(e) => {
+              const val = e.target.value;
+              const matched = availableClients.find(
+                (c) => c.business_name.toLowerCase() === val.trim().toLowerCase()
+              );
+              setForm((prev) => ({
+                ...prev,
+                clientName: val,
+                address: matched ? `${matched.address}, ${matched.comuna}` : prev.address,
+              }));
+            }}
+            placeholder="Ej: Entel B2B - Soluciones SpA"
             className={FIELD_CLASS}
           />
+          {availableClients.length > 0 && (
+            <datalist id="clients-datalist">
+              {availableClients.map((c) => (
+                <option key={c.id} value={c.business_name}>
+                  {c.business_name} ({c.comuna})
+                </option>
+              ))}
+            </datalist>
+          )}
         </div>
 
         <div>
@@ -225,11 +289,17 @@ function NewWorkOrderForm({ onClose, onCreate }) {
             <option value="" disabled>
               Seleccionar técnico...
             </option>
-            {TECHNICIANS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
+            {availableTechs.length > 0
+              ? availableTechs.map((tech) => (
+                  <option key={tech.id} value={tech.id}>
+                    {tech.full_name} {tech.vehicle_plate ? `(${tech.vehicle_plate})` : ""}
+                  </option>
+                ))
+              : TECHNICIANS.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
           </select>
         </div>
       </div>

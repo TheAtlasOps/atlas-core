@@ -3,6 +3,7 @@ import Sidebar from "./components/layout/Sidebar";
 import Header from "./components/layout/Header";
 import DispatchBoard from "./pages/DispatchBoard";
 import WorkOrders from "./pages/WorkOrders";
+import Technicians from "./pages/Technicians";
 import SimInventory from "./pages/SimInventory";
 import MagicLinks from "./pages/MagicLinks";
 import Settings from "./pages/Settings";
@@ -19,6 +20,7 @@ export default function AtlasDashboard() {
             <Routes>
               <Route path="/" element={<DispatchBoard />} />
               <Route path="/work-orders" element={<WorkOrders />} />
+              <Route path="/technicians" element={<Technicians />} />
               <Route path="/sim-inventory" element={<SimInventory />} />
               <Route path="/magic-links" element={<MagicLinks />} />
               <Route path="/settings" element={<Settings />} />

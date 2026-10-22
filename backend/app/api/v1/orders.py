@@ -19,6 +19,7 @@ from app.schemas.work_order import (
     SyncBatchResponse,
     ClientSummary,
     TechnicianSummary,
+    TechnicianCreate,
     OrderStatusHistoryResponse,
 )
 from app.services.order_service import (
@@ -29,6 +30,10 @@ from app.services.order_service import (
     assign_technician,
     process_offline_sync_batch,
     get_dispatch_kpis,
+    list_technicians,
+    list_clients,
+    create_technician,
+    toggle_technician_availability,
 )
 
 router = APIRouter()
@@ -156,6 +161,66 @@ async def get_kpis(
 ):
     """Métricas en tiempo real para el Dispatch Board."""
     return await get_dispatch_kpis(db)
+
+
+@router.get(
+    "/technicians",
+    response_model=List[TechnicianSummary],
+    summary="Listar técnicos disponibles",
+    description="Retorna el listado de técnicos registrados en base de datos para asignación de órdenes.",
+)
+async def get_technicians(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Consulta de técnicos para asignación de OT."""
+    return await list_technicians(db)
+
+
+@router.post(
+    "/technicians",
+    response_model=TechnicianSummary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar nuevo técnico",
+    description="Da de alta a un nuevo técnico creando su cuenta con rol TECNICO y credenciales para la app móvil.",
+)
+async def register_technician(
+    tech_in: TechnicianCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Alta de técnico en terreno."""
+    return await create_technician(db=db, tech_in=tech_in)
+
+
+@router.patch(
+    "/technicians/{technician_id}/toggle-availability",
+    response_model=TechnicianSummary,
+    summary="Alternar disponibilidad de técnico",
+    description="Cambia el estado de disponibilidad del técnico (disponible en campo / no disponible).",
+)
+async def toggle_availability(
+    technician_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Alternar disponibilidad de técnico."""
+    return await toggle_technician_availability(db=db, technician_id=technician_id)
+
+
+
+@router.get(
+    "/clients",
+    response_model=List[ClientSummary],
+    summary="Listar clientes registrados",
+    description="Retorna el listado de clientes en base de datos para creación y filtrado de órdenes.",
+)
+async def get_clients(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Consulta de clientes registrados."""
+    return await list_clients(db)
 
 
 @router.get(

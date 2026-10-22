@@ -70,6 +70,12 @@ export const api = {
       request(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ new_status: newStatus, comment }) }),
     assign: (id, technicianId, eta = null) =>
       request(`/orders/${id}/assign`, { method: "PATCH", body: JSON.stringify({ technician_id: technicianId, eta }) }),
+    getTechnicians: () => request("/orders/technicians"),
+    createTechnician: (techData) =>
+      request("/orders/technicians", { method: "POST", body: JSON.stringify(techData) }),
+    toggleTechnicianAvailability: (id) =>
+      request(`/orders/technicians/${id}/toggle-availability`, { method: "PATCH" }),
+    getClients: () => request("/orders/clients"),
   },
   inventory: {
     getSims: (params = {}) => {
