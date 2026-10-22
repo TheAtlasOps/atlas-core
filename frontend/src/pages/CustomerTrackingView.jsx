@@ -17,10 +17,7 @@ import {
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
-import {
-  getTrackingDataByUuid,
-  mapApiSummaryToTrackingOrder,
-} from "../lib/magicLinksData";
+import { mapApiSummaryToTrackingOrder } from "../lib/magicLinksData";
 import { api } from "../lib/api";
 
 const DEFAULT_SIGNATURE_BASE64 =
@@ -34,7 +31,8 @@ export default function CustomerTrackingView() {
     [searchParams, uuid]
   );
 
-  const fallbackOrder = useMemo(() => getTrackingDataByUuid(token), [token]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [apiSummary, setApiSummary] = useState(null);
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -51,10 +49,12 @@ export default function CustomerTrackingView() {
   const [isSigned, setIsSigned] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
 
-  // Consulta api.clientPortal.getSummary(token) con fallback a Mock Data para Vercel
+  // Consulta en vivo a la API de Neon PostgreSQL
   useEffect(() => {
     let cancelled = false;
     async function fetchPortalSummary() {
+      setIsLoading(true);
+      setFetchError(null);
       try {
         const data = await api.clientPortal.getSummary(token);
         if (!cancelled && data) {
@@ -62,8 +62,10 @@ export default function CustomerTrackingView() {
           if (data.is_confirmed) setVisitConfirmed(true);
           if (data.signature_url || data.is_completed) setIsSigned(true);
         }
-      } catch {
-        // Fallback silencioso a datos Mock en Vercel
+      } catch (err) {
+        if (!cancelled) setFetchError(err.message || "Error al cargar datos");
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     }
     fetchPortalSummary();
@@ -73,8 +75,8 @@ export default function CustomerTrackingView() {
   }, [token]);
 
   const order = useMemo(
-    () => mapApiSummaryToTrackingOrder(apiSummary, fallbackOrder),
-    [apiSummary, fallbackOrder]
+    () => mapApiSummaryToTrackingOrder(apiSummary),
+    [apiSummary]
   );
 
   const timelineSteps = useMemo(
@@ -141,6 +143,41 @@ export default function CustomerTrackingView() {
       setCommentText("");
     }, 2400);
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white flex items-center justify-center p-6">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="h-10 w-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-500 dark:text-gray-400 font-medium">
+            Conectando con Atlas Entel FSM...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!order || fetchError) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl p-8 text-center shadow-lg">
+          <div className="h-12 w-12 rounded-full bg-red-500/10 text-red-500 mx-auto flex items-center justify-center mb-4">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <h2 className="text-lg font-bold mb-2">Enlace no disponible</h2>
+          <p className="text-sm text-slate-500 dark:text-gray-400 mb-6">
+            El enlace de seguimiento no es válido, ha caducado o no se encuentra en el sistema de despacho.
+          </p>
+          <a
+            href="https://www.entel.cl"
+            className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-gray-800 text-xs font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            Ir al portal corporativo Entel
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   const isCompletedStatus =
     order.status_key === "completada" || order.statusKey === "finalizado";
