@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -67,11 +68,17 @@ async def resend_magic_link(
         order.client.contact_email = str(request.recipient_email)
         await db.commit()
 
-    # 3. Obtener token activo de Magic Link o auto-generarlo
+    # 3. Obtener token activo de Magic Link (vigente) o auto-generarlo
     active_token = None
     if order.magic_links:
-        for ml in order.magic_links:
-            if ml.is_active:
+        now_utc = datetime.now(timezone.utc)
+        sorted_links = sorted(
+            order.magic_links,
+            key=lambda l: l.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        for ml in sorted_links:
+            if ml.is_active and ml.expires_at > now_utc:
                 active_token = ml.token
                 break
 

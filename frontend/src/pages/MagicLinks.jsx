@@ -24,22 +24,22 @@ function MagicLinksSkeleton() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-slate-200 dark:border-gray-700">
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Cliente
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 OT / Enlace Único
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Técnico Asignado
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Estado
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Fecha Programada
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 text-right">
                 Acciones
               </th>
             </tr>
@@ -78,13 +78,16 @@ function MagicLinksSkeleton() {
 function StatusBadge({ status }) {
   const isActive = status === "Activo" || status === "ACTIVO";
   const isCompleted = status === "Completado";
+  const isNoLink = status === "Sin enlace";
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide ring-1 ${
         isActive
           ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-emerald-500/25"
           : isCompleted
           ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-blue-500/25"
+          : isNoLink
+          ? "bg-slate-500/15 text-slate-600 dark:text-slate-400 ring-slate-500/25"
           : "bg-gray-500/15 text-slate-500 dark:text-gray-400 ring-gray-500/25"
       }`}
     >
@@ -94,6 +97,8 @@ function StatusBadge({ status }) {
             ? "bg-emerald-400"
             : isCompleted
             ? "bg-blue-400"
+            : isNoLink
+            ? "bg-slate-400"
             : "bg-gray-500"
         }`}
       />
@@ -168,6 +173,7 @@ export default function MagicLinks() {
         const dynamicLinks = res.items.map((o) => {
           const otNum = o.order_number;
           const token = buildOrderMagicToken(o);
+          const hasToken = Boolean(token && token.trim());
           const clientName =
             o.client?.contact_person ||
             o.client?.business_name ||
@@ -198,7 +204,7 @@ export default function MagicLinks() {
             id: o.id,
             workOrderId: o.id,
             token,
-            hasPersistedToken: Boolean(o.active_magic_link_token),
+            hasPersistedToken: hasToken,
             scheduledDateDisplay,
             client: clientName,
             clientEmail,
@@ -207,16 +213,17 @@ export default function MagicLinks() {
             ot: otNum,
             order_number: otNum,
             orderNumber: otNum,
-            status:
-              o.status === "COMPLETADA"
-                ? "Completado"
-                : o.status === "CANCELADA"
-                ? "Inactivo"
-                : "Activo",
+            status: !hasToken
+              ? "Sin enlace"
+              : o.status === "COMPLETADA"
+              ? "Completado"
+              : o.status === "CANCELADA"
+              ? "Inactivo"
+              : "Activo",
             status_key: (o.status || "IDLE").toLowerCase(),
             createdAgo: formatRelativeTime(o.created_at || o.scheduled_date),
-            path: `/status/${token}`,
-            url: `${window.location.origin}/status/${token}`,
+            path: hasToken ? `/status/${token}` : "",
+            url: hasToken ? `${window.location.origin}/status/${token}` : "",
             serviceType: o.title || "Servicio Técnico Atlas",
             technician: {
               name: techName,
@@ -346,7 +353,23 @@ export default function MagicLinks() {
 
     setIsGenerating(true);
     try {
-      await api.auth.generateMagicLink(selectedOrderId, 48);
+      const genRes = await api.auth.generateMagicLink(selectedOrderId, 48);
+      if (genRes?.token) {
+        setLinksList((prev) =>
+          prev.map((item) =>
+            item.workOrderId === selectedOrderId
+              ? {
+                  ...item,
+                  token: genRes.token,
+                  hasPersistedToken: true,
+                  path: `/status/${genRes.token}`,
+                  url: `${window.location.origin}/status/${genRes.token}`,
+                  status: "Activo",
+                }
+              : item
+          )
+        );
+      }
 
       let emailSent = false;
       const targetEmail = customEmail.trim();
@@ -484,22 +507,22 @@ export default function MagicLinks() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-gray-700 bg-slate-50/40 dark:bg-gray-900/20">
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                     Cliente
                   </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                     OT / Enlace Único
                   </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                     Técnico Asignado
                   </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                     Estado
                   </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                     Fecha Programada
                   </th>
-                  <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right">
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 text-right">
                     Acciones
                   </th>
                 </tr>
@@ -543,13 +566,19 @@ export default function MagicLinks() {
                           <span className="font-mono text-xs font-semibold text-orange-600 dark:text-orange-400">
                             {row.ot}
                           </span>
-                          <Link
-                            to={row.path}
-                            className="font-mono text-[11px] text-slate-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 truncate max-w-[180px]"
-                            title={`Abrir ${row.path}`}
-                          >
-                            {row.path}
-                          </Link>
+                          {row.hasPersistedToken ? (
+                            <Link
+                              to={row.path}
+                              className="font-mono text-xs text-slate-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 truncate max-w-[180px]"
+                              title={`Abrir ${row.path}`}
+                            >
+                              {row.path}
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-slate-400 dark:text-gray-500 italic">
+                              Sin enlace generado
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -565,7 +594,7 @@ export default function MagicLinks() {
                             <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                               {row.technician?.name}
                             </p>
-                            <p className="text-[10px] text-slate-500 dark:text-gray-400 font-mono">
+                            <p className="text-xs text-slate-500 dark:text-gray-400 font-mono">
                               {row.technician?.credentialId}
                             </p>
                           </div>
@@ -583,7 +612,7 @@ export default function MagicLinks() {
                           <span className="font-medium text-slate-800 dark:text-slate-200">
                             {row.scheduledDateDisplay || "Fecha por coordinar"}
                           </span>
-                          <span className="text-[10px] text-slate-500 dark:text-gray-400 font-mono">
+                          <span className="text-xs text-slate-500 dark:text-gray-400">
                             {row.createdAgo}
                           </span>
                         </div>
@@ -592,36 +621,54 @@ export default function MagicLinks() {
                       {/* Acciones */}
                       <td className="px-5 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Botón Enviar Correo vía Resend a dirección personalizada */}
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSendModal(row)}
-                            title="Enviar Magic Link a un correo (Resend)"
-                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
-                          >
-                            <Mail className="h-4 w-4" />
-                          </button>
+                          {row.hasPersistedToken ? (
+                            <>
+                              {/* Botón Enviar Correo vía Resend a dirección personalizada */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSendModal(row)}
+                                title="Enviar Magic Link a un correo (Resend)"
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                              >
+                                <Mail className="h-4 w-4" />
+                              </button>
 
-                          {/* Abrir vista de la orden */}
-                          <a
-                            href={row.path}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={`Abrir vista de seguimiento para ${row.ot} (${row.company})`}
-                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
+                              {/* Abrir vista de la orden */}
+                              <a
+                                href={row.path}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`Abrir vista de seguimiento para ${row.ot} (${row.company})`}
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10 transition-colors"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
 
-                          {/* Copiar enlace */}
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(row.url)}
-                            title="Copiar Magic Link al portapapeles"
-                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
+                              {/* Copiar enlace */}
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(row.url)}
+                                title="Copiar Magic Link al portapapeles"
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedOrderId(row.workOrderId);
+                                setCustomEmail(row.clientEmail || "");
+                                setIsGenerateModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 transition-all shadow-sm active:scale-95"
+                              title={`Generar enlace de seguimiento para ${row.ot}`}
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              <span>Generar</span>
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -218,16 +218,34 @@ export function buildVisitsFromOrders(ordersList) {
       statusStyle = "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25";
     }
 
-    const baseHours = 14 + Math.floor(idx / 2);
-    const baseMins = (idx % 2) * 30;
-    const timeStr = `${String(baseHours).padStart(2, "0")}:${String(baseMins).padStart(2, "0")}`;
+    let timeStr = "";
+    if (o.scheduled_date) {
+      try {
+        const d = new Date(o.scheduled_date);
+        if (!isNaN(d.getTime())) {
+          timeStr = d.toLocaleTimeString("es-CL", {
+            timeZone: "America/Santiago",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    if (!timeStr) {
+      const baseHours = 14 + Math.floor(idx / 2);
+      const baseMins = (idx % 2) * 30;
+      timeStr = `${String(baseHours).padStart(2, "0")}:${String(baseMins).padStart(2, "0")}`;
+    }
 
     const locationPart = (norm.comuna || norm.location || "Santiago").split(",")[0].trim();
     const clientDisplay = `${norm.clientName} — ${locationPart}`;
 
     return {
       id: norm.orderId,
-      time: o.scheduled_time || o.time || timeStr,
+      time: o.scheduled_time || timeStr,
       service: norm.title,
       serviceType: norm.tag,
       client: clientDisplay,
@@ -267,8 +285,28 @@ export function buildActivitiesFromOrders(ordersList) {
       status = "Programada";
     }
 
-    const minuteVal = Math.max(10, 58 - idx * 8);
-    const minuteStr = String(minuteVal).padStart(2, "0");
+    let timeFormatted = "";
+    const dateSource = o.updated_at || o.created_at || o.scheduled_date;
+    if (dateSource) {
+      try {
+        const d = new Date(dateSource);
+        if (!isNaN(d.getTime())) {
+          timeFormatted = d.toLocaleTimeString("es-CL", {
+            timeZone: "America/Santiago",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    if (!timeFormatted) {
+      const minuteVal = Math.max(10, 58 - idx * 8);
+      const minuteStr = String(minuteVal).padStart(2, "0");
+      timeFormatted = `13:${minuteStr}`;
+    }
 
     return {
       id: norm.orderId,
@@ -277,7 +315,7 @@ export function buildActivitiesFromOrders(ordersList) {
       action,
       status,
       serviceType: norm.tag,
-      time: `13:${minuteStr}`,
+      time: timeFormatted,
     };
   });
 }

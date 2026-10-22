@@ -110,9 +110,9 @@ export default function TaskCard({
           {isAudited && (
             <span
               title="Auditoría técnica verificada"
-              className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 dark:text-emerald-400"
+              className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400"
             >
-              <ShieldCheck className="h-2.5 w-2.5" />
+              <ShieldCheck className="h-3 w-3" />
               Auditada
             </span>
           )}
@@ -120,7 +120,7 @@ export default function TaskCard({
         <span
           className={`
             inline-flex items-center rounded-full px-2.5 py-0.5
-            text-[10px] font-bold uppercase tracking-wide shrink-0
+            text-xs font-semibold uppercase tracking-wide shrink-0
             ${p.pill}
           `}
         >
@@ -134,7 +134,7 @@ export default function TaskCard({
           {title}
         </h3>
         {resolvedClient && (
-          <p className="text-[11px] font-medium text-slate-500 dark:text-gray-400 truncate">
+          <p className="text-xs font-medium text-slate-500 dark:text-gray-400 truncate">
             {resolvedClient}
           </p>
         )}
@@ -153,11 +153,11 @@ export default function TaskCard({
         {/* Etiqueta de categoría */}
         <div className="flex items-center gap-1.5">
           {tag ? (
-            <span className="shrink-0 rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
+            <span className="shrink-0 rounded-md bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-xs font-medium text-slate-500 dark:text-gray-400 uppercase tracking-wide">
               {tag}
             </span>
           ) : null}
-          <span className="text-[10px] font-semibold text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-xs font-semibold text-orange-500 opacity-0 group-hover:opacity-100 transition-opacity">
             Ver auditoría →
           </span>
         </div>
