@@ -257,6 +257,19 @@ async def update_order_status(
     if old_status == new_status:
         return order
 
+    # Regla de Auditoría y Cierre: No se puede aprobar auditoría ni completar sin técnico o desde estado pendiente
+    if new_status == OrderStatusEnum.COMPLETADA:
+        if not order.technician_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede aprobar la auditoría ni completar la orden: no cuenta con un técnico responsable asignado."
+            )
+        if old_status == OrderStatusEnum.IDLE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede aprobar la auditoría de una orden que figura en estado Pendiente. Debe registrarse la atención en terreno previamente."
+            )
+
     now_utc = datetime.now(timezone.utc)
     order.status = new_status
     order.updated_at = now_utc

@@ -355,7 +355,7 @@ export default function WorkOrders() {
             <Filter className="h-3.5 w-3.5" aria-hidden="true" />
             Filtros
             {activeFilterCount > 0 && (
-              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-xs font-semibold text-white">
                 {activeFilterCount}
               </span>
             )}
@@ -390,7 +390,7 @@ export default function WorkOrders() {
           className="flex shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-gray-700 dark:bg-[#1e1e1e]"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+            <span className="w-28 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
               Estado
             </span>
             {STATUS_FILTERS.map((s) => (
@@ -403,7 +403,7 @@ export default function WorkOrders() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+            <span className="w-28 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
               Prioridad
             </span>
             {PRIORITIES.map((p) => (
@@ -416,7 +416,7 @@ export default function WorkOrders() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="w-28 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+            <span className="w-28 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
               Tipo de servicio
             </span>
             {SERVICE_TYPES.map((s) => (

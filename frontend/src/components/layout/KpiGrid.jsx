@@ -26,7 +26,7 @@ function KpiCard({ kpi }) {
           <kpi.icon className="h-4 w-4" />
         </div>
       </div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
+      <p className="mt-4 text-2xl lg:text-3xl font-semibold tracking-tight text-foreground whitespace-nowrap">
         {kpi.value}
       </p>
       <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">

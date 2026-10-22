@@ -483,12 +483,12 @@ function DonutChartCard({ isLoading, statusCounts }) {
                   />
                 ))}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-foreground tabular-nums">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+                <span className="text-2xl font-bold text-foreground">
                   {total}
                 </span>
-                <span className="text-[10px] text-muted-foreground">
-                  visitas hoy
+                <span className="text-xs font-medium text-muted-foreground">
+                  órdenes registradas
                 </span>
               </div>
             </div>
@@ -513,7 +513,7 @@ function DonutChartCard({ isLoading, statusCounts }) {
                   <span className="text-xs font-semibold text-foreground tabular-nums">
                     {seg.value}
                   </span>
-                  <span className="text-[10px] text-muted-foreground w-7 text-right tabular-nums">
+                  <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">
                     {total > 0 ? Math.round((seg.value / total) * 100) : 0}%
                   </span>
                 </div>
@@ -612,7 +612,7 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
                     </span>
                   )}
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${visit.statusStyle}`}
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${visit.statusStyle}`}
                   >
                     {visit.status}
                   </span>
@@ -621,9 +621,9 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
             ))}
           </ol>
           {visits.length > 4 && (
-            <div className="pt-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
+            <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
               <span>{visits.length} órdenes registradas</span>
-              <span className="text-[10px] font-medium text-orange-600 dark:text-orange-400">
+              <span className="text-xs font-medium text-orange-600 dark:text-orange-400">
                 Desliza para ver más
               </span>
             </div>
@@ -677,8 +677,8 @@ function ActivityTable({ log = [], onSelectOrderId }) {
             Últimas acciones registradas por los técnicos · Haz clic en una fila para ver auditoría
           </p>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono">
-          Hoy · {new Date().toLocaleDateString("es-CL")}
+        <span className="text-xs text-muted-foreground font-medium">
+          Bitácora en tiempo real (America/Santiago)
         </span>
       </div>
 
@@ -686,16 +686,16 @@ function ActivityTable({ log = [], onSelectOrderId }) {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-slate-200 dark:border-gray-700">
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 w-28">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 w-28">
                 ID Orden
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Técnico
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Acción
               </th>
-              <th className="px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-gray-400 text-right w-20">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 text-right w-20">
                 Hora
               </th>
             </tr>
@@ -863,18 +863,18 @@ function AiInsights({
               className="rounded-lg border border-border bg-background/40 p-3"
             >
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-0.5" />
-                    <p className="text-xs font-semibold text-foreground leading-snug">
-                      {insight.title}
-                    </p>
-                  </div>
-                  <span className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-orange-600 dark:text-orange-400">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="shrink-0 rounded-md bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:text-orange-400">
                     {insight.badge}
                   </span>
                 </div>
-                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                <div className="flex items-start gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1" />
+                  <h3 className="text-xs font-semibold text-foreground leading-snug">
+                    {insight.title}
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed pl-3">
                   {insight.body}
                 </p>
               </div>

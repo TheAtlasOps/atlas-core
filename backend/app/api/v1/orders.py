@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,11 +60,17 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
             is_available=order.technician.is_available,
         )
 
-    # Buscar token de Magic Link activo si existe
+    # Buscar token de Magic Link activo si existe (regla: a lo sumo 1 activo y vigente)
     active_token = None
     if order.magic_links:
-        for ml in order.magic_links:
-            if ml.is_active:
+        now_utc = datetime.now(timezone.utc)
+        sorted_links = sorted(
+            order.magic_links,
+            key=lambda l: l.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        for ml in sorted_links:
+            if ml.is_active and ml.expires_at > now_utc:
                 active_token = ml.token
                 break
 

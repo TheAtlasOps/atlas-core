@@ -497,8 +497,10 @@ export function getOrderAuditPackage(
     const timeLabel =
       dateObj && !Number.isNaN(dateObj.getTime())
         ? dateObj.toLocaleTimeString("es-CL", {
+            timeZone: "America/Santiago",
             hour: "2-digit",
             minute: "2-digit",
+            hour12: false,
           }) + " hrs"
         : "Registrado";
 
@@ -625,11 +627,13 @@ export function getOrderAuditPackage(
     : null;
   const signedAtText =
     sigDate && !Number.isNaN(sigDate.getTime())
-      ? sigDate.toLocaleDateString("es-CL") +
+      ? sigDate.toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) +
         " · " +
         sigDate.toLocaleTimeString("es-CL", {
+          timeZone: "America/Santiago",
           hour: "2-digit",
           minute: "2-digit",
+          hour12: false,
         }) +
         " hrs"
       : isAudited

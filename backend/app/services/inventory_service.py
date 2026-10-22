@@ -310,17 +310,18 @@ async def pair_devices(
             detail=f"Tarjeta SIM con ID {pair_req.sim_card_id} no encontrada"
         )
 
-    # 3. Control de Exclusividad Estricto (RF-API-03 / 14-DocArq §3.2)
-    if (
-        sim.status == SimStatusEnum.INSTALADA
-        and pair_req.client_id
-        and sim.installed_client_id != pair_req.client_id
-        and pair_req.action_type != "REEMPLAZO"
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Conflicto de exclusividad: La SIM {sim.iccid} ya está instalada activamente en otra sede/cliente."
-        )
+    # 3. Control de Exclusividad Estricto y Hardware Instalado (RF-API-03 / 14-DocArq §3.2)
+    if pair_req.action_type != "REEMPLAZO":
+        if equip.status == EquipmentStatusEnum.INSTALADO:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No es posible emparejar o reasignar el router '{equip.serial_number}': actualmente figura como INSTALADO en otra orden o sede. Requiere flujo formal de desinstalación o reemplazo."
+            )
+        if sim.status == SimStatusEnum.INSTALADA:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No es posible emparejar o reasignar la tarjeta SIM '{sim.iccid}': actualmente figura como INSTALADA en otra orden o sede. Requiere flujo formal de desinstalación o reemplazo."
+            )
 
     # 4. Actualizar asignación de sede o técnico
     if pair_req.client_id:

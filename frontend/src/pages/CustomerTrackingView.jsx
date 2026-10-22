@@ -312,11 +312,7 @@ export default function CustomerTrackingView() {
                 ? "Este Magic Link ha caducado o fue reemplazado por un enlace más reciente. Solicita un nuevo enlace al centro de despacho."
                 : "El enlace ingresado no existe o no corresponde a ninguna orden activa en la plataforma ATLAS.")}
           </p>
-          {token && (
-            <p className="text-[11px] font-mono text-slate-400 dark:text-gray-500 bg-slate-100 dark:bg-gray-800/70 rounded-lg px-3 py-1.5 mb-6 break-all">
-              Token consultado: {token}
-            </p>
-          )}
+
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
             <a
               href="tel:6003600106"

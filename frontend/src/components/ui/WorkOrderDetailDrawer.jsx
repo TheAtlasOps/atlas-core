@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
@@ -229,6 +230,7 @@ function WorkOrderDetailDrawerContent({
   const [apiEvidences, setApiEvidences] = useState(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
+  const [approveError, setApproveError] = useState(null);
 
   // Reset estados internos y consultar detalle completo y evidencias reales de la OT
   useEffect(() => {
@@ -237,6 +239,7 @@ function WorkOrderDetailDrawerContent({
     setIsReassigning(false);
     setSelectedRouterId("");
     setSelectedSimId("");
+    setApproveError(null);
     setApiOrderDetail(null);
     setApiEvidences(null);
 
@@ -356,7 +359,37 @@ function WorkOrderDetailDrawerContent({
     }
   };
 
+  const unfulfilledRequirements = (() => {
+    const missing = [];
+    const hasTech = Boolean(order.technician_summary?.full_name || order.assigneeName);
+    if (!hasTech) {
+      missing.push("Asignación de técnico responsable");
+    }
+    const isPending = order.status === "IDLE" || order.rawStatus === "IDLE";
+    if (isPending) {
+      missing.push("Intervención operativa en terreno (la orden figura en estado Pendiente)");
+    }
+    const hasEvidence = auditData.evidences.length > 0 || auditData.telemetry?.hasRealTelemetry;
+    if (!hasEvidence) {
+      missing.push("Evidencias técnicas o test de conectividad en terreno");
+    }
+    if (!auditData.conformity?.isSigned) {
+      missing.push("Firma digital de conformidad del cliente receptor");
+    }
+    return missing;
+  })();
+
+  const canApprove = unfulfilledRequirements.length === 0 || isAudited;
+
   const handleApproveAudit = async () => {
+    setApproveError(null);
+    if (!canApprove) {
+      setApproveError(
+        `No se puede aprobar la auditoría: faltan requisitos obligatorios (${unfulfilledRequirements.join("; ")}).`
+      );
+      return;
+    }
+
     setIsApproving(true);
     try {
       if (order.id) {
@@ -367,12 +400,12 @@ function WorkOrderDetailDrawerContent({
         );
         await refreshOrders();
       }
-    } catch {
-      // Fallback: actualiza columna y badge en estado local
-    } finally {
       approveOrderAudit(order);
       setIsApproving(false);
       onClose();
+    } catch (err) {
+      setApproveError(err.message || "Error al registrar la aprobación de la auditoría en el backend.");
+      setIsApproving(false);
     }
   };
 
@@ -501,22 +534,22 @@ function WorkOrderDetailDrawerContent({
                       id="section-evidences"
                       className="text-sm font-bold text-slate-900 dark:text-white"
                     >
-                      Evidencia Fotográfica en Terreno
+                      Registro Fotográfico y Diagnóstico en Terreno
                     </h3>
-                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                    <p className="text-xs text-slate-500 dark:text-gray-400">
                       {auditData.evidences.length > 0
-                        ? "Respaldo visual capturado por el técnico · Haz clic para ampliar"
+                        ? "Respaldo visual y mediciones capturadas por el técnico · Haz clic para ampliar"
                         : "Sin capturas verificadas aún para esta orden"}
                     </p>
                   </div>
                 </div>
                 {auditData.evidences.length > 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-3 w-3" />
                     {auditData.evidences.length} Verificada(s)
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/30">
                     <Clock className="h-3 w-3" />
                     Pendiente de captura
                   </span>
@@ -541,20 +574,20 @@ function WorkOrderDetailDrawerContent({
                         />
 
                         {/* Etiqueta de hora (arriba izquierda) */}
-                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-[10px] font-medium text-white backdrop-blur-xs">
+                        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/75 px-1.5 py-0.5 font-mono text-xs font-medium text-white backdrop-blur-xs">
                           <Clock className="h-2.5 w-2.5 text-orange-400" />
                           {ev.timestamp}
                         </span>
 
                         {/* Badge Verificado (arriba derecha) */}
-                        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                        <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-emerald-500/90 px-2 py-0.5 text-xs font-bold text-white shadow-xs">
                           <CheckCircle2 className="h-2.5 w-2.5" />
                           {ev.status}
                         </span>
 
                         {/* Overlay hover para ver en grande */}
                         <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-md">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-2.5 py-1 text-xs font-semibold text-white shadow-md">
                             <ZoomIn className="h-3.5 w-3.5" />
                             Ampliar
                           </span>
@@ -562,10 +595,23 @@ function WorkOrderDetailDrawerContent({
                       </div>
 
                       <div className="p-2.5 flex-1 flex flex-col justify-between">
-                        <p className="text-xs font-semibold text-slate-900 dark:text-white leading-snug">
-                          {ev.title}
-                        </p>
-                        <p className="mt-1 text-[10px] text-slate-500 dark:text-gray-400 line-clamp-2">
+                        <div>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold mb-1.5 ${
+                              ev.kind === "speedtest"
+                                ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300"
+                                : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                            }`}
+                          >
+                            {ev.kind === "speedtest"
+                              ? "📊 Diagnóstico Técnico"
+                              : "📷 Fotografía en Terreno"}
+                          </span>
+                          <p className="text-xs font-semibold text-slate-900 dark:text-white leading-snug">
+                            {ev.title}
+                          </p>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-gray-400 line-clamp-2">
                           {ev.description}
                         </p>
                       </div>
@@ -627,11 +673,11 @@ function WorkOrderDetailDrawerContent({
                       <Clock className="h-3.5 w-3.5 text-amber-500" />
                     )}
                   </div>
-                  <p className="mt-1 font-mono text-base font-bold text-slate-900 dark:text-white">
+                  <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.signalDbm}
                   </p>
                   <p
-                    className={`mt-0.5 text-[10px] font-medium ${
+                    className={`mt-0.5 text-xs font-medium ${
                       hasRealTelemetry
                         ? "text-emerald-600 dark:text-emerald-400"
                         : "text-amber-600 dark:text-amber-400"
@@ -643,16 +689,16 @@ function WorkOrderDetailDrawerContent({
 
                 <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                       RSRP / SINR
                     </span>
                     <Activity className="h-3.5 w-3.5 text-orange-500" />
                   </div>
-                  <p className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white">
+                  <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.rsrp} / {auditData.telemetry.sinr}
                   </p>
                   <p
-                    className={`mt-0.5 text-[10px] font-medium ${
+                    className={`mt-0.5 text-xs font-medium ${
                       hasRealTelemetry
                         ? "text-emerald-600 dark:text-emerald-400"
                         : "text-amber-600 dark:text-amber-400"
@@ -664,7 +710,7 @@ function WorkOrderDetailDrawerContent({
 
                 <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                       Navegación
                     </span>
                     {hasRealTelemetry ? (
@@ -673,11 +719,11 @@ function WorkOrderDetailDrawerContent({
                       <Clock className="h-3.5 w-3.5 text-amber-500" />
                     )}
                   </div>
-                  <p className="mt-1 font-mono text-sm font-bold text-slate-900 dark:text-white">
+                  <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">
                     {auditData.telemetry.downloadMbps}
                   </p>
                   <p
-                    className={`mt-0.5 text-[10px] font-medium ${
+                    className={`mt-0.5 text-xs font-medium ${
                       hasRealTelemetry
                         ? "text-emerald-600 dark:text-emerald-400"
                         : "text-amber-600 dark:text-amber-400"
@@ -708,7 +754,7 @@ function WorkOrderDetailDrawerContent({
                       </span>
                     </div>
                     <span
-                      className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold ${
+                      className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold ${
                         item.passed
                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
@@ -1020,28 +1066,56 @@ function WorkOrderDetailDrawerContent({
           )}
         </div>
 
-        {/* ── Footer Fijo con Botón Primario "Aprobar y Cerrar Auditoría" ── */}
-        <footer className="shrink-0 border-t border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] px-6 py-4 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 dark:border-gray-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            Cerrar
-          </button>
+        {/* ── Footer Fijo con Validación de Auditoría ── */}
+        <footer className="shrink-0 border-t border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e] px-6 py-4 flex flex-col gap-3">
+          {approveError && (
+            <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-400">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
+              <span className="font-medium">{approveError}</span>
+            </div>
+          )}
 
-          <button
-            type="button"
-            onClick={handleApproveAudit}
-            disabled={isApproving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all disabled:opacity-60"
-          >
-            <ShieldCheck className="h-4 w-4" />
-            {isApproving ? "Aprobando..." : "Aprobar y Cerrar Auditoría"}
-          </button>
+          {!canApprove && (
+            <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 flex items-start gap-2.5 text-xs text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+              <div>
+                <p className="font-semibold">Requisitos pendientes para aprobar auditoría:</p>
+                <ul className="list-disc list-inside mt-1 space-y-0.5 opacity-90">
+                  {unfulfilledRequirements.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 dark:border-gray-700 px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              Cerrar
+            </button>
+
+            <button
+              type="button"
+              onClick={handleApproveAudit}
+              disabled={isApproving || !canApprove}
+              title={
+                !canApprove
+                  ? `Requisitos pendientes: ${unfulfilledRequirements.join("; ")}`
+                  : "Aprobar y cerrar auditoría"
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              {isApproving ? "Aprobando..." : "Aprobar y Cerrar Auditoría"}
+            </button>
+          </div>
         </footer>
 
-        {/* ── Lightbox Modal para ver evidencia fotográfica en grande ── */}
+        {/* ── Lightbox Modal para ver evidencia fotográfica o diagnóstico en grande ── */}
         {activePhoto && (
           <div
             className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xs"
@@ -1057,12 +1131,23 @@ function WorkOrderDetailDrawerContent({
                     <span className="font-mono text-xs font-bold text-orange-500">
                       {order.orderId}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold ${
+                        activePhoto.kind === "speedtest"
+                          ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300"
+                          : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                      }`}
+                    >
+                      {activePhoto.kind === "speedtest"
+                        ? "📊 Diagnóstico Técnico de Red"
+                        : "📷 Fotografía en Terreno"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
                       <CheckCircle2 className="h-3 w-3" />
                       {activePhoto.status}
                     </span>
                   </div>
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-1">
                     {activePhoto.title}
                   </h4>
                 </div>

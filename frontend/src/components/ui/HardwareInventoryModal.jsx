@@ -86,6 +86,7 @@ export function HardwareInventoryContent({ onClose }) {
   const [pairEquipmentId, setPairEquipmentId] = useState("");
   const [pairSimCardId, setPairSimCardId] = useState("");
   const [isPairing, setIsPairing] = useState(false);
+  const [pairError, setPairError] = useState(null);
 
   const [newItem, setNewItem] = useState({
     deviceType: "SIM",
@@ -164,20 +165,38 @@ export function HardwareInventoryContent({ onClose }) {
 
   const handlePairSubmit = async (e) => {
     e.preventDefault();
+    setPairError(null);
     if (!pairEquipmentId || !pairSimCardId) return;
-    setIsPairing(true);
+
     const routerItem = availableRouters.find((r) => r.id === pairEquipmentId);
     const simItem = availableSims.find((s) => s.id === pairSimCardId);
+
+    // Validación estricta: impedir emparejar o reasignar hardware instalado en otra orden sin el flujo correspondiente
+    if (routerItem && (routerItem.status === "INSTALADA" || routerItem.status === "INSTALADO" || routerItem.orderId)) {
+      setPairError(`No se puede reasignar el router ${routerItem.identifier}: actualmente figura instalado en la orden ${routerItem.orderId || "activa"}. Se requiere un flujo formal de desinstalación o reemplazo.`);
+      return;
+    }
+
+    if (simItem && (simItem.status === "INSTALADA" || simItem.status === "INSTALADO" || simItem.orderId)) {
+      setPairError(`No se puede reasignar la tarjeta SIM ${simItem.identifier}: actualmente figura instalada en la orden ${simItem.orderId || "activa"}. Se requiere un flujo formal de desinstalación o reemplazo.`);
+      return;
+    }
+
+    setIsPairing(true);
     try {
       await api.inventory.pair(pairEquipmentId, pairSimCardId, null);
-    } catch {
-      // Fallback: actualiza estado local
-    } finally {
       reassignOrderHardware(null, { routerItem, simItem });
       setIsPairing(false);
       setShowPairForm(false);
       setPairEquipmentId("");
       setPairSimCardId("");
+      setPairError(null);
+      if (typeof refreshHardwareInventory === "function") {
+        await refreshHardwareInventory();
+      }
+    } catch (err) {
+      setPairError(err.message || "Error al emparejar dispositivos en el servidor.");
+      setIsPairing(false);
     }
   };
 
@@ -339,10 +358,10 @@ export function HardwareInventoryContent({ onClose }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 px-6 pt-4 shrink-0">
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-gray-400">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
               Total Stock
             </p>
-            <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
+            <p className="text-lg font-bold text-slate-900 dark:text-white">
               {stats.total}
             </p>
           </div>
@@ -351,10 +370,10 @@ export function HardwareInventoryContent({ onClose }) {
 
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
               DISPONIBLE
             </p>
-            <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
+            <p className="text-lg font-bold text-slate-900 dark:text-white">
               {stats.disponibles}
             </p>
           </div>
@@ -363,10 +382,10 @@ export function HardwareInventoryContent({ onClose }) {
 
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               INSTALADA / ASIGNADA
             </p>
-            <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
+            <p className="text-lg font-bold text-slate-900 dark:text-white">
               {stats.asignados}
             </p>
           </div>
@@ -375,10 +394,10 @@ export function HardwareInventoryContent({ onClose }) {
 
         <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/70 dark:bg-[#161616] px-3.5 py-2.5 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
+            <p className="text-xs font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-400">
               DEFECTUOSA / BAJA
             </p>
-            <p className="text-lg font-bold font-mono text-slate-900 dark:text-white">
+            <p className="text-lg font-bold text-slate-900 dark:text-white">
               {stats.enFalla}
             </p>
           </div>
@@ -392,41 +411,60 @@ export function HardwareInventoryContent({ onClose }) {
           onSubmit={handlePairSubmit}
           className="mx-6 mt-4 rounded-xl border border-orange-500/40 bg-slate-50 dark:bg-[#141414] p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end shrink-0"
         >
+          {pairError && (
+            <div className="col-span-1 sm:col-span-3 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+              <span className="font-medium">{pairError}</span>
+            </div>
+          )}
+
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-gray-400">
               Router Industrial (equipment_id)
             </label>
             <select
               required
               value={pairEquipmentId}
-              onChange={(e) => setPairEquipmentId(e.target.value)}
+              onChange={(e) => {
+                setPairError(null);
+                setPairEquipmentId(e.target.value);
+              }}
               className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
             >
               <option value="">Seleccionar Router...</option>
-              {availableRouters.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.identifier} — {r.model} ({STATUS_LABELS[r.status] || r.status})
-                </option>
-              ))}
+              {availableRouters.map((r) => {
+                const isInstalled = r.status === "INSTALADO" || r.status === "INSTALADA" || Boolean(r.orderId);
+                return (
+                  <option key={r.id} value={r.id} disabled={isInstalled}>
+                    {r.identifier} — {r.model} {isInstalled ? `[Instalado en ${r.orderId || "OT"}] (No disponible)` : `(${STATUS_LABELS[r.status] || r.status})`}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
           <div>
-            <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-gray-400">
               Tarjeta SIM Entel (sim_card_id)
             </label>
             <select
               required
               value={pairSimCardId}
-              onChange={(e) => setPairSimCardId(e.target.value)}
+              onChange={(e) => {
+                setPairError(null);
+                setPairSimCardId(e.target.value);
+              }}
               className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
             >
               <option value="">Seleccionar SIM (ICCID)...</option>
-              {availableSims.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.identifier} ({s.technology} · {STATUS_LABELS[s.status] || s.status})
-                </option>
-              ))}
+              {availableSims.map((s) => {
+                const isInstalled = s.status === "INSTALADA" || s.status === "INSTALADO" || Boolean(s.orderId);
+                return (
+                  <option key={s.id} value={s.id} disabled={isInstalled}>
+                    {s.identifier} ({s.technology}) {isInstalled ? `[Instalada en ${s.orderId || "OT"}] (No disponible)` : `(${STATUS_LABELS[s.status] || s.status})`}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

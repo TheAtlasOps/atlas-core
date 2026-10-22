@@ -19,24 +19,19 @@ const DETERMINISTIC_TOKEN_REGEX = /^atlas_(ot-\d+)_([0-9a-f]{6})$/i;
 
 /**
  * Obtiene el token único de seguimiento para una orden.
- * Si la orden ya tiene un token activo en la base de datos (`active_magic_link_token`), lo usa.
- * Si aún no tiene fila en `magic_links`, genera un token determinístico único por orden
- * (`atlas_ot-08493_000003`) para que nunca dos órdenes compartan el mismo enlace.
+ * Solo retorna enlaces reales y persistidos en la base de datos (`active_magic_link_token` o `magic_links`).
+ * Si no existe un enlace persistido, retorna cadena vacía para indicar "Sin enlace generado".
  */
 export function buildOrderMagicToken(order) {
   if (!order) return "";
   const activeToken =
     order.active_magic_link_token ||
     (Array.isArray(order.magic_links) &&
-      order.magic_links.find((ml) => ml?.is_active !== false)?.token);
+      order.magic_links.find((ml) => ml?.is_active !== false && !isLikelyExpiredToken(ml?.token))?.token);
   if (activeToken && String(activeToken).trim()) {
     return String(activeToken).trim();
   }
-
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `tk_${crypto.randomUUID().replace(/-/g, "")}`;
-  }
-  return `tk_${Math.random().toString(36).substring(2, 15)}${Date.now().toString(36)}`;
+  return "";
 }
 
 export function parseDeterministicMagicToken(token) {
