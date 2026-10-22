@@ -137,7 +137,7 @@ function makeIcon(hex) {
 function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
   const { isDark } = useTheme();
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
       {/* Header — siempre visible */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -165,15 +165,14 @@ function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
 
       {isLoading ? (
         /* ── Skeleton del mapa ── */
-        <div className="relative flex h-75 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+        <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
           <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
         </div>
       ) : (
         <>
-          {/* Contenedor del mapa — overflow-hidden e isolate para respetar el stacking context */}
+          {/* Contenedor del mapa — flex-1 para ocupar el espacio armónicamente */}
           <div
-            className="relative rounded-lg overflow-hidden border border-border z-0 isolate"
-            style={{ height: "200px" }}
+            className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full"
           >
             <MapContainer
               center={[-33.4489, -70.6693]}
@@ -360,7 +359,7 @@ function DonutChartCard({ isLoading, kpis, columns }) {
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
       {/* Header — siempre visible */}
       <div>
         <h2 className="text-sm font-semibold text-foreground">
@@ -478,7 +477,7 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
   const isEmpty = visits.length === 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
       {/* Header — siempre visible */}
       <div className="flex items-center justify-between">
         <div>
@@ -525,41 +524,49 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
           </p>
         </div>
       ) : (
-        /* ── Lista de visitas ── */
-        <ol className="flex flex-col divide-y divide-border">
-          {visits.map((visit, idx) => (
-            <li
-              key={idx}
-              onClick={() => onSelectOrderId?.(visit.id)}
-              className="flex items-start gap-3 py-3 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-1.5 -mx-1.5 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
-              title={`Auditar ${visit.id}`}
-            >
-              {/* Hora */}
-              <span className="w-10 shrink-0 text-xs text-muted-foreground tabular-nums font-mono pt-0.5">
-                {visit.time}
-              </span>
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground leading-snug truncate">
-                  {visit.service}
-                </p>
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {visit.client} {visit.technician && `· Técnico: ${visit.technician}`}
-                </p>
-              </div>
-              {/* Pill de estado */}
-              <span
-                className={`
-                  shrink-0 self-center rounded-full px-2 py-0.5
-                  text-[10px] font-semibold uppercase tracking-wide
-                  ${visit.statusStyle}
-                `}
+        /* ── Lista de visitas con scroll elegante acotado ── */
+        <div className="flex flex-col gap-2">
+          <ol className="flex flex-col divide-y divide-border overflow-y-auto max-h-[250px] pr-1.5 scrollbar-kanban">
+            {visits.map((visit, idx) => (
+              <li
+                key={idx}
+                onClick={() => onSelectOrderId?.(visit.id)}
+                className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-1.5 -mx-1.5 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
+                title={`Auditar ${visit.id}`}
               >
-                {visit.status}
-              </span>
-            </li>
-          ))}
-        </ol>
+                {/* Hora */}
+                <span className="w-10 shrink-0 text-xs text-muted-foreground tabular-nums font-mono pt-0.5">
+                  {visit.time}
+                </span>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground leading-snug truncate">
+                    {visit.service}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {visit.client} {visit.technician && `· Técnico: ${visit.technician}`}
+                  </p>
+                </div>
+                {/* Pill de estado */}
+                <span
+                  className={`
+                    shrink-0 self-center rounded-full px-2 py-0.5
+                    text-[10px] font-semibold uppercase tracking-wide
+                    ${visit.statusStyle}
+                  `}
+                >
+                  {visit.status}
+                </span>
+              </li>
+            ))}
+          </ol>
+          {visits.length > 4 && (
+            <div className="pt-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>{visits.length} visitas hoy</span>
+              <span className="text-[10px] font-medium text-orange-600 dark:text-orange-400">Desliza para ver más</span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -728,7 +735,7 @@ function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function AiInsights({ isLoading }) {
   return (
-    <aside className="rounded-xl border border-border border-t-2 border-t-primary bg-card p-5 h-full flex flex-col">
+    <aside className="rounded-xl border border-border border-t-2 border-t-primary bg-card p-5 flex flex-col gap-4">
       {/* Header — siempre visible */}
       <div className="flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
@@ -746,7 +753,7 @@ function AiInsights({ isLoading }) {
 
       {isLoading ? (
         /* ── Skeleton de tarjetas de insight ── */
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-2 flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
@@ -756,7 +763,7 @@ function AiInsights({ isLoading }) {
         </div>
       ) : (
         /* ── Tarjetas reales ── */
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-2 flex flex-col gap-3">
           {insights.map((insight) => (
             <div
               key={insight.title}
@@ -776,7 +783,7 @@ function AiInsights({ isLoading }) {
         </div>
       )}
 
-      <button className="mt-auto pt-4 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors">
+      <button className="mt-1 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors">
         Generar mas insights
       </button>
     </aside>
@@ -1020,7 +1027,7 @@ export default function DispatchBoard() {
       {/* ── Layout principal ── */}
       <div className="flex flex-col gap-6">
         {/* Bloque superior: contenido central + sidebar AI */}
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-stretch">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
           <div className="flex-1 flex flex-col gap-6">
             {/* Cabecera + búsqueda, filtros, Inventario y botón Nueva OT */}
             <div className="flex flex-col gap-4">
