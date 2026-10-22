@@ -22,12 +22,16 @@ async function request(endpoint, options = {}) {
     localStorage.removeItem("atlas_user");
     window.dispatchEvent(new CustomEvent("auth:unauthorized"));
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || "Sesión expirada o no autorizada");
+    const err = new Error(errorData.detail || "Sesión expirada o no autorizada");
+    err.status = 401;
+    throw err;
   }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || `Error HTTP ${response.status}`);
+    const err = new Error(errorData.detail || `Error HTTP ${response.status}`);
+    err.status = response.status;
+    throw err;
   }
   return response.json();
 }
@@ -77,6 +81,9 @@ export const api = {
       request(`/orders/technicians/${id}/toggle-availability`, { method: "PATCH" }),
     getClients: () => request("/orders/clients"),
   },
+  evidences: {
+    getByOrderId: (workOrderId) => request(`/evidences/order/${workOrderId}`),
+  },
   inventory: {
     getSims: (params = {}) => {
       const query = new URLSearchParams(params).toString();
@@ -90,14 +97,15 @@ export const api = {
     },
     createRouter: (routerData) =>
       request("/inventory/routers", { method: "POST", body: JSON.stringify(routerData) }),
-    pair: (equipmentId, simCardId, clientId = null) =>
+    pair: (equipmentId, simCardId, clientId = null, workOrderId = null) =>
       request("/inventory/pair", {
         method: "POST",
         body: JSON.stringify({
           equipment_id: equipmentId,
           sim_card_id: simCardId,
           client_id: clientId,
-          action_type: "EMPAREJAMIENTO",
+          ...(workOrderId ? { work_order_id: workOrderId } : {}),
+          action_type: "INSTALACION",
         }),
       }),
   },

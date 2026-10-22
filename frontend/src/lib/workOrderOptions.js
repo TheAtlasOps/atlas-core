@@ -25,29 +25,24 @@ export const PRIORITIES = ["BAJA", "MEDIA", "ALTA", "URGENTE"];
 
 export const TECHNICIANS = [
   "Alexander Sáez López",
+  "Carlos Mendoza",
   "Juan Rojas",
   "Luis Paredes",
   "Matías Koch",
   "Tomás Castro",
   "Esteban Kral",
   "Sebastián Araya",
-  "Carlos Mendoza",
 ];
 
 export const TECHNICIAN_UUID_MAP = {
-  "Alexander Sáez López": "b0000000-0000-0000-0000-000000000001",
+  "Alexander Sáez López": "a0000000-0000-0000-0000-000000000003",
   "Carlos Mendoza": "b0000000-0000-0000-0000-000000000001",
   "Juan Rojas": "b0000000-0000-0000-0000-000000000002",
-  "Juan Rivas": "b0000000-0000-0000-0000-000000000002",
   "Luis Paredes": "b0000000-0000-0000-0000-000000000003",
-  "Luis Pinto": "b0000000-0000-0000-0000-000000000003",
   "Matías Koch": "b0000000-0000-0000-0000-000000000004",
-  "María Kovalenko": "b0000000-0000-0000-0000-000000000004",
   "Tomás Castro": "b0000000-0000-0000-0000-000000000005",
   "Esteban Kral": "b0000000-0000-0000-0000-000000000006",
-  "Elena Kravets": "b0000000-0000-0000-0000-000000000006",
   "Sebastián Araya": "b0000000-0000-0000-0000-000000000007",
-  "Sofía Araya": "b0000000-0000-0000-0000-000000000007",
 };
 
 export const DEFAULT_CLIENT_UUID = "c0000000-0000-0000-0000-000000000001";
@@ -86,7 +81,7 @@ export function mapServiceEnumToTag(serviceType, fallbackTag) {
 }
 
 /**
- * Normaliza un objeto de orden proveniente del backend FastAPI o de Mock Data
+ * Normaliza un objeto de orden proveniente del backend FastAPI
  * para soportar tanto los campos del backend como los de las tarjetas Kanban.
  */
 export function normalizeOrderItem(o) {
@@ -96,10 +91,18 @@ export function normalizeOrderItem(o) {
     (typeof o.client === "string" ? o.client : null) ||
     o.clientName ||
     "Cliente Corporativo";
+  const contactPerson = o.client?.contact_person || o.contactPerson || clientName;
+  const contactPhone = o.client?.contact_phone || o.contactPhone || "+56 9 8000 0000";
+  const contactEmail = o.client?.contact_email || o.contactEmail || "";
   const address =
     o.address_override || o.client?.address || o.location || "Santiago, RM";
+  const comuna =
+    o.comuna_override || o.client?.comuna || o.comuna || "Santiago";
   const techName =
     o.technician_summary?.full_name || o.assigneeName || "Sin asignar";
+  const techRut = o.technician_summary?.rut || null;
+  const techPhone = o.technician_summary?.phone || null;
+  const techPlate = o.technician_summary?.vehicle_plate || null;
   const rawPriority = (o.priority || "MEDIA").toString().toUpperCase();
   const priority = ORDER_PRIORITY_ENUM.includes(rawPriority)
     ? rawPriority
@@ -114,26 +117,47 @@ export function normalizeOrderItem(o) {
     order_number: orderNumber,
     orderId: orderNumber,
     title: o.title || "Requerimiento técnico",
+    description: o.description || null,
     priority,
     status,
     client: {
       id: o.client?.id || o.client_id || DEFAULT_CLIENT_UUID,
       business_name: clientName,
+      contact_person: contactPerson,
+      contact_phone: contactPhone,
+      contact_email: contactEmail,
       address,
+      comuna,
+      toString() {
+        return clientName;
+      },
     },
     client_id: o.client_id || o.client?.id || DEFAULT_CLIENT_UUID,
     clientName,
+    contactPerson,
+    contactPhone,
+    contactEmail,
     address_override: address,
+    comuna_override: comuna,
+    comuna,
     location: address,
     technician_summary: {
       id: o.technician_summary?.id || o.technician_id || null,
       full_name: techName,
       initials: o.technician_summary?.initials || getInitials(techName),
+      rut: techRut,
+      phone: techPhone,
+      vehicle_plate: techPlate,
     },
     assigneeName: techName,
     assignee: o.technician_summary?.initials || getInitials(techName),
     tag: mapServiceEnumToTag(o.service_type, o.tag),
     service_type: o.service_type || "INSTALACION_FIBRA",
+    scheduled_date: o.scheduled_date || null,
+    eta: o.eta || null,
+    completed_at: o.completed_at || null,
+    active_magic_link_token: o.active_magic_link_token || null,
+    status_history: o.status_history || [],
     lat: o.lat ?? null,
     lng: o.lng ?? null,
   };
@@ -198,7 +222,7 @@ export function buildVisitsFromOrders(ordersList) {
     const baseMins = (idx % 2) * 30;
     const timeStr = `${String(baseHours).padStart(2, "0")}:${String(baseMins).padStart(2, "0")}`;
 
-    const locationPart = (norm.location || "Santiago").split(",")[0].trim();
+    const locationPart = (norm.comuna || norm.location || "Santiago").split(",")[0].trim();
     const clientDisplay = `${norm.clientName} — ${locationPart}`;
 
     return {
@@ -207,7 +231,10 @@ export function buildVisitsFromOrders(ordersList) {
       service: norm.title,
       serviceType: norm.tag,
       client: clientDisplay,
+      clientName: norm.clientName,
+      location: norm.location,
       status: statusLabel,
+      rawStatus: norm.status,
       statusStyle,
       technician: norm.assigneeName,
     };
@@ -232,8 +259,11 @@ export function buildActivitiesFromOrders(ordersList) {
     } else if (norm.status === "EN_SITIO") {
       action = "Llegó al sitio del cliente";
       status = "En camino";
+    } else if (norm.status === "CONFIRMADA") {
+      action = "Confirmó asignación de visita técnica";
+      status = "Programada";
     } else {
-      action = "Aceptó la OT asignada";
+      action = "Orden registrada pendiente de inicio";
       status = "Programada";
     }
 
@@ -243,6 +273,7 @@ export function buildActivitiesFromOrders(ordersList) {
     return {
       id: norm.orderId,
       technician: norm.assigneeName,
+      client: norm.clientName,
       action,
       status,
       serviceType: norm.tag,

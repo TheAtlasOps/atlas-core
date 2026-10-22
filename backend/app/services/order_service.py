@@ -436,7 +436,6 @@ async def process_offline_sync_batch(
 async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
     """Calcula las métricas agregadas en tiempo real para el Dispatch Board (RNF-REN-02)."""
     now = datetime.now(timezone.utc)
-    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
     # 1. Total órdenes activas (no completadas ni canceladas)
     active_res = await db.execute(
@@ -446,8 +445,10 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
     )
     active_orders = active_res.scalar() or 0
 
-    # 2. Técnicos en campo (disponibles o asignados)
-    tech_res = await db.execute(select(func.count(Technician.id)))
+    # 2. Técnicos en campo (disponibles en plataforma)
+    tech_res = await db.execute(
+        select(func.count(Technician.id)).where(Technician.is_available == True)
+    )
     technicians_in_field = tech_res.scalar() or 0
 
     # 3. Tasa de SIMs disponibles
@@ -459,14 +460,16 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
     avail_sims = avail_sims_res.scalar() or 0
     available_sims_rate = round((avail_sims / total_sims) * 100, 1)
 
-    # 4. Completadas hoy
-    completed_res = await db.execute(
-        select(func.count(WorkOrder.id)).where(
-            WorkOrder.status == OrderStatusEnum.COMPLETADA,
-            WorkOrder.completed_at >= today_start
-        )
+    # 4. Distribución por estados (mismo período y criterio para KPI y Donut Chart)
+    dist_res = await db.execute(
+        select(WorkOrder.status, func.count(WorkOrder.id)).group_by(WorkOrder.status)
     )
-    completed_today = completed_res.scalar() or 0
+    status_distribution: Dict[str, int] = {s.value: 0 for s in OrderStatusEnum}
+    for row in dist_res.all():
+        status_distribution[row[0].value] = row[1]
+
+    # Completadas usa el mismo criterio que el gráfico de estado de visitas
+    completed_today = status_distribution.get(OrderStatusEnum.COMPLETADA.value, 0)
 
     # 5. Órdenes con retraso potencial
     delayed_res = await db.execute(
@@ -476,14 +479,6 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
         )
     )
     delayed_orders = delayed_res.scalar() or 0
-
-    # 6. Distribución por estados (para el Donut Chart del frontend)
-    dist_res = await db.execute(
-        select(WorkOrder.status, func.count(WorkOrder.id)).group_by(WorkOrder.status)
-    )
-    status_distribution: Dict[str, int] = {s.value: 0 for s in OrderStatusEnum}
-    for row in dist_res.all():
-        status_distribution[row[0].value] = row[1]
 
     return DispatchKPIsResponse(
         active_orders=active_orders,
@@ -607,5 +602,3 @@ async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.U
         vehicle_plate=tech.vehicle_plate,
         is_available=tech.is_available,
     )
-
-

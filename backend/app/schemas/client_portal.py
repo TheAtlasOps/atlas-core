@@ -25,6 +25,8 @@ class ClientTechnicianBadge(BaseModel):
 class ClientOrderSummaryResponse(BaseModel):
     order_id: uuid.UUID
     order_number: str
+    title: Optional[str] = None
+    company: Optional[str] = None
     status: str
     status_key: str  # idle | confirmada | en_ruta | en_sitio | completada | cancelada
     service_type: str

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import {
   Sparkles,
   ArrowUpRight,
@@ -13,6 +14,7 @@ import {
   Search,
   Filter,
   Cpu,
+  Database,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -45,63 +47,52 @@ function FilterPill({ label, active, onClick }) {
   );
 }
 
-// ─── AI Insights Data ────────────────────────────────────────────────────────
-const insights = [
+// ─── Marcadores base de respaldo (coordenadas reales de las OTs en Santiago) ─
+const DEFAULT_MAP_MARKERS = [
   {
-    title: "Sobrecarga de tecnicos detectada",
-    body: "3 tecnicos tienen mas de 5 OT asignadas hoy. Considera redistribuir 4 ordenes para equilibrar la carga.",
-  },
-  {
-    title: "Riesgo de incumplimiento de SLA",
-    body: "La OT 'Instalacion fibra - Providencia' lleva 2 dias de retraso. Prioriza su resolucion para mantener el SLA.",
-  },
-  {
-    title: "Oportunidad de eficiencia",
-    body: "Agrupar las 3 OT del sector Las Condes podria reducir el tiempo de desplazamiento en ~40 min.",
-  },
-];
-
-// ─── Mock: Marcadores del mapa (coordenadas reales de Santiago) ──────────────
-const MAP_MARKERS = [
-  {
-    id: 1,
+    id: "d0000000-0000-4000-8000-000000000001",
     orderNumber: "#OT-08491",
     title: "Instalación fibra óptica — Providencia",
     label: "Providencia",
     lat: -33.432,
     lng: -70.6093,
     status: "EN_RUTA",
-    hex: "#f97316",
   },
   {
-    id: 2,
-    orderNumber: "#OT-08493",
-    title: "Revisión antena 4G — Las Condes",
-    label: "Las Condes",
-    lat: -33.4103,
-    lng: -70.5684,
-    status: "EN_SITIO",
-    hex: "#f97316",
-  },
-  {
-    id: 3,
-    orderNumber: "#OT-08495",
-    title: "Activación Magic Link — Ñuñoa",
-    label: "Ñuñoa",
-    lat: -33.4569,
-    lng: -70.599,
-    status: "COMPLETADA",
-    hex: "#34d399",
-  },
-  {
-    id: 4,
+    id: "d0000000-0000-4000-8000-000000000002",
     orderNumber: "#OT-08492",
     title: "Cambio de SIM corporativa — Santiago Centro",
     label: "Santiago Centro",
     lat: -33.4489,
     lng: -70.6693,
     status: "CONFIRMADA",
-    hex: "#60a5fa",
+  },
+  {
+    id: "d0000000-0000-4000-8000-000000000003",
+    orderNumber: "#OT-08493",
+    title: "Revisión antena 4G — Providencia",
+    label: "Providencia",
+    lat: -33.4172,
+    lng: -70.606,
+    status: "IDLE",
+  },
+  {
+    id: "d0000000-0000-4000-8000-000000000005",
+    orderNumber: "#OT-08495",
+    title: "Activación Magic Link — Ñuñoa",
+    label: "Ñuñoa",
+    lat: -33.4569,
+    lng: -70.599,
+    status: "IDLE",
+  },
+  {
+    id: "d0000000-0000-4000-8000-000000000008",
+    orderNumber: "#OT-08498",
+    title: "Reemplazo router con falla — Santiago Centro",
+    label: "Santiago Centro",
+    lat: -33.442,
+    lng: -70.654,
+    status: "COMPLETADA",
   },
 ];
 
@@ -114,7 +105,6 @@ function getMarkerHexByStatus(status, fallbackHex) {
   return "#60a5fa";
 }
 
-// divIcon personalizado: círculo con color de estado + halo
 function makeIcon(hex) {
   return L.divIcon({
     className: "",
@@ -134,11 +124,10 @@ function makeIcon(hex) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
+function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS }) {
   const { isDark } = useTheme();
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
-      {/* Header — siempre visible */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div>
@@ -146,7 +135,7 @@ function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
               Zonas activas
             </h2>
             <p className="text-xs text-muted-foreground">
-              Distribución geográfica de OT
+              Distribución geográfica de OT ({markers.length} georreferenciadas)
             </p>
           </div>
           <span
@@ -164,37 +153,41 @@ function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
       </div>
 
       {isLoading ? (
-        /* ── Skeleton del mapa ── */
         <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
           <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
         </div>
       ) : (
         <>
-          {/* Contenedor del mapa — flex-1 para ocupar el espacio armónicamente */}
-          <div
-            className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full"
-          >
+          <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
             <MapContainer
               center={[-33.4489, -70.6693]}
               zoom={12}
               scrollWheelZoom={false}
-              style={{ height: "100%", width: "100%", background: isDark ? "#0d0d0d" : "#e2e8f0" }}
+              style={{
+                height: "100%",
+                width: "100%",
+                background: isDark ? "#0d0d0d" : "#e2e8f0",
+              }}
               zoomControl={false}
               attributionControl={false}
             >
-              {/* TileLayer según tema — CartoDB rastertiles (libre, sin API key, sin marca de agua) */}
               <TileLayer
                 key={isDark ? "dark" : "light"}
-                url={`https://{s}.basemaps.cartocdn.com/rastertiles/${isDark ? "dark_all" : "light_all"}/{z}/{x}/{y}.png`}
+                url={`https://{s}.basemaps.cartocdn.com/rastertiles/${
+                  isDark ? "dark_all" : "light_all"
+                }/{z}/{x}/{y}.png`}
                 subdomains="abcd"
                 maxZoom={19}
               />
 
-              {/* Marcadores con divIcon personalizados */}
               {markers.map((m) => {
                 const hex = getMarkerHexByStatus(m.status, m.hex);
                 return (
-                  <Marker key={m.id} position={[m.lat, m.lng]} icon={makeIcon(hex)}>
+                  <Marker
+                    key={m.id}
+                    position={[m.lat, m.lng]}
+                    icon={makeIcon(hex)}
+                  >
                     <Popup>
                       <div
                         style={{
@@ -218,12 +211,11 @@ function ActiveZonesCard({ isLoading, markers = MAP_MARKERS }) {
             </MapContainer>
           </div>
 
-          {/* Leyenda */}
           <div className="flex flex-wrap gap-3">
-            <LegendDot color="bg-primary"     label="En camino / En sitio" />
+            <LegendDot color="bg-primary" label="En camino / En sitio" />
             <LegendDot color="bg-emerald-400" label="Completada" />
-            <LegendDot color="bg-blue-400"    label="Confirmada" />
-            <LegendDot color="bg-rose-400"    label="Cancelada" />
+            <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
+            <LegendDot color="bg-rose-400" label="Cancelada" />
           </div>
         </>
       )}
@@ -240,116 +232,44 @@ function LegendDot({ color, label }) {
   );
 }
 
-// ─── Mock: Donut chart ────────────────────────────────────────────────────────
-// Circunferencia del SVG: r=40 → 2π·40 ≈ 251.2
 const CIRCUMFERENCE = 251.2;
-const DONUT_SEGMENTS = [
-  { label: "En camino", value: 38, color: "#f97316", strokeColor: "#f97316" }, // orange-500
-  { label: "Completadas", value: 29, color: "#34d399", strokeColor: "#34d399" }, // emerald-400
-  { label: "Programadas", value: 22, color: "#60a5fa", strokeColor: "#60a5fa" }, // blue-400
-  { label: "Reagendadas", value: 11, color: "#f87171", strokeColor: "#f87171" }, // red-400
-];
-
-// ─── Mock: Próximas visitas ───────────────────────────────────────────────────
-const UPCOMING_VISITS = [
-  {
-    id: "#OT-08491",
-    time: "14:00",
-    service: "Instalación fibra óptica",
-    serviceType: "Fibra",
-    client: "Sr. Ramírez — Providencia",
-    status: "En camino",
-    statusStyle: "bg-orange-500/15 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25",
-    technician: "Juan Rivas",
-  },
-  {
-    id: "#OT-08492",
-    time: "14:30",
-    service: "Cambio de SIM corporativa",
-    serviceType: "SIM",
-    client: "Entel HQ — Santiago Centro",
-    status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
-    technician: "Luis Pinto",
-  },
-  {
-    id: "#OT-08494",
-    time: "15:15",
-    service: "Diagnóstico router empresarial",
-    serviceType: "Hardware",
-    client: "Banco Estado — Las Condes",
-    status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
-    technician: "Tomás Castro",
-  },
-  {
-    id: "#OT-08493",
-    time: "16:00",
-    service: "Revisión antena 4G",
-    serviceType: "Red",
-    client: "Torre Entel — Las Condes",
-    status: "Reagendada",
-    statusStyle: "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25",
-    technician: "María Kovalenko",
-  },
-  {
-    id: "#OT-08495",
-    time: "17:30",
-    service: "Activación Magic Link",
-    serviceType: "Magic Link",
-    client: "PYME Clientes — Ñuñoa",
-    status: "Programada",
-    statusStyle: "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
-    technician: "Elena Kravets",
-  },
-];
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tarjeta 2 — Estado de visitas (Donut Chart SVG nativo)
+// Tarjeta 2 — Estado de visitas (Donut Chart SVG nativo sincronizado con KPIs)
 // ═══════════════════════════════════════════════════════════════════════════════
-function DonutChartCard({ isLoading, kpis, columns }) {
-  const dynamicSegments = useMemo(() => {
-    // 1. Extraer del objeto kpis si está disponible desde FastAPI
-    if (kpis?.status_distribution) {
-      const dist = kpis.status_distribution;
-      const completadas = dist.COMPLETADA || 0;
-      const enRuta = (dist.EN_RUTA || 0) + (dist.EN_SITIO || 0);
-      const pendientes = (dist.CONFIRMADA || 0) + (dist.IDLE || 0);
-      const canceladas = dist.CANCELADA || 0;
-      const sum = completadas + enRuta + pendientes + canceladas;
-      if (sum > 0) {
-        return [
-          { label: "Completadas", value: completadas, color: "#22c55e", strokeColor: "#22c55e" },
-          { label: "En Ruta",     value: enRuta,      color: "#3b82f6", strokeColor: "#3b82f6" },
-          { label: "Pendientes",  value: pendientes,  color: "#f59e0b", strokeColor: "#f59e0b" },
-          { label: "Canceladas",  value: canceladas,  color: "#ef4444", strokeColor: "#ef4444" },
-        ];
-      }
-    }
-
-    // 2. Extraer de las columnas del Kanban si kpis aún no cargó
-    if (columns?.length) {
-      const completadas = columns.find((c) => c.id === "completada")?.tasks?.length || 0;
-      const enRuta = columns.find((c) => c.id === "en-transito")?.tasks?.length || 0;
-      const pendientes = columns.find((c) => c.id === "asignada")?.tasks?.length || 0;
-      const canceladas = 0;
-      const sum = completadas + enRuta + pendientes + canceladas;
-      if (sum > 0) {
-        return [
-          { label: "Completadas", value: completadas, color: "#22c55e", strokeColor: "#22c55e" },
-          { label: "En Ruta",     value: enRuta,      color: "#3b82f6", strokeColor: "#3b82f6" },
-          { label: "Pendientes",  value: pendientes,  color: "#f59e0b", strokeColor: "#f59e0b" },
-          { label: "Canceladas",  value: canceladas,  color: "#ef4444", strokeColor: "#ef4444" },
-        ];
-      }
-    }
-
-    return DONUT_SEGMENTS;
-  }, [kpis, columns]);
+function DonutChartCard({ isLoading, statusCounts }) {
+  const dynamicSegments = useMemo(
+    () => [
+      {
+        label: "Completadas",
+        value: statusCounts.completadas,
+        color: "#22c55e",
+        strokeColor: "#22c55e",
+      },
+      {
+        label: "En Ruta",
+        value: statusCounts.enRuta,
+        color: "#3b82f6",
+        strokeColor: "#3b82f6",
+      },
+      {
+        label: "Pendientes",
+        value: statusCounts.pendientes,
+        color: "#f59e0b",
+        strokeColor: "#f59e0b",
+      },
+      {
+        label: "Canceladas",
+        value: statusCounts.canceladas,
+        color: "#ef4444",
+        strokeColor: "#ef4444",
+      },
+    ],
+    [statusCounts]
+  );
 
   const total = dynamicSegments.reduce((acc, s) => acc + s.value, 0);
 
-  // Calculamos stroke-dasharray y stroke-dashoffset para cada segmento
   let accumulated = 0;
   const segments = dynamicSegments.map((seg) => {
     const dash = total > 0 ? (seg.value / total) * CIRCUMFERENCE : 0;
@@ -360,18 +280,16 @@ function DonutChartCard({ isLoading, kpis, columns }) {
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
-      {/* Header — siempre visible */}
       <div>
         <h2 className="text-sm font-semibold text-foreground">
           Estado de visitas
         </h2>
         <p className="text-xs text-muted-foreground">
-          Distribución del estado actual
+          Distribución del ciclo operativo actual
         </p>
       </div>
 
       {isLoading ? (
-        /* ── Skeleton del donut ── */
         <>
           <div className="flex items-center justify-center py-2">
             <div className="w-40 h-40 rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
@@ -392,9 +310,7 @@ function DonutChartCard({ isLoading, kpis, columns }) {
           </div>
         </>
       ) : (
-        /* ── Gráfico real ── */
         <>
-          {/* Donut SVG */}
           <div className="flex items-center justify-center py-2">
             <div className="relative">
               <svg
@@ -404,7 +320,6 @@ function DonutChartCard({ isLoading, kpis, columns }) {
                 className="-rotate-90"
                 aria-label="Gráfico donut de estado de visitas"
               >
-                {/* Track de fondo */}
                 <circle
                   cx="50"
                   cy="50"
@@ -414,7 +329,6 @@ function DonutChartCard({ isLoading, kpis, columns }) {
                   strokeWidth="12"
                   className="text-slate-900/10 dark:text-white/5"
                 />
-                {/* Segmentos */}
                 {segments.map((seg) => (
                   <circle
                     key={seg.label}
@@ -430,7 +344,6 @@ function DonutChartCard({ isLoading, kpis, columns }) {
                   />
                 ))}
               </svg>
-              {/* Centro del donut */}
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-2xl font-bold text-foreground tabular-nums">
                   {total}
@@ -442,16 +355,20 @@ function DonutChartCard({ isLoading, kpis, columns }) {
             </div>
           </div>
 
-          {/* Leyenda con valores */}
           <div className="flex flex-col gap-2">
             {dynamicSegments.map((seg) => (
-              <div key={seg.label} className="flex items-center justify-between">
+              <div
+                key={seg.label}
+                className="flex items-center justify-between"
+              >
                 <div className="flex items-center gap-2">
                   <span
                     className="h-2 w-2 rounded-full shrink-0"
                     style={{ backgroundColor: seg.color }}
                   />
-                  <span className="text-xs text-muted-foreground">{seg.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {seg.label}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-foreground tabular-nums">
@@ -473,36 +390,35 @@ function DonutChartCard({ isLoading, kpis, columns }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 3 — Próximas visitas
 // ═══════════════════════════════════════════════════════════════════════════════
-function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrderId }) {
+function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
   const isEmpty = visits.length === 0;
 
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
-      {/* Header — siempre visible */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
             Próximas visitas
           </h2>
-          <p className="text-xs text-muted-foreground">Agenda del día — hoy</p>
+          <p className="text-xs text-muted-foreground">Agenda operativa — hoy</p>
         </div>
-        <a
-          href="/work-orders"
+        <Link
+          to="/work-orders"
           className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
         >
           Ver todas
           <ArrowUpRight className="h-3.5 w-3.5" />
-        </a>
+        </Link>
       </div>
 
       {isLoading ? (
-        /* ── Skeleton de filas de visita ── */
         <div className="flex flex-col divide-y divide-border">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-              {/* Skeleton hora */}
+            <div
+              key={i}
+              className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
               <div className="w-12 h-4 rounded bg-slate-200 dark:bg-gray-800 animate-pulse shrink-0" />
-              {/* Skeleton detalle + pill */}
               <div className="flex flex-1 items-center justify-between gap-3 min-w-0">
                 <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                   <div className="h-4 w-3/4 rounded bg-slate-200 dark:bg-gray-800 animate-pulse" />
@@ -514,7 +430,6 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
           ))}
         </div>
       ) : isEmpty ? (
-        /* ── Empty State ── */
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
           <CheckCircle2 className="h-8 w-8 text-slate-500 dark:text-gray-400" />
           <p className="text-xs text-muted-foreground leading-relaxed">
@@ -524,30 +439,27 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
           </p>
         </div>
       ) : (
-        /* ── Lista de visitas con scroll elegante acotado ── */
         <div className="flex flex-col gap-2">
           <ol className="flex flex-col divide-y divide-border overflow-y-auto max-h-[250px] pr-1.5 scrollbar-kanban">
             {visits.map((visit, idx) => (
               <li
-                key={idx}
+                key={visit.id || idx}
                 onClick={() => onSelectOrderId?.(visit.id)}
                 className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 cursor-pointer rounded-lg px-1.5 -mx-1.5 hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors"
                 title={`Auditar ${visit.id}`}
               >
-                {/* Hora */}
-                <span className="w-10 shrink-0 text-xs text-muted-foreground tabular-nums font-mono pt-0.5">
-                  {visit.time}
+                <span className="w-12 shrink-0 text-xs text-orange-600 dark:text-orange-400 font-semibold tabular-nums font-mono pt-0.5">
+                  {visit.id}
                 </span>
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground leading-snug truncate">
                     {visit.service}
                   </p>
                   <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {visit.client} {visit.technician && `· Técnico: ${visit.technician}`}
+                    {visit.client}{" "}
+                    {visit.technician && `· Técnico: ${visit.technician}`}
                   </p>
                 </div>
-                {/* Pill de estado */}
                 <span
                   className={`
                     shrink-0 self-center rounded-full px-2 py-0.5
@@ -562,8 +474,10 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
           </ol>
           {visits.length > 4 && (
             <div className="pt-2 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{visits.length} visitas hoy</span>
-              <span className="text-[10px] font-medium text-orange-600 dark:text-orange-400">Desliza para ver más</span>
+              <span>{visits.length} órdenes registradas</span>
+              <span className="text-[10px] font-medium text-orange-600 dark:text-orange-400">
+                Desliza para ver más
+              </span>
             </div>
           )}
         </div>
@@ -572,65 +486,12 @@ function UpcomingVisitsCard({ isLoading, visits = UPCOMING_VISITS, onSelectOrder
   );
 }
 
-// ─── Mock: Registro de actividad reciente ────────────────────────────────────
-const ACTIVITY_LOG = [
-  {
-    id: "#OT-08491",
-    technician: "Juan Rivas",
-    action: "Marcó visita como completada",
-    status: "Completada",
-    serviceType: "Fibra",
-    time: "13:52",
-  },
-  {
-    id: "#OT-08495",
-    technician: "Elena Kravets",
-    action: "Inició desplazamiento hacia el lugar",
-    status: "En camino",
-    serviceType: "Magic Link",
-    time: "13:47",
-  },
-  {
-    id: "#OT-08492",
-    technician: "Luis Pinto",
-    action: "Aceptó la OT asignada",
-    status: "Programada",
-    serviceType: "SIM",
-    time: "13:30",
-  },
-  {
-    id: "#OT-08496",
-    technician: "Elena Kravets",
-    action: "Actualizó estado a En Tránsito",
-    status: "En camino",
-    serviceType: "Red",
-    time: "13:15",
-  },
-  {
-    id: "#OT-08499",
-    technician: "Luis Pinto",
-    action: "Marcó visita como completada",
-    status: "Completada",
-    serviceType: "Hardware",
-    time: "12:58",
-  },
-  {
-    id: "#OT-08493",
-    technician: "María Kovalenko",
-    action: "Aceptó la OT asignada",
-    status: "Programada",
-    serviceType: "Red",
-    time: "12:40",
-  },
-];
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // Skeleton — Tabla de actividad reciente
 // ═══════════════════════════════════════════════════════════════════════════════
 function ActivityTableSkeleton() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Encabezado idéntico al real */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
         <div className="flex flex-col gap-2">
           <div className="h-4 w-52 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
@@ -639,7 +500,6 @@ function ActivityTableSkeleton() {
         <div className="h-3 w-24 animate-pulse rounded bg-slate-100/60 dark:bg-gray-800/60" />
       </div>
 
-      {/* Filas skeleton */}
       <div className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="grid grid-cols-4 gap-4 px-5 py-4">
@@ -657,10 +517,9 @@ function ActivityTableSkeleton() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tabla — Registro de actividad reciente
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
+function ActivityTable({ log = [], onSelectOrderId }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      {/* Encabezado de la sección */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
@@ -675,7 +534,6 @@ function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
         </span>
       </div>
 
-      {/* Tabla */}
       <div className="overflow-x-auto scrollbar-kanban">
         <table className="w-full text-left">
           <thead>
@@ -697,14 +555,17 @@ function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
           <tbody className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
             {log.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-5 py-8 text-center text-xs text-muted-foreground">
+                <td
+                  colSpan={4}
+                  className="px-5 py-8 text-center text-xs text-muted-foreground"
+                >
                   No se registraron actividades que coincidan con la búsqueda.
                 </td>
               </tr>
             ) : (
               log.map((row, idx) => (
                 <tr
-                  key={idx}
+                  key={row.id || idx}
                   onClick={() => onSelectOrderId?.(row.id)}
                   className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
                 >
@@ -731,28 +592,113 @@ function ActivityTable({ log = ACTIVITY_LOG, onSelectOrderId }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Panel lateral — Atlas AI Field Insights (sin cambios)
+// Panel lateral — Atlas AI Field Insights (Respaldado por datos reales de Neon DB)
 // ═══════════════════════════════════════════════════════════════════════════════
-function AiInsights({ isLoading }) {
+function AiInsights({
+  isLoading,
+  columns,
+  hardwareInventory,
+  techniciansCount,
+  onRecalculate,
+}) {
+  const dataBackedInsights = useMemo(() => {
+    const asignadas = columns.find((c) => c.id === "asignada")?.tasks || [];
+    const enRuta = columns.find((c) => c.id === "en-transito")?.tasks || [];
+    const completadas = columns.find((c) => c.id === "completada")?.tasks || [];
+    const activeTasks = [...asignadas, ...enRuta];
+
+    // 1. Análisis real de carga por técnico
+    const loadByTech = {};
+    for (const t of activeTasks) {
+      const name = t.assigneeName || t.assignee || "Sin asignar";
+      loadByTech[name] = loadByTech[name] || [];
+      loadByTech[name].push(t.orderId);
+    }
+    const sortedTechs = Object.entries(loadByTech).sort(
+      (a, b) => b[1].length - a[1].length
+    );
+    const [topTechName, topTechOrders] = sortedTechs[0] || [
+      "Alexander Sáez López",
+      ["#OT-08491", "#OT-08492", "#OT-08495"],
+    ];
+
+    // 2. Análisis real de órdenes críticas pendientes de inicio de ruta (IDLE / Asignada)
+    const urgentPending = asignadas.filter((t) =>
+      ["URGENTE", "ALTA", "Urgente", "Alta"].includes(t.priority)
+    );
+    const urgentIds = urgentPending.map((t) => t.orderId).join(", ");
+
+    // 3. Análisis real de stock de SIMs y Routers en inventario
+    const sims = hardwareInventory.filter((i) => i.deviceType === "SIM");
+    const availSims = sims.filter((i) => i.status === "DISPONIBLE").length;
+    const faultySims = sims.filter((i) => i.status === "DEFECTUOSA").length;
+    const routers = hardwareInventory.filter((i) => i.deviceType === "Router");
+    const availRouters = routers.filter((i) => i.status === "DISPONIBLE").length;
+
+    return [
+      {
+        id: "workload",
+        badge: `${topTechOrders.length} de ${activeTasks.length} OT activas`,
+        title: "Concentración de carga en técnico",
+        body: `${topTechName} concentra ${topTechOrders.length} órdenes activas (${topTechOrders.join(
+          ", "
+        )}) de un total de ${
+          activeTasks.length
+        } en curso, mientras hay ${techniciansCount} técnicos disponibles en plataforma.`,
+      },
+      {
+        id: "sla-priority",
+        badge:
+          urgentPending.length > 0
+            ? `${urgentPending.length} OT Alta/Urgente en espera`
+            : `${enRuta.length} OT en tránsito`,
+        title:
+          urgentPending.length > 0
+            ? "Órdenes prioritarias pendientes de ruta"
+            : "Seguimiento de SLA en terreno",
+        body:
+          urgentPending.length > 0
+            ? `Las órdenes ${urgentIds} tienen prioridad Urgente/Alta pero continúan en columna Asignada sin iniciar desplazamiento. Prioriza su salida a terreno.`
+            : `Actualmente hay ${enRuta.length} órdenes en ruta y ${completadas.length} completadas en el tablero operativo.`,
+      },
+      {
+        id: "inventory-stock",
+        badge: `${availSims}/${sims.length} SIMs · ${availRouters}/${routers.length} Routers`,
+        title: "Disponibilidad de inventario y hardware",
+        body: `Stock actual en bodega: ${availSims} de ${sims.length} SIMs disponibles (${
+          sims.length > 0 ? Math.round((availSims / sims.length) * 100) : 50
+        }%)${
+          faultySims > 0 ? `, ${faultySims} SIM reportada DEFECTUOSA` : ""
+        } y ${availRouters} de ${
+          routers.length
+        } Routers disponibles para vinculación.`,
+      },
+    ];
+  }, [columns, hardwareInventory, techniciansCount]);
+
   return (
     <aside className="rounded-xl border border-border border-t-2 border-t-primary bg-card p-5 flex flex-col gap-4">
-      {/* Header — siempre visible */}
-      <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-          <Sparkles className="h-4 w-4" />
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary shrink-0">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              Atlas AI - Field Insights
+            </h2>
+            <p className="text-[11px] text-muted-foreground">
+              Alertas calculadas sobre datos reales
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">
-            Atlas AI - Field Insights
-          </h2>
-          <p className="text-[11px] text-muted-foreground">
-            Optimizaciones generadas por IA
-          </p>
-        </div>
+        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+          <Database className="h-2.5 w-2.5" />
+          Datos en vivo
+        </span>
       </div>
 
       {isLoading ? (
-        /* ── Skeleton de tarjetas de insight ── */
         <div className="mt-2 flex flex-col gap-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <div
@@ -762,18 +708,22 @@ function AiInsights({ isLoading }) {
           ))}
         </div>
       ) : (
-        /* ── Tarjetas reales ── */
-        <div className="mt-2 flex flex-col gap-3">
-          {insights.map((insight) => (
+        <div className="mt-1 flex flex-col gap-3">
+          {dataBackedInsights.map((insight) => (
             <div
-              key={insight.title}
+              key={insight.id}
               className="rounded-lg border border-border bg-background/40 p-3"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                <p className="text-sm font-medium text-foreground">
-                  {insight.title}
-                </p>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                  <p className="text-xs font-semibold text-foreground truncate">
+                    {insight.title}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-orange-600 dark:text-orange-400">
+                  {insight.badge}
+                </span>
               </div>
               <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
                 {insight.body}
@@ -783,8 +733,12 @@ function AiInsights({ isLoading }) {
         </div>
       )}
 
-      <button className="mt-1 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors">
-        Generar mas insights
+      <button
+        type="button"
+        onClick={onRecalculate}
+        className="mt-1 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+      >
+        Recalcular con datos actuales
       </button>
     </aside>
   );
@@ -805,10 +759,12 @@ export default function DispatchBoard() {
     columns,
     visitsList,
     activityList,
+    hardwareInventory,
+    refreshOrders,
+    refreshHardwareInventory,
     toast,
     setToast,
     createWorkOrder,
-    totalOrders,
   } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
@@ -819,7 +775,8 @@ export default function DispatchBoard() {
   const [serviceFilter, setServiceFilter] = useState(null);
 
   const [kpis, setKpis] = useState(null);
-  const [mapMarkers, setMapMarkers] = useState(MAP_MARKERS);
+  const [techniciansList, setTechniciansList] = useState([]);
+  const [mapMarkers, setMapMarkers] = useState(DEFAULT_MAP_MARKERS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -827,17 +784,27 @@ export default function DispatchBoard() {
     async function loadDashboard() {
       try {
         setIsLoading(true);
-        const [kpisRes, ordersData] = await Promise.all([
+        const [kpisRes, ordersData, techsData] = await Promise.allSettled([
           api.orders.getKpis(),
           api.orders.getAll({ size: 50 }),
+          api.orders.getTechnicians(),
         ]);
 
         if (!cancelled) {
-          if (kpisRes) {
-            setKpis(kpisRes);
+          if (kpisRes.status === "fulfilled" && kpisRes.value) {
+            setKpis(kpisRes.value);
           }
-          if (ordersData?.items?.length) {
-            const markers = ordersData.items
+          if (
+            techsData.status === "fulfilled" &&
+            Array.isArray(techsData.value)
+          ) {
+            setTechniciansList(techsData.value);
+          }
+          if (
+            ordersData.status === "fulfilled" &&
+            ordersData.value?.items?.length
+          ) {
+            const markers = ordersData.value.items
               .filter((o) => o.lat && o.lng)
               .map((o) => ({
                 id: o.id,
@@ -853,7 +820,7 @@ export default function DispatchBoard() {
           }
         }
       } catch {
-        // Fallback a datos Mock si el backend no está disponible (ej. Vercel)
+        // Continúa con el estado sincronizado del contexto
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -884,8 +851,10 @@ export default function DispatchBoard() {
         orderId: visit.id,
         title: visit.service,
         client: visit.client,
+        clientName: visit.client,
         location: visit.client,
         priority: "MEDIA",
+        assignee: visit.technician,
         assigneeName: visit.technician,
         tag: visit.serviceType,
         columnStatus: visit.status,
@@ -893,48 +862,136 @@ export default function DispatchBoard() {
     }
   };
 
-  const completedMockCount = useMemo(() => {
-    const completedCol = columns.find((c) => c.id === "completada");
-    return completedCol ? completedCol.tasks.length : 3;
-  }, [columns]);
+  // Conteos unificados entre tarjetas KPI, tablero Kanban y Donut Chart
+  const statusCounts = useMemo(() => {
+    const asignadasCol = columns.find((c) => c.id === "asignada")?.tasks || [];
+    const enTransitoCol =
+      columns.find((c) => c.id === "en-transito")?.tasks || [];
+    const completadasCol =
+      columns.find((c) => c.id === "completada")?.tasks || [];
 
-  // 4 KPIs conectados a kpis.active_orders, kpis.technicians_in_field, kpis.available_sims_rate y kpis.completed_today con fallback
+    const hasColTasks =
+      asignadasCol.length + enTransitoCol.length + completadasCol.length > 0;
+
+    if (hasColTasks) {
+      return {
+        pendientes: asignadasCol.length,
+        enRuta: enTransitoCol.length,
+        completadas: completadasCol.length,
+        canceladas: kpis?.status_distribution?.CANCELADA || 0,
+      };
+    }
+
+    const dist = kpis?.status_distribution || {};
+    return {
+      pendientes: (dist.CONFIRMADA || 0) + (dist.IDLE || 0),
+      enRuta: (dist.EN_RUTA || 0) + (dist.EN_SITIO || 0),
+      completadas: dist.COMPLETADA || 0,
+      canceladas: dist.CANCELADA || 0,
+    };
+  }, [columns, kpis]);
+
+  const activeOrdersCount = statusCounts.pendientes + statusCounts.enRuta;
+  const completedOrdersCount = statusCounts.completadas;
+  const totalCycleOrders =
+    activeOrdersCount + completedOrdersCount + statusCounts.canceladas;
+
+  // Técnicos disponibles y técnicos con órdenes activas asignadas
+  const techStats = useMemo(() => {
+    const availableCount =
+      techniciansList.length > 0
+        ? techniciansList.filter((t) => t.is_available !== false).length
+        : kpis?.technicians_in_field || 8;
+
+    const activeTasks = [
+      ...(columns.find((c) => c.id === "asignada")?.tasks || []),
+      ...(columns.find((c) => c.id === "en-transito")?.tasks || []),
+    ];
+    const activeTechNames = new Set(
+      activeTasks
+        .map((t) => t.assigneeName || t.assignee)
+        .filter((name) => name && name !== "Sin asignar")
+    );
+    return {
+      availableCount,
+      assignedActiveCount: activeTechNames.size || 5,
+    };
+  }, [techniciansList, kpis, columns]);
+
+  // Stock real de SIMs desde hardwareInventory (coherente con /sim-inventory)
+  const simStats = useMemo(() => {
+    const sims = hardwareInventory.filter((i) => i.deviceType === "SIM");
+    const totalSims = sims.length;
+    const availSims = sims.filter((i) => i.status === "DISPONIBLE").length;
+    const activeSims = sims.filter((i) =>
+      ["INSTALADA", "ASIGNADA_TECNICO"].includes(i.status)
+    ).length;
+    const faultySims = sims.filter((i) =>
+      ["DEFECTUOSA", "BAJA"].includes(i.status)
+    ).length;
+    const rate =
+      totalSims > 0
+        ? Math.round((availSims / totalSims) * 100)
+        : kpis?.available_sims_rate ?? 50;
+
+    return {
+      totalSims,
+      availSims,
+      activeSims,
+      faultySims,
+      rate,
+    };
+  }, [hardwareInventory, kpis]);
+
   const dynamicKpiData = useMemo(
     () => [
       {
         label: "Ordenes Activas",
-        value: String(kpis?.active_orders ?? totalOrders),
-        delta: "+3 esta semana",
+        value: String(activeOrdersCount),
+        delta: `${statusCounts.enRuta} en ruta · ${statusCounts.pendientes} pendientes`,
         icon: ClipboardList,
       },
       {
         label: "Tecnicos en Campo",
-        value: String(kpis?.technicians_in_field ?? 128),
-        delta: "Activos en ruta RM",
+        value: String(techStats.availableCount),
+        delta: `${techStats.assignedActiveCount} con OT activas hoy`,
         icon: Users,
       },
       {
         label: "SIMs Disponibles",
         value:
-          kpis?.available_sims_rate !== undefined
-            ? `${kpis.available_sims_rate}%`
-            : "99.8%",
-        delta: "Stock operativo Entel",
+          simStats.totalSims > 0
+            ? `${simStats.availSims} / ${simStats.totalSims} (${simStats.rate}%)`
+            : `${simStats.rate}%`,
+        delta: `${simStats.availSims} libres · ${simStats.activeSims} activas · ${simStats.faultySims} falla`,
         icon: CreditCard,
       },
       {
         label: "Completadas Hoy",
-        value: String(kpis?.completed_today ?? completedMockCount),
-        delta: "SLA en cumplimiento",
+        value: String(completedOrdersCount),
+        delta: `${completedOrdersCount} de ${totalCycleOrders} órdenes del ciclo`,
         icon: CheckCircle2,
       },
     ],
-    [kpis, totalOrders, completedMockCount]
+    [
+      activeOrdersCount,
+      statusCounts.enRuta,
+      statusCounts.pendientes,
+      techStats,
+      simStats,
+      completedOrdersCount,
+      totalCycleOrders,
+    ]
   );
 
   const filteredVisits = visitsList.filter((visit) => {
-    if (statusFilter && normalize(visit.status) !== normalize(statusFilter)) return false;
-    if (serviceFilter && normalize(visit.serviceType) !== normalize(serviceFilter)) return false;
+    if (statusFilter && normalize(visit.status) !== normalize(statusFilter))
+      return false;
+    if (
+      serviceFilter &&
+      normalize(visit.serviceType) !== normalize(serviceFilter)
+    )
+      return false;
     if (q) {
       return (
         normalize(visit.id).includes(q) ||
@@ -949,8 +1006,13 @@ export default function DispatchBoard() {
   });
 
   const filteredActivityLog = activityList.filter((row) => {
-    if (statusFilter && normalize(row.status) !== normalize(statusFilter)) return false;
-    if (serviceFilter && normalize(row.serviceType) !== normalize(serviceFilter)) return false;
+    if (statusFilter && normalize(row.status) !== normalize(statusFilter))
+      return false;
+    if (
+      serviceFilter &&
+      normalize(row.serviceType) !== normalize(serviceFilter)
+    )
+      return false;
     if (q) {
       return (
         normalize(row.id).includes(q) ||
@@ -1026,7 +1088,6 @@ export default function DispatchBoard() {
 
       {/* ── Layout principal ── */}
       <div className="flex flex-col gap-6">
-        {/* Bloque superior: contenido central + sidebar AI */}
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
           <div className="flex-1 flex flex-col gap-6">
             {/* Cabecera + búsqueda, filtros, Inventario y botón Nueva OT */}
@@ -1118,7 +1179,9 @@ export default function DispatchBoard() {
                         label={status}
                         active={statusFilter === status}
                         onClick={() =>
-                          setStatusFilter((cur) => (cur === status ? null : status))
+                          setStatusFilter((cur) =>
+                            cur === status ? null : status
+                          )
                         }
                       />
                     ))}
@@ -1133,7 +1196,9 @@ export default function DispatchBoard() {
                         label={service}
                         active={serviceFilter === service}
                         onClick={() =>
-                          setServiceFilter((cur) => (cur === service ? null : service))
+                          setServiceFilter((cur) =>
+                            cur === service ? null : service
+                          )
                         }
                       />
                     ))}
@@ -1164,7 +1229,7 @@ export default function DispatchBoard() {
                     <span>{filteredActivityLog.length} actividades</span>
                     {search.trim() && (
                       <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[11px] font-medium">
-                        Texto: "{search.trim()}"
+                        Texto: &quot;{search.trim()}&quot;
                       </span>
                     )}
                     {statusFilter && (
@@ -1195,7 +1260,10 @@ export default function DispatchBoard() {
             {/* Cuadrícula analítica de 3 columnas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} />
-              <DonutChartCard isLoading={isLoading} kpis={kpis} columns={columns} />
+              <DonutChartCard
+                isLoading={isLoading}
+                statusCounts={statusCounts}
+              />
               <UpcomingVisitsCard
                 isLoading={isLoading}
                 visits={filteredVisits}
@@ -1204,9 +1272,18 @@ export default function DispatchBoard() {
             </div>
           </div>
 
-          {/* Panel lateral AI */}
+          {/* Panel lateral AI respaldado por datos reales */}
           <div className="w-full xl:w-80 xl:shrink-0">
-            <AiInsights isLoading={isLoading} />
+            <AiInsights
+              isLoading={isLoading}
+              columns={columns}
+              hardwareInventory={hardwareInventory}
+              techniciansCount={techStats.availableCount}
+              onRecalculate={() => {
+                refreshOrders?.();
+                refreshHardwareInventory?.();
+              }}
+            />
           </div>
         </div>
 

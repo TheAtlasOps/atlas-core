@@ -1,6 +1,7 @@
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -21,6 +22,48 @@ from app.schemas.client_portal import (
     SignConformityRequest,
     SignConformityResponse,
 )
+
+DETERMINISTIC_TOKEN_RE = re.compile(r"^atlas_(ot-\d+)_([0-9a-f]{6})$", re.IGNORECASE)
+
+
+async def resolve_order_by_deterministic_token(
+    db: AsyncSession, token: str
+) -> Optional[WorkOrder]:
+    """
+    Resuelve de forma determinística una orden por su token único derivado
+    (formato: atlas_ot-08493_000003) sin modificar datos de producción.
+    """
+    match = DETERMINISTIC_TOKEN_RE.match(token.strip())
+    if not match:
+        return None
+
+    expected_ot = f"#{match.group(1).upper()}"
+    expected_suffix = match.group(2).lower()
+
+    result = await db.execute(
+        select(WorkOrder)
+        .options(
+            selectinload(WorkOrder.client),
+            selectinload(WorkOrder.technician).selectinload(Technician.user),
+            selectinload(WorkOrder.status_history),
+        )
+        .where(WorkOrder.order_number == expected_ot)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        return None
+
+    clean_uuid_hex = str(order.id).replace("-", "").lower()
+    if not clean_uuid_hex.endswith(expected_suffix):
+        return None
+
+    if order.status == OrderStatusEnum.CANCELADA:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Esta orden de trabajo fue cancelada y su enlace de seguimiento ya no está activo.",
+        )
+
+    return order
 
 
 async def validate_magic_link_token(db: AsyncSession, token: str) -> MagicLink:
@@ -110,14 +153,9 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
     return items
 
 
-async def get_client_order_summary(db: AsyncSession, token: str) -> ClientOrderSummaryResponse:
-    """
-    Construye la vista integral del portal de cliente a partir de un Magic Link válido (14-DocArq §3.2 / RF-CLI-04).
-    """
-    magic_link = await validate_magic_link_token(db, token)
-    order = magic_link.work_order
-
-    # Formato legible de estado
+def _build_summary_response(
+    order: WorkOrder, magic_link: Optional[MagicLink] = None
+) -> ClientOrderSummaryResponse:
     status_label_map = {
         OrderStatusEnum.IDLE: "Pendiente de asignación",
         OrderStatusEnum.CONFIRMADA: "Visita confirmada",
@@ -129,7 +167,6 @@ async def get_client_order_summary(db: AsyncSession, token: str) -> ClientOrderS
     status_text = status_label_map.get(order.status, order.status.value)
     status_key = order.status.value.lower()
 
-    # Credenciales del técnico asignado (RF-CLI-05)
     tech_badge = None
     if order.technician and order.technician.user:
         tech_badge = ClientTechnicianBadge(
@@ -139,25 +176,31 @@ async def get_client_order_summary(db: AsyncSession, token: str) -> ClientOrderS
             vehicle_plate=order.technician.vehicle_plate,
         )
 
-    # Cálculo de ETA
     eta_str = None
     if order.eta:
         eta_str = order.eta.strftime("%H:%M")
     elif order.scheduled_date:
         eta_str = order.scheduled_date.strftime("%H:%M")
 
-    # Timeline vertical
     timeline = compute_timeline_steps(order)
 
-    # Dirección y contacto
     address = order.address_override or (order.client.address if order.client else "Dirección no informada")
     comuna = order.comuna_override or (order.client.comuna if order.client else "")
     contact_person = order.client.contact_person if order.client else None
     contact_phone = order.client.contact_phone if order.client else None
+    company = order.client.business_name if order.client else None
+
+    confirmed_at = magic_link.client_confirmed_at if magic_link else None
+    signature_url = magic_link.signature_url if magic_link else None
+    is_confirmed = (confirmed_at is not None) or (
+        order.status in (OrderStatusEnum.CONFIRMADA, OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO, OrderStatusEnum.COMPLETADA)
+    )
 
     return ClientOrderSummaryResponse(
         order_id=order.id,
         order_number=order.order_number,
+        title=order.title,
+        company=company,
         status=status_text,
         status_key=status_key,
         service_type=order.service_type.value.replace("_", " ").title(),
@@ -170,12 +213,27 @@ async def get_client_order_summary(db: AsyncSession, token: str) -> ClientOrderS
         contact_phone=contact_phone,
         technician=tech_badge,
         timeline_steps=timeline,
-        client_confirmed_at=magic_link.client_confirmed_at,
-        is_confirmed=magic_link.client_confirmed_at is not None,
-        signature_url=magic_link.signature_url,
+        client_confirmed_at=confirmed_at,
+        is_confirmed=is_confirmed,
+        signature_url=signature_url,
         is_completed=order.status == OrderStatusEnum.COMPLETADA,
         is_expired=False,
     )
+
+
+async def get_client_order_summary(db: AsyncSession, token: str) -> ClientOrderSummaryResponse:
+    """
+    Construye la vista integral del portal de cliente a partir de un Magic Link válido (14-DocArq §3.2 / RF-CLI-04).
+    """
+    try:
+        magic_link = await validate_magic_link_token(db, token)
+        return _build_summary_response(magic_link.work_order, magic_link)
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND:
+            order = await resolve_order_by_deterministic_token(db, token)
+            if order is not None:
+                return _build_summary_response(order, None)
+        raise
 
 
 async def confirm_client_visit(

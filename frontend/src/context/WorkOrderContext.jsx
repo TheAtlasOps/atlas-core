@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect } from "react";
 import {
-  INITIAL_HARDWARE_INVENTORY,
   mapApiSimToInventoryItem,
   mapApiRouterToInventoryItem,
+  reconcileInventoryWithOrders,
 } from "../lib/auditAndHardwareData";
 import {
   getInitials,
@@ -15,14 +15,14 @@ import { api } from "../lib/api";
 
 const WorkOrderContext = createContext(null);
 
-// ─── Inicialización dinámica 100% Neon PostgreSQL (0% Mocks) ───────────
 const EMPTY_COLUMNS = buildColumnsFromOrders([]);
 
 export function WorkOrderProvider({ children }) {
+  const [rawOrders, setRawOrders] = useState([]);
   const [columns, setColumns] = useState(EMPTY_COLUMNS);
   const [visitsList, setVisitsList] = useState([]);
   const [activityList, setActivityList] = useState([]);
-  const [hardwareInventory, setHardwareInventory] = useState([]);
+  const [rawInventory, setRawInventory] = useState([]);
   const [orderHardwareOverrides, setOrderHardwareOverrides] = useState({});
   const [auditedOrders, setAuditedOrders] = useState({
     "#OT-08498": true,
@@ -38,52 +38,82 @@ export function WorkOrderProvider({ children }) {
 
   /**
    * Recarga la lista de órdenes desde FastAPI (`api.orders.getAll({ size: 100 })`).
-   * Si falla (ej: Vercel sin backend local), mantiene las columnas Mock actuales.
    */
   const refreshOrders = useCallback(async () => {
     try {
       const response = await api.orders.getAll({ size: 100 });
       if (response && Array.isArray(response.items) && response.items.length > 0) {
+        setRawOrders(response.items);
         setColumns(buildColumnsFromOrders(response.items));
         setVisitsList(buildVisitsFromOrders(response.items));
         setActivityList(buildActivitiesFromOrders(response.items));
         return response.items;
       }
     } catch {
-      // Fallback silencioso a datos Mock en Vercel
+      // Mantiene estado actual si no hay sesión activa o falla red
     }
     return null;
   }, []);
 
   /**
    * Recarga el inventario de SIMs y Routers desde FastAPI (`api.inventory.getSims` y `getRouters`).
-   * Si falla, mantiene INITIAL_HARDWARE_INVENTORY.
    */
-  const refreshHardwareInventory = useCallback(async () => {
+  const refreshHardwareInventory = useCallback(async (ordersRef = []) => {
     try {
       const [simsRes, routersRes] = await Promise.all([
         api.inventory.getSims({ size: 100 }),
         api.inventory.getRouters({ size: 100 }),
       ]);
       const sims = Array.isArray(simsRes?.items)
-        ? simsRes.items.map(mapApiSimToInventoryItem)
+        ? simsRes.items.map((s) => mapApiSimToInventoryItem(s, ordersRef))
         : [];
       const routers = Array.isArray(routersRes?.items)
-        ? routersRes.items.map(mapApiRouterToInventoryItem)
+        ? routersRes.items.map((r) => mapApiRouterToInventoryItem(r, ordersRef))
         : [];
       if (sims.length > 0 || routers.length > 0) {
-        setHardwareInventory([...sims, ...routers]);
-        return [...sims, ...routers];
+        const combined = [...sims, ...routers];
+        setRawInventory(combined);
+        return combined;
       }
     } catch {
-      // Fallback silencioso a datos Mock en Vercel
+      // Mantiene estado actual si no hay sesión activa o falla red
     }
     return null;
   }, []);
 
   useEffect(() => {
-    refreshOrders();
-  }, [refreshOrders]);
+    let cancelled = false;
+    async function initData() {
+      const loadedOrders = await refreshOrders();
+      if (!cancelled) {
+        await refreshHardwareInventory(loadedOrders || []);
+      }
+    }
+    initData();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshOrders, refreshHardwareInventory]);
+
+  const allNormalizedOrders = useMemo(
+    () => columns.flatMap((col) => col.tasks),
+    [columns]
+  );
+
+  // Inventario reconciliado en vivo con las órdenes y overrides actuales
+  const hardwareInventory = useMemo(
+    () =>
+      reconcileInventoryWithOrders(
+        rawInventory,
+        allNormalizedOrders.length > 0 ? allNormalizedOrders : rawOrders,
+        orderHardwareOverrides
+      ),
+    [rawInventory, allNormalizedOrders, rawOrders, orderHardwareOverrides]
+  );
+
+  const setHardwareInventory = useCallback((updater) => {
+    setRawInventory(updater);
+  }, []);
 
   const totalOrders = useMemo(
     () => columns.reduce((acc, col) => acc + col.tasks.length, 0),
@@ -139,17 +169,21 @@ export function WorkOrderProvider({ children }) {
         time: "Ahora",
         service: orderTitle,
         serviceType: form.serviceType,
-        client: `${form.clientName} (${form.address})`,
+        client: `${newTask.clientName} — ${form.address}`,
+        clientName: newTask.clientName,
+        location: form.address,
         status: "Programada",
+        rawStatus: newTask.status,
         statusStyle:
           "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
-        technician: form.technician,
+        technician: newTask.assigneeName,
       };
       setVisitsList((prev) => [newVisit, ...prev]);
 
       const newActivity = {
         id: newId,
-        technician: form.technician,
+        technician: newTask.assigneeName,
+        client: newTask.clientName,
         action: `OT creada: ${orderTitle}`,
         status: "Programada",
         serviceType: form.serviceType,
@@ -159,7 +193,7 @@ export function WorkOrderProvider({ children }) {
 
       showNotification(
         `Orden ${newId} creada exitosamente`,
-        `${orderTitle} · Asignada a ${form.technician}`
+        `${orderTitle} · Asignada a ${newTask.assigneeName}`
       );
 
       return newTask;
@@ -174,7 +208,6 @@ export function WorkOrderProvider({ children }) {
 
       setAuditedOrders((prev) => ({ ...prev, [orderKey]: true }));
 
-      // Actualizar estado de la tarjeta a COMPLETADA y moverla a la columna Completada
       setColumns((prev) => {
         let movedTask = null;
         const withoutTask = prev.map((col) => {
@@ -200,6 +233,20 @@ export function WorkOrderProvider({ children }) {
         );
       });
 
+      setVisitsList((prev) =>
+        prev.map((v) =>
+          v.id === orderKey
+            ? {
+                ...v,
+                status: "Completada",
+                rawStatus: "COMPLETADA",
+                statusStyle:
+                  "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/25",
+              }
+            : v
+        )
+      );
+
       const newActivity = {
         id: orderKey,
         technician:
@@ -224,9 +271,9 @@ export function WorkOrderProvider({ children }) {
 
   const reassignOrderHardware = useCallback(
     (order, { routerItem, simItem }) => {
-      const orderKey = order?.order_number || order?.orderId || "EMPAREJAMIENTO";
+      const orderKey = order?.order_number || order?.orderId || null;
 
-      if (order?.order_number || order?.orderId) {
+      if (orderKey) {
         setOrderHardwareOverrides((prev) => {
           const current = prev[orderKey] || {};
           return {
@@ -250,30 +297,40 @@ export function WorkOrderProvider({ children }) {
         });
       }
 
-      setHardwareInventory((prev) =>
+      setRawInventory((prev) =>
         prev.map((item) => {
           if (routerItem && item.id === routerItem.id) {
             return {
               ...item,
               status: "INSTALADA",
-              orderId: order?.order_number || order?.orderId || item.orderId || "Vinculado",
+              orderId: orderKey || item.orderId || "Vinculado",
               technician:
                 order?.technician_summary?.full_name ||
                 order?.assigneeName ||
                 item.technician ||
                 "Técnico Terreno",
+              clientName:
+                order?.client?.business_name ||
+                order?.clientName ||
+                item.clientName ||
+                null,
             };
           }
           if (simItem && item.id === simItem.id) {
             return {
               ...item,
               status: "INSTALADA",
-              orderId: order?.order_number || order?.orderId || item.orderId || "Vinculado",
+              orderId: orderKey || item.orderId || "Vinculado",
               technician:
                 order?.technician_summary?.full_name ||
                 order?.assigneeName ||
                 item.technician ||
                 "Técnico Terreno",
+              clientName:
+                order?.client?.business_name ||
+                order?.clientName ||
+                item.clientName ||
+                null,
             };
           }
           return item;
@@ -315,6 +372,7 @@ export function WorkOrderProvider({ children }) {
       visitsList,
       activityList,
       hardwareInventory,
+      setHardwareInventory,
       orderHardwareOverrides,
       auditedOrders,
       totalOrders,

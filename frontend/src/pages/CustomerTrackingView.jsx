@@ -17,7 +17,12 @@ import {
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
-import { mapApiSummaryToTrackingOrder } from "../lib/magicLinksData";
+import {
+  mapApiSummaryToTrackingOrder,
+  parseDeterministicMagicToken,
+  buildSummaryFromOrderEntity,
+  isLikelyExpiredToken,
+} from "../lib/magicLinksData";
 import { api } from "../lib/api";
 
 const DEFAULT_SIGNATURE_BASE64 =
@@ -27,12 +32,13 @@ export default function CustomerTrackingView() {
   const { uuid } = useParams();
   const [searchParams] = useSearchParams();
   const token = useMemo(
-    () => searchParams.get("token") || uuid || "xK9pQ2",
+    () => (searchParams.get("token") || uuid || "").trim(),
     [searchParams, uuid]
   );
 
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
+  const [errorKind, setErrorKind] = useState(null); // "expired" | "invalid"
   const [apiSummary, setApiSummary] = useState(null);
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -49,25 +55,133 @@ export default function CustomerTrackingView() {
   const [isSigned, setIsSigned] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
 
-  // Consulta en vivo a la API de Neon PostgreSQL
+  // Consulta en vivo a la API de Neon PostgreSQL con validación estricta de token
   useEffect(() => {
     let cancelled = false;
+
     async function fetchPortalSummary() {
       setIsLoading(true);
       setFetchError(null);
+      setErrorKind(null);
+      setApiSummary(null);
+      setVisitConfirmed(false);
+      setIsSigned(false);
+
+      if (!token) {
+        if (!cancelled) {
+          setErrorKind("invalid");
+          setFetchError(
+            "El enlace de seguimiento está incompleto o no incluye un token de acceso válido."
+          );
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (isLikelyExpiredToken(token)) {
+        // Verifica contra backend pero garantiza clasificación de expirado
+        try {
+          await api.clientPortal.getSummary(token);
+        } catch (err) {
+          if (!cancelled) {
+            setErrorKind("expired");
+            setFetchError(
+              err?.message ||
+                "Este enlace de seguimiento ha expirado o fue revocado por seguridad."
+            );
+            setIsLoading(false);
+          }
+          return;
+        }
+      }
+
       try {
         const data = await api.clientPortal.getSummary(token);
-        if (!cancelled && data) {
-          setApiSummary(data);
-          if (data.is_confirmed) setVisitConfirmed(true);
-          if (data.signature_url || data.is_completed) setIsSigned(true);
+        if (cancelled) return;
+        if (data) {
+          let enriched = { ...data };
+          if (!enriched.company || !enriched.title) {
+            try {
+              const allRes = await api.orders.getAll({ size: 100 });
+              const matched = allRes?.items?.find(
+                (o) =>
+                  String(o.id) === String(data.order_id) ||
+                  o.order_number === data.order_number
+              );
+              if (matched) {
+                enriched = {
+                  ...enriched,
+                  company:
+                    enriched.company ||
+                    matched.client?.business_name ||
+                    "Empresa Cliente",
+                  title: enriched.title || matched.title,
+                };
+              }
+            } catch {
+              // Continúa con el resumen directo del portal
+            }
+          }
+          if (!cancelled) {
+            setApiSummary(enriched);
+            if (enriched.is_confirmed) setVisitConfirmed(true);
+            if (enriched.signature_url || enriched.is_completed) setIsSigned(true);
+          }
         }
       } catch (err) {
-        if (!cancelled) setFetchError(err.message || "Error al cargar datos");
+        if (cancelled) return;
+
+        // Si es un token determinístico único de una orden sin fila previa en magic_links
+        const parsed = parseDeterministicMagicToken(token);
+        if (parsed && err?.status !== 410) {
+          try {
+            const allRes = await api.orders.getAll({ size: 100 });
+            const matched = allRes?.items?.find((o) => {
+              const cleanUuid = String(o.id || "")
+                .replace(/-/g, "")
+                .toLowerCase();
+              return (
+                String(o.order_number || "").toUpperCase() ===
+                  parsed.orderNumber &&
+                cleanUuid.endsWith(parsed.idSuffix)
+              );
+            });
+            if (!cancelled && matched) {
+              if (matched.status === "CANCELADA") {
+                setErrorKind("expired");
+                setFetchError(
+                  "Esta orden de trabajo fue cancelada y su enlace de seguimiento ya no está activo."
+                );
+              } else {
+                const summary = buildSummaryFromOrderEntity(matched);
+                setApiSummary(summary);
+                if (summary.is_confirmed) setVisitConfirmed(true);
+                if (summary.is_completed) setIsSigned(true);
+              }
+              setIsLoading(false);
+              return;
+            }
+          } catch {
+            // Cae al manejo de error abajo
+          }
+        }
+
+        const isExpired =
+          err?.status === 410 ||
+          isLikelyExpiredToken(token) ||
+          /expirad|vencid|caducad|inactiv|410/i.test(err?.message || "");
+
+        setErrorKind(isExpired ? "expired" : "invalid");
+        setFetchError(
+          isExpired
+            ? "Este enlace de seguimiento ha expirado o ya no se encuentra activo. Por seguridad, los enlaces tienen una vigencia de 48 horas."
+            : "El enlace de seguimiento ingresado no es válido o no corresponde a ninguna orden registrada en el sistema."
+        );
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     }
+
     fetchPortalSummary();
     return () => {
       cancelled = true;
@@ -80,18 +194,19 @@ export default function CustomerTrackingView() {
   );
 
   const timelineSteps = useMemo(
-    () => order.timeline_steps || order.steps || [],
-    [order.timeline_steps, order.steps]
+    () => order?.timeline_steps || order?.steps || [],
+    [order]
   );
 
   const currentStepIndex = useMemo(() => {
+    if (!order || timelineSteps.length === 0) return 0;
     const currentByFlag = timelineSteps.findIndex((s) => s.current);
     if (currentByFlag >= 0) return currentByFlag;
     const idx = timelineSteps.findIndex(
       (s) => s.key === (order.status_key || order.statusKey)
     );
-    return idx >= 0 ? idx : 1;
-  }, [timelineSteps, order.status_key, order.statusKey]);
+    return idx >= 0 ? idx : 0;
+  }, [timelineSteps, order]);
 
   const handleConfirmVisit = async (e) => {
     e.preventDefault();
@@ -99,10 +214,12 @@ export default function CustomerTrackingView() {
     try {
       await api.clientPortal.confirmVisit(token, {
         is_confirmed: true,
-        notes: visitNotes.trim() || "Visita confirmada por cliente en portal Magic Link",
+        notes:
+          visitNotes.trim() ||
+          "Visita confirmada por cliente en portal Magic Link",
       });
     } catch {
-      // Fallback en Vercel: confirma localmente
+      // Fallback: confirma localmente
     } finally {
       setVisitConfirmed(true);
       setIsConfirmingVisit(false);
@@ -111,12 +228,12 @@ export default function CustomerTrackingView() {
 
   const handleSignConformity = async (e) => {
     e.preventDefault();
-    const signer = signedByName.trim() || order.client || "Cliente Receptor";
+    const signer = signedByName.trim() || order?.client || "Cliente Receptor";
     setIsSigning(true);
     try {
       await api.clientPortal.sign(token, DEFAULT_SIGNATURE_BASE64, signer);
     } catch {
-      // Fallback en Vercel: registra firma en estado local
+      // Fallback: registra firma en estado local
     } finally {
       setSignedByName(signer);
       setIsSigned(true);
@@ -133,7 +250,7 @@ export default function CustomerTrackingView() {
         notes: `${selectedIssue}${commentText ? ` — ${commentText}` : ""}`,
       });
     } catch {
-      // Fallback silencioso en Vercel
+      // Fallback silencioso
     }
     setReportSuccess(true);
     setTimeout(() => {
@@ -158,22 +275,63 @@ export default function CustomerTrackingView() {
   }
 
   if (!order || fetchError) {
+    const isExpired = errorKind === "expired";
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl p-8 text-center shadow-lg">
-          <div className="h-12 w-12 rounded-full bg-red-500/10 text-red-500 mx-auto flex items-center justify-center mb-4">
-            <AlertTriangle className="h-6 w-6" />
-          </div>
-          <h2 className="text-lg font-bold mb-2">Enlace no disponible</h2>
-          <p className="text-sm text-slate-500 dark:text-gray-400 mb-6">
-            El enlace de seguimiento no es válido, ha caducado o no se encuentra en el sistema de despacho.
-          </p>
-          <a
-            href="https://www.entel.cl"
-            className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-gray-800 text-xs font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors"
+          <div
+            className={`h-12 w-12 rounded-full mx-auto flex items-center justify-center mb-4 ${
+              isExpired
+                ? "bg-amber-500/15 text-amber-500"
+                : "bg-red-500/10 text-red-500"
+            }`}
           >
-            Ir al portal corporativo Entel
-          </a>
+            {isExpired ? (
+              <Clock className="h-6 w-6" />
+            ) : (
+              <AlertTriangle className="h-6 w-6" />
+            )}
+          </div>
+          <span
+            className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider mb-2 ${
+              isExpired
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
+            }`}
+          >
+            {isExpired ? "Código 410 · Enlace Expirado" : "Código 404 · Enlace Inválido"}
+          </span>
+          <h2 className="text-lg font-bold mb-2">
+            {isExpired
+              ? "Enlace de seguimiento vencido o revocado"
+              : "Enlace de seguimiento no válido"}
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-gray-400 mb-4 leading-relaxed">
+            {fetchError ||
+              (isExpired
+                ? "Este Magic Link ha caducado o fue reemplazado por un enlace más reciente. Solicita un nuevo enlace al centro de despacho."
+                : "El enlace ingresado no existe o no corresponde a ninguna orden activa en la plataforma ATLAS.")}
+          </p>
+          {token && (
+            <p className="text-[11px] font-mono text-slate-400 dark:text-gray-500 bg-slate-100 dark:bg-gray-800/70 rounded-lg px-3 py-1.5 mb-6 break-all">
+              Token consultado: {token}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+            <a
+              href="tel:6003600106"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-xs font-semibold text-white transition-colors"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              Contactar Mesa de Ayuda
+            </a>
+            <a
+              href="https://www.entel.cl"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-gray-800 text-xs font-semibold text-slate-700 dark:text-gray-200 hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              Portal Entel Empresas
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -205,7 +363,7 @@ export default function CustomerTrackingView() {
           {/* Acciones: Switch de tema + Badge de Orden */}
           <div className="flex items-center gap-2 shrink-0">
             <ThemeToggle id="portal-theme-toggle" />
-            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-mono font-medium text-slate-700 dark:text-gray-300 border border-slate-200 dark:border-gray-700">
+            <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-mono font-bold text-orange-600 dark:text-orange-400 border border-slate-200 dark:border-gray-700">
               {order.order_number || order.orderNumber}
             </span>
           </div>
@@ -219,7 +377,7 @@ export default function CustomerTrackingView() {
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
-                Tipo de Requerimiento
+                Orden {order.order_number} · Requerimiento
               </span>
               <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
                 {order.serviceType}
@@ -256,7 +414,9 @@ export default function CustomerTrackingView() {
               </div>
               <div>
                 <p className="text-xs text-orange-100 font-medium">
-                  Llegada estimada a destino
+                  {isCompletedStatus
+                    ? "Hora de término registrada"
+                    : "Hora estimada de atención"}
                 </p>
                 <p className="text-2xl font-bold tracking-tight">{order.eta}</p>
               </div>
@@ -273,7 +433,10 @@ export default function CustomerTrackingView() {
             <div className="flex items-start gap-2.5">
               <Building2 className="h-4 w-4 text-slate-400 dark:text-gray-500 shrink-0 mt-0.5" />
               <span className="font-medium text-slate-800 dark:text-slate-100">
-                {order.client} · {order.company}
+                {order.client}
+                {order.company && order.company !== order.client
+                  ? ` · ${order.company}`
+                  : ""}
               </span>
             </div>
             <div className="flex items-start gap-2.5">
@@ -355,7 +518,8 @@ export default function CustomerTrackingView() {
             {timelineSteps.map((step, idx) => {
               const isCompleted = step.completed || idx < currentStepIndex;
               const isCurrent = step.current || idx === currentStepIndex;
-              const isPending = !isCompleted && !isCurrent && idx > currentStepIndex;
+              const isPending =
+                !isCompleted && !isCurrent && idx > currentStepIndex;
               const StepIcon =
                 step.key === "confirmada" || step.key === "registrada"
                   ? FileText
@@ -380,7 +544,11 @@ export default function CustomerTrackingView() {
                       isCompleted || isCurrent
                         ? "bg-orange-500 text-white shadow-sm"
                         : "bg-slate-200 dark:bg-gray-800 text-slate-500 dark:text-gray-400"
-                    } ${isCurrent ? "ring-2 ring-orange-400 dark:ring-orange-500" : ""}`}
+                    } ${
+                      isCurrent
+                        ? "ring-2 ring-orange-400 dark:ring-orange-500"
+                        : ""
+                    }`}
                   >
                     <StepIcon className="h-5 w-5" />
                   </div>
@@ -632,7 +800,7 @@ export default function CustomerTrackingView() {
 
         {import.meta.env.DEV && token && (
           <p className="text-center text-[10px] text-slate-400 dark:text-gray-500 font-mono break-all py-1">
-            Token de acceso activo: {token}
+            Token de acceso activo: {token} · Orden: {order.order_number}
           </p>
         )}
       </main>

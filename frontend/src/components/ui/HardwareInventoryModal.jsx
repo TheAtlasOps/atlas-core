@@ -71,6 +71,7 @@ export function HardwareInventoryContent({ onClose }) {
   const {
     hardwareInventory,
     setHardwareInventory,
+    refreshHardwareInventory,
     reassignOrderHardware,
     setToast,
   } = useWorkOrders();
@@ -93,34 +94,12 @@ export function HardwareInventoryContent({ onClose }) {
     status: "DISPONIBLE",
   });
 
-  // Consume api.inventory.getSims() y api.inventory.getRouters() al abrir el modal con fallback a Mock Data
+  // Sincroniza inventario con el contexto unificado de órdenes y hardware al abrir la vista
   useEffect(() => {
-    let cancelled = false;
-    async function loadInventoryFromApi() {
-      try {
-        const [simsData, routersData] = await Promise.all([
-          api.inventory.getSims(),
-          api.inventory.getRouters(),
-        ]);
-        if (cancelled) return;
-        const sims = Array.isArray(simsData?.items)
-          ? simsData.items.map(mapApiSimToInventoryItem)
-          : [];
-        const routers = Array.isArray(routersData?.items)
-          ? routersData.items.map(mapApiRouterToInventoryItem)
-          : [];
-        if (sims.length > 0 || routers.length > 0) {
-          setHardwareInventory([...sims, ...routers]);
-        }
-      } catch {
-        // Fallback silencioso a datos Mock en Vercel
-      }
+    if (typeof refreshHardwareInventory === "function") {
+      refreshHardwareInventory();
     }
-    loadInventoryFromApi();
-    return () => {
-      cancelled = true;
-    };
-  }, [setHardwareInventory]);
+  }, [refreshHardwareInventory]);
 
   const stats = useMemo(() => {
     const total = hardwareInventory.length;
@@ -165,10 +144,12 @@ export function HardwareInventoryContent({ onClose }) {
       if (!q) return true;
       return (
         item.identifier.toLowerCase().includes(q) ||
+        (item.secondaryId ?? "").toLowerCase().includes(q) ||
         item.model.toLowerCase().includes(q) ||
         item.deviceType.toLowerCase().includes(q) ||
         (item.orderId ?? "").toLowerCase().includes(q) ||
         (item.technician ?? "").toLowerCase().includes(q) ||
+        (item.client ?? "").toLowerCase().includes(q) ||
         item.operator.toLowerCase().includes(q)
       );
     });
@@ -189,7 +170,7 @@ export function HardwareInventoryContent({ onClose }) {
     try {
       await api.inventory.pair(pairEquipmentId, pairSimCardId, null);
     } catch {
-      // Fallback en Vercel: actualiza estado local
+      // Fallback: actualiza estado local
     } finally {
       reassignOrderHardware(null, { routerItem, simItem });
       setIsPairing(false);
@@ -786,22 +767,29 @@ export function HardwareInventoryContent({ onClose }) {
                       {/* 5. Orden / Técnico Asignado */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         {item.orderId || item.technician ? (
-                          <div className="flex items-center gap-2">
-                            {item.orderId && (
-                              <span className="rounded bg-orange-500/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-orange-600 dark:text-orange-400">
-                                {item.orderId}
-                              </span>
-                            )}
-                            {item.technician && (
-                              <>
-                                <AdminAvatar
-                                  name={item.technician}
-                                  className="h-5 w-5 text-[9px]"
-                                />
-                                <span className="text-xs font-medium text-slate-800 dark:text-gray-200">
-                                  {item.technician}
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              {item.orderId && (
+                                <span className="rounded bg-orange-500/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-orange-600 dark:text-orange-400">
+                                  {item.orderId}
                                 </span>
-                              </>
+                              )}
+                              {item.technician && (
+                                <>
+                                  <AdminAvatar
+                                    name={item.technician}
+                                    className="h-5 w-5 text-[9px]"
+                                  />
+                                  <span className="text-xs font-medium text-slate-800 dark:text-gray-200">
+                                    {item.technician}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            {item.client && (
+                              <span className="text-[10px] text-slate-500 dark:text-gray-400">
+                                {item.client}
+                              </span>
                             )}
                           </div>
                         ) : (
