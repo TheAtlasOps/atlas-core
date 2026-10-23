@@ -670,7 +670,7 @@ def build_gantt_workbook():
             cell.fill = PatternFill(start_color=row_fill, end_color=row_fill, fill_type='solid')
 
     # Save to both destinations
-    dest1 = r'C:\Users\Alexander\Desktop\Archivos\Duoc Uc\Proyecto Atlas\atlas-core\docs\Fase 2 Casptone\Evidencia Proyecto\Carta_Gantt_Proyecto_Atlas.xlsx'
+    dest1 = r'C:\Users\Alexander\Desktop\Archivos\Duoc Uc\Proyecto Atlas\atlas-core\docs\Fase 2 Capstone\Evidencia Proyecto\Carta_Gantt_Proyecto_Atlas.xlsx'
     dest2 = r'C:\Users\Alexander\Desktop\Archivos\Duoc Uc\Proyecto Atlas\Documentacion_Entregables_Fase1\Carta_Gantt_Proyecto_Atlas.xlsx'
     
     os.makedirs(os.path.dirname(dest1), exist_ok=True)
