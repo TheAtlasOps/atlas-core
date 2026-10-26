@@ -19,9 +19,7 @@ import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
 import {
   mapApiSummaryToTrackingOrder,
-  parseDeterministicMagicToken,
-  buildSummaryFromOrderEntity,
-  isLikelyExpiredToken,
+  getPortalAccessError,
 } from "../lib/magicLinksData";
 import { api } from "../lib/api";
 
@@ -38,7 +36,7 @@ export default function CustomerTrackingView() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null);
-  const [errorKind, setErrorKind] = useState(null); // "expired" | "invalid"
+  const [errorKind, setErrorKind] = useState(null); // "expired" | "invalid" | "unavailable"
   const [apiSummary, setApiSummary] = useState(null);
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -78,105 +76,17 @@ export default function CustomerTrackingView() {
         return;
       }
 
-      if (isLikelyExpiredToken(token)) {
-        // Verifica contra backend pero garantiza clasificación de expirado
-        try {
-          await api.clientPortal.getSummary(token);
-        } catch (err) {
-          if (!cancelled) {
-            setErrorKind("expired");
-            setFetchError(
-              err?.message ||
-                "Este enlace de seguimiento ha expirado o fue revocado por seguridad."
-            );
-            setIsLoading(false);
-          }
-          return;
-        }
-      }
-
       try {
         const data = await api.clientPortal.getSummary(token);
         if (cancelled) return;
-        if (data) {
-          let enriched = { ...data };
-          if (!enriched.company || !enriched.title) {
-            try {
-              const allRes = await api.orders.getAll({ size: 100 });
-              const matched = allRes?.items?.find(
-                (o) =>
-                  String(o.id) === String(data.order_id) ||
-                  o.order_number === data.order_number
-              );
-              if (matched) {
-                enriched = {
-                  ...enriched,
-                  company:
-                    enriched.company ||
-                    matched.client?.business_name ||
-                    "Empresa Cliente",
-                  title: enriched.title || matched.title,
-                };
-              }
-            } catch {
-              // Continúa con el resumen directo del portal
-            }
-          }
-          if (!cancelled) {
-            setApiSummary(enriched);
-            if (enriched.is_confirmed) setVisitConfirmed(true);
-            if (enriched.signature_url || enriched.is_completed) setIsSigned(true);
-          }
-        }
+        setApiSummary(data);
+        setVisitConfirmed(Boolean(data?.is_confirmed));
+        setIsSigned(Boolean(data?.signature_url || data?.is_completed));
       } catch (err) {
         if (cancelled) return;
-
-        // Si es un token determinístico único de una orden sin fila previa en magic_links
-        const parsed = parseDeterministicMagicToken(token);
-        if (parsed && err?.status !== 410) {
-          try {
-            const allRes = await api.orders.getAll({ size: 100 });
-            const matched = allRes?.items?.find((o) => {
-              const cleanUuid = String(o.id || "")
-                .replace(/-/g, "")
-                .toLowerCase();
-              return (
-                String(o.order_number || "").toUpperCase() ===
-                  parsed.orderNumber &&
-                cleanUuid.endsWith(parsed.idSuffix)
-              );
-            });
-            if (!cancelled && matched) {
-              if (matched.status === "CANCELADA") {
-                setErrorKind("expired");
-                setFetchError(
-                  "Esta orden de trabajo fue cancelada y su enlace de seguimiento ya no está activo."
-                );
-              } else {
-                const summary = buildSummaryFromOrderEntity(matched);
-                setApiSummary(summary);
-                if (summary.is_confirmed) setVisitConfirmed(true);
-                if (summary.is_completed) setIsSigned(true);
-              }
-              setIsLoading(false);
-              return;
-            }
-          } catch {
-            // Cae al manejo de error abajo
-          }
-        }
-
-        const isExpired =
-          err?.status === 410 ||
-          isLikelyExpiredToken(token) ||
-          /expirad|vencid|caducad|inactiv|410/i.test(err?.message || "");
-
-        setErrorKind(isExpired ? "expired" : "invalid");
-        setFetchError(
-          isExpired
-            ? "Este enlace de seguimiento ha expirado o ya no se encuentra activo. Por seguridad, los enlaces tienen una vigencia de 48 horas."
-            : "El enlace de seguimiento ingresado no es válido o no corresponde a ninguna orden registrada en el sistema."
-        );
+        const accessError = getPortalAccessError(err);
+        setErrorKind(accessError.kind);
+        setFetchError(accessError.message);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -276,6 +186,7 @@ export default function CustomerTrackingView() {
 
   if (!order || fetchError) {
     const isExpired = errorKind === "expired";
+    const isUnavailable = errorKind === "unavailable";
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-white flex items-center justify-center p-6">
         <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 rounded-2xl p-8 text-center shadow-lg">
@@ -299,10 +210,16 @@ export default function CustomerTrackingView() {
                 : "bg-rose-500/15 text-rose-600 dark:text-rose-400"
             }`}
           >
-            {isExpired ? "Código 410 · Enlace Expirado" : "Código 404 · Enlace Inválido"}
+            {isUnavailable
+              ? "Seguimiento no disponible"
+              : isExpired
+              ? "Código 410 · Enlace vencido o revocado"
+              : "Código 404 · Enlace inválido"}
           </span>
           <h2 className="text-lg font-bold mb-2">
-            {isExpired
+            {isUnavailable
+              ? "No se pudo consultar el seguimiento"
+              : isExpired
               ? "Enlace de seguimiento vencido o revocado"
               : "Enlace de seguimiento no válido"}
           </h2>
