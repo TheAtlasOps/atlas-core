@@ -2,7 +2,7 @@ const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
 async function request(endpoint, options = {}) {
   const isPublicEndpoint =
-    endpoint === "/auth/login" || endpoint.startsWith("/client/");
+    endpoint === "/auth/login" || endpoint.startsWith("/auth/password-reset/") || endpoint.startsWith("/client/");
 
   const token = localStorage.getItem("atlas_token");
 
@@ -41,6 +41,12 @@ export const api = {
     login: (email, password) =>
       request("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
     me: () => request("/auth/me"),
+    requestPasswordReset: (email) => request("/auth/password-reset/request", {
+      method: "POST", body: JSON.stringify({ email }),
+    }),
+    confirmPasswordReset: (token, password, confirmation) => request("/auth/password-reset/confirm", {
+      method: "POST", body: JSON.stringify({ token, password, password_confirmation: confirmation }),
+    }),
     generateMagicLink: (workOrderId, expireHours = 48) =>
       request("/auth/magic-link/generate", {
         method: "POST",

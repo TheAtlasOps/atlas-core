@@ -32,6 +32,7 @@ def create_user_token_response(user: User) -> Token:
     access_token = create_access_token(
         subject=str(user.id),
         role=user.role.value,
+        auth_version=user.auth_version or 0,
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return Token(

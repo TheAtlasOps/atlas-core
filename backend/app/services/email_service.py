@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from html import escape
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import resend
@@ -7,6 +9,18 @@ from app.core.config import settings
 from app.schemas.notification import EmailNotificationResponse
 
 logger = logging.getLogger(__name__)
+
+
+def build_password_reset_html(name: str, link: str) -> str:
+    return f"""<!doctype html><html lang="es"><meta charset="utf-8">
+    <body style="font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;padding:24px">
+    <main style="max-width:520px;margin:auto;background:white;border-radius:16px;padding:32px">
+    <h1 style="color:#f97316">ATLAS · Recupera tu acceso</h1>
+    <p>Hola, {escape(name)}. Recibimos una solicitud para restablecer tu contraseña.</p>
+    <p><a href="{escape(link, quote=True)}" style="display:inline-block;background:#f97316;color:white;padding:14px;border-radius:10px">Establecer nueva contraseña</a></p>
+    <p>El enlace vence en 30 minutos y solo puede utilizarse una vez.</p>
+    <p>Si no solicitaste este cambio, ignora este correo. Tu contraseña actual no ha cambiado.</p>
+    </main></body></html>"""
 
 
 def build_magic_link_html(
@@ -147,6 +161,8 @@ async def send_transactional_email(
     to_email: str,
     subject: str,
     html_content: str,
+    *,
+    sensitive: bool = False,
 ) -> EmailNotificationResponse:
     """
     Despacha un correo transaccional utilizando SendGrid o Resend (RF-API-10 / 14-DocArq §3.3).
@@ -173,7 +189,10 @@ async def send_transactional_email(
                 res = await client.post("https://api.sendgrid.com/v3/mail/send", json=payload, headers=headers)
                 if res.status_code in (200, 202):
                     msg_id = res.headers.get("X-Message-Id", f"sg_{datetime.now().strftime('%Y%m%d%H%M%S')}")
-                    logger.info(f"✅ Correo enviado exitosamente vía SendGrid a {to_email} (MsgID: {msg_id})")
+                    if sensitive:
+                        logger.info("sensitive_email_accepted_sendgrid")
+                    else:
+                        logger.info(f"✅ Correo enviado exitosamente vía SendGrid a {to_email} (MsgID: {msg_id})")
                     return EmailNotificationResponse(
                         success=True,
                         recipient=to_email,
@@ -183,22 +202,28 @@ async def send_transactional_email(
                         simulated=False,
                     )
                 else:
-                    logger.error(f"❌ Error al enviar con SendGrid ({res.status_code}): {res.text}")
+                    if sensitive:
+                        logger.error("sensitive_email_failed_sendgrid status=%s", res.status_code)
+                    else:
+                        logger.error(f"❌ Error al enviar con SendGrid ({res.status_code}): {res.text}")
                     return EmailNotificationResponse(
                         success=False,
                         recipient=to_email,
                         message_id=None,
-                        status=f"error_sendgrid_{res.status_code}: {res.text}",
+                        status=f"error_sendgrid_{res.status_code}" if sensitive else f"error_sendgrid_{res.status_code}: {res.text}",
                         sent_at=now,
                         simulated=False,
                     )
         except Exception as e:
-            logger.error(f"❌ Excepción de red al enviar con SendGrid a {to_email}: {str(e)}")
+            if sensitive:
+                logger.error("sensitive_email_failed_sendgrid_network")
+            else:
+                logger.error(f"❌ Excepción de red al enviar con SendGrid a {to_email}: {str(e)}")
             return EmailNotificationResponse(
                 success=False,
                 recipient=to_email,
                 message_id=None,
-                status=f"error_sendgrid_exception: {str(e)}",
+                status="error_sendgrid_exception" if sensitive else f"error_sendgrid_exception: {str(e)}",
                 sent_at=now,
                 simulated=False,
             )
@@ -213,7 +238,7 @@ async def send_transactional_email(
                 "subject": subject,
                 "html": html_content,
             }
-            res = resend.Emails.send(params)
+            res = await asyncio.to_thread(resend.Emails.send, params)
             message_id = res.get("id") if isinstance(res, dict) else str(res)
 
             return EmailNotificationResponse(
@@ -225,20 +250,24 @@ async def send_transactional_email(
                 simulated=False,
             )
         except Exception as e:
-            logger.error(f"❌ Error al enviar correo transaccional con Resend a {to_email}: {str(e)}")
+            if sensitive:
+                logger.error("sensitive_email_failed_resend")
+            else:
+                logger.error(f"❌ Error al enviar correo transaccional con Resend a {to_email}: {str(e)}")
             return EmailNotificationResponse(
                 success=False,
                 recipient=to_email,
                 message_id=None,
-                status=f"error: {str(e)}",
+                status="error_resend" if sensitive else f"error: {str(e)}",
                 sent_at=now,
                 simulated=False,
             )
 
     # 3. Modo simulación dev si no hay proveedor configurado
-    logger.info(
-        f"📧 [DEV MOCK EMAIL] Envío simulado a {to_email} | Asunto: {subject}"
-    )
+    if sensitive:
+        logger.warning("sensitive_email_provider_unavailable")
+    else:
+        logger.info(f"📧 [DEV MOCK EMAIL] Envío simulado a {to_email} | Asunto: {subject}")
     return EmailNotificationResponse(
         success=True,
         recipient=to_email,

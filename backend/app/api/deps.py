@@ -54,7 +54,7 @@ async def get_current_user(
     )
     user = result.scalar_one_or_none()
 
-    if user is None:
+    if user is None or payload.get("ver", 0) != (user.auth_version or 0):
         raise credentials_exception
 
     return user

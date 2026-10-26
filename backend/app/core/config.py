@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     MAGIC_LINK_SECRET_KEY: str = "atlas_super_secret_magic_link_key_change_in_production_9876"
     MAGIC_LINK_EXPIRE_HOURS: int = 48
     FRONTEND_PORTAL_URL: str = "http://localhost:5173/status"
+    PASSWORD_RESET_URL: str = ""  # Vacío: usar el origen de FRONTEND_PORTAL_URL.
 
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [

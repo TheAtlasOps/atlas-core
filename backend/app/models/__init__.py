@@ -14,6 +14,7 @@ from app.models.inventory import SimCard, Equipment
 from app.models.work_order import WorkOrder, WorkOrderItem, OrderStatusHistory
 from app.models.magic_link import MagicLink
 from app.models.evidence import WorkOrderEvidence
+from app.models.password_reset import PasswordResetToken
 
 __all__ = [
     "UserRoleEnum",
@@ -34,4 +35,5 @@ __all__ = [
     "OrderStatusHistory",
     "MagicLink",
     "WorkOrderEvidence",
+    "PasswordResetToken",
 ]

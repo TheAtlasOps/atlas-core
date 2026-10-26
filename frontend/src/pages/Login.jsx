@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight, AlertCircle, Sparkles } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -148,6 +148,10 @@ export default function Login() {
             )}
           </button>
         </form>
+
+        <Link to="/forgot-password" className="mt-5 block text-center text-sm font-medium text-orange-600 hover:underline dark:text-orange-400">
+          ¿Olvidaste tu contraseña?
+        </Link>
 
         {/* Footer de seguridad */}
         <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">

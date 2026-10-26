@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 from decimal import Decimal
-from sqlalchemy import String, Boolean, DateTime, Numeric, ForeignKey, Text
+from sqlalchemy import String, Boolean, DateTime, Numeric, ForeignKey, Text, Integer
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -22,6 +22,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    auth_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     role: Mapped[UserRoleEnum] = mapped_column(
