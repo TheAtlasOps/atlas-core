@@ -3,20 +3,6 @@
  * Garantiza que cada orden tenga su propio enlace único y coherente con Neon PostgreSQL.
  */
 
-export const MAGIC_LINKS_DATA = [];
-
-export const KNOWN_EXPIRED_TOKENS = new Set([
-  "nT7vB3",
-  "token_magic_providencia_8491_abc",
-  "LOiu9FDFcil-CsQNvNTZazYD8Sx8-18E43J8FlXMbQs",
-]);
-
-export function getTrackingDataByUuid() {
-  return null;
-}
-
-const DETERMINISTIC_TOKEN_REGEX = /^atlas_(ot-\d+)_([0-9a-f]{6})$/i;
-
 /**
  * Obtiene el token único de seguimiento para una orden.
  * Solo retorna enlaces reales y persistidos en la base de datos (`active_magic_link_token` o `magic_links`).
@@ -27,35 +13,33 @@ export function buildOrderMagicToken(order) {
   const activeToken =
     order.active_magic_link_token ||
     (Array.isArray(order.magic_links) &&
-      order.magic_links.find((ml) => ml?.is_active !== false && !isLikelyExpiredToken(ml?.token))?.token);
+      order.magic_links.find((ml) =>
+        ml?.is_active === true && Date.parse(ml.expires_at) > Date.now()
+      )?.token);
   if (activeToken && String(activeToken).trim()) {
     return String(activeToken).trim();
   }
   return "";
 }
 
-export function parseDeterministicMagicToken(token) {
-  if (!token || typeof token !== "string") return null;
-  const match = DETERMINISTIC_TOKEN_REGEX.exec(token.trim());
-  if (!match) return null;
+/** La API determina la validez; el contenido del token nunca concede acceso. */
+export function getPortalAccessError(error) {
+  if (error?.status === 410) {
+    return {
+      kind: "expired",
+      message: "Este enlace de seguimiento ha vencido o fue revocado. Solicita un nuevo enlace al centro de despacho.",
+    };
+  }
+  if (error?.status === 404) {
+    return {
+      kind: "invalid",
+      message: "El enlace de seguimiento no es válido o no existe. Comprueba que copiaste el enlace completo.",
+    };
+  }
   return {
-    orderNumber: `#${match[1].toUpperCase()}`,
-    idSuffix: match[2].toLowerCase(),
+    kind: "unavailable",
+    message: "No pudimos consultar el seguimiento en este momento. Inténtalo de nuevo en unos minutos.",
   };
-}
-
-export function isLikelyExpiredToken(token) {
-  if (!token || typeof token !== "string") return false;
-  const clean = token.trim();
-  if (KNOWN_EXPIRED_TOKENS.has(clean)) return true;
-  const lower = clean.toLowerCase();
-  return (
-    lower.includes("expir") ||
-    lower.includes("vencid") ||
-    lower.includes("caducad") ||
-    lower.includes("inactiv") ||
-    lower.includes("revok")
-  );
 }
 
 const STATUS_KEY_LABELS = {
@@ -148,88 +132,6 @@ export function computeStepsFromStatusKey(statusKey, hasAssignedTech = false) {
     completed: currentRank >= def.rank && currentRank !== -1,
     current: currentRank === def.rank,
   }));
-}
-
-export function buildSummaryFromOrderEntity(order) {
-  if (!order) return null;
-  const rawStatus = String(order.status || "IDLE").toUpperCase();
-  const statusKey = rawStatus.toLowerCase();
-  const tech = order.technician_summary || order.technician || null;
-  const techName =
-    tech?.full_name || tech?.name || order.assigneeName || order.assignee || "";
-
-  let etaTime = "Por confirmar";
-  if (order.eta) {
-    const d = new Date(order.eta);
-    if (!Number.isNaN(d.getTime())) {
-      etaTime = d.toLocaleTimeString("es-CL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-  } else if (order.scheduled_date) {
-    const d = new Date(order.scheduled_date);
-    if (!Number.isNaN(d.getTime())) {
-      etaTime = d.toLocaleTimeString("es-CL", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    }
-  }
-
-  return {
-    order_id: order.id,
-    order_number: order.order_number || order.orderId,
-    title: order.title,
-    company: order.client?.business_name || order.clientName || "Empresa Cliente",
-    status: STATUS_KEY_LABELS[statusKey] || rawStatus,
-    status_key: statusKey,
-    service_type: order.service_type
-      ? String(order.service_type).replace(/_/g, " ")
-      : order.title || "Servicio Técnico Atlas",
-    scheduled_date: order.scheduled_date,
-    eta: etaTime,
-    eta_label:
-      statusKey === "completada"
-        ? "Finalizado"
-        : statusKey === "en_ruta"
-        ? "En trayecto"
-        : "Llegada estimada",
-    address:
-      order.address_override ||
-      order.client?.address ||
-      order.location ||
-      "Dirección en terreno",
-    comuna: order.comuna_override || order.client?.comuna || "",
-    contact_person:
-      order.client?.contact_person ||
-      order.clientContactPerson ||
-      order.client?.business_name ||
-      "Contacto Cliente",
-    contact_phone:
-      order.client?.contact_phone || order.clientPhone || "+56 9 8765 4321",
-    technician: techName
-      ? {
-          name: techName,
-          phone: tech?.phone || "+56 9 8765 4321",
-          avatar:
-            tech?.initials ||
-            techName
-              .split(" ")
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase(),
-          vehicle_plate: tech?.vehicle_plate || order.technicianPlate || "Por asignar",
-        }
-      : null,
-    timeline_steps: computeStepsFromStatusKey(statusKey),
-    is_confirmed: ["confirmada", "en_ruta", "en_sitio", "completada"].includes(
-      statusKey
-    ),
-    is_completed: statusKey === "completada",
-    signature_url: null,
-  };
 }
 
 export function mapApiSummaryToTrackingOrder(summary) {

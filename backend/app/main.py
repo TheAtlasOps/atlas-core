@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.logging import configure_access_log_redaction
 from app.api.v1.router import api_router
+
+configure_access_log_redaction()
 
 # Inicialización de la aplicación FastAPI
 app = FastAPI(
