@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import configure_access_log_redaction
@@ -37,6 +40,17 @@ app.add_middleware(
 
 # Inclusión de Rutas de la API v1
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    if request.url.path in (
+        f"{settings.API_V1_STR}/auth/password-reset/request",
+        f"{settings.API_V1_STR}/auth/password-reset/confirm",
+    ):
+        # Los errores de Pydantic pueden incluir input: no reflejar contraseñas ni tokens.
+        return JSONResponse(status_code=422, content={"detail": "Revisa los datos del formulario de recuperación."})
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/", tags=["Root"])

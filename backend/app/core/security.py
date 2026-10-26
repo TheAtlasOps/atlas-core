@@ -22,7 +22,8 @@ def get_password_hash(password: str) -> str:
 def create_access_token(
     subject: Union[str, Any],
     role: str,
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
+    auth_version: int = 0,
 ) -> str:
     """
     Emite un token JWT firmado mediante HS256 (RNF-SEG-02).
@@ -40,6 +41,7 @@ def create_access_token(
         "role": role,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
+        "ver": auth_version,
     }
 
     encoded_jwt = jwt.encode(

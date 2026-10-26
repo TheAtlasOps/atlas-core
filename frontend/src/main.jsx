@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
 import Login from './pages/Login.jsx'
+import PasswordRecovery from './pages/PasswordRecovery.jsx'
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx'
 import CustomerTrackingView from './pages/CustomerTrackingView.jsx'
 import { ThemeProvider } from './context/ThemeContext.jsx'
@@ -17,6 +18,8 @@ createRoot(document.getElementById('root')).render(
           <Routes>
             {/* ── Autenticación de acceso a la empresa ── */}
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<PasswordRecovery key="request" />} />
+            <Route path="/reset-password" element={<PasswordRecovery key="reset" reset />} />
 
             {/* ── Portal público del cliente (sin dashboard shell / acceso con Magic Link) ── */}
             <Route path="/status/:uuid" element={<CustomerTrackingView />} />
