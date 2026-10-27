@@ -12,15 +12,74 @@ logger = logging.getLogger(__name__)
 
 
 def build_password_reset_html(name: str, link: str) -> str:
-    return f"""<!doctype html><html lang="es"><meta charset="utf-8">
-    <body style="font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;padding:24px">
-    <main style="max-width:520px;margin:auto;background:white;border-radius:16px;padding:32px">
-    <h1 style="color:#f97316">ATLAS · Recupera tu acceso</h1>
-    <p>Hola, {escape(name)}. Recibimos una solicitud para restablecer tu contraseña.</p>
-    <p><a href="{escape(link, quote=True)}" style="display:inline-block;background:#f97316;color:white;padding:14px;border-radius:10px">Establecer nueva contraseña</a></p>
-    <p>El enlace vence en 30 minutos y solo puede utilizarse una vez.</p>
-    <p>Si no solicitaste este cambio, ignora este correo. Tu contraseña actual no ha cambiado.</p>
-    </main></body></html>"""
+    """Genera plantilla HTML responsiva para recuperación de contraseña compatible con SendGrid y clientes de correo."""
+    escaped_name = escape(name)
+    escaped_link = escape(link, quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS · Recupera tu acceso</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px 10px; color: #1e293b; -webkit-font-smoothing: antialiased;">
+  <div style="max-width: 540px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+    
+    <!-- Cabecera Corporativa ATLAS (Azul Oscuro + Naranja) -->
+    <div style="background-color: #0f172a; padding: 22px 26px;">
+      <table cellpadding="0" cellspacing="0" border="0" style="width: 100%;">
+        <tr>
+          <td style="vertical-align: middle;">
+            <span style="color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; vertical-align: middle;">🌍 Atlas</span>
+            <span style="display: inline-block; margin-left: 12px; background-color: #f97316; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle;">ENTEL FSM</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Contenido Principal -->
+    <div style="padding: 32px 28px;">
+      <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 14px 0; color: #0f172a;">Recupera tu acceso a ATLAS</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hola, <strong>{escaped_name}</strong>: recibimos una solicitud para restablecer la contraseña de tu cuenta en la plataforma ATLAS.
+      </p>
+
+      <!-- Cuadro Informativo de Seguridad (Vigencia y Uso) -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; font-size: 13px;">
+          <tr>
+            <td style="color: #64748b; font-weight: 500; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">Vigencia del enlace:</td>
+            <td style="color: #0f172a; font-weight: 700; text-align: right; padding: 6px 0; border-bottom: 1px solid #f1f5f9;">30 minutos</td>
+          </tr>
+          <tr>
+            <td style="color: #64748b; font-weight: 500; padding: 6px 0;">Uso:</td>
+            <td style="color: #f97316; font-weight: 700; text-align: right; padding: 6px 0;">Válido para un único uso</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Botón de Acción Principal -->
+      <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin: 26px 0;">
+        <tr>
+          <td align="center">
+            <a href="{escaped_link}" style="display: block; width: 100%; box-sizing: border-box; background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); background-color: #f97316; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px; letter-spacing: 0.2px;" target="_blank">Establecer nueva contraseña</a>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Advertencia de Seguridad -->
+      <div style="font-size: 12px; line-height: 1.6; color: #64748b; background-color: #f1f5f9; padding: 14px 16px; border-radius: 10px; margin-bottom: 22px;">
+        🛡️ <strong>Aviso de seguridad:</strong> Si no solicitaste este cambio, puedes ignorar este mensaje de forma segura. Tu contraseña actual no ha cambiado y tu cuenta permanece protegida.
+      </div>
+
+      <p style="font-size: 12px; line-height: 1.5; color: #94a3b8; text-align: center; margin: 0;">
+        Este enlace es personal e intransferible.<br>
+        ATLAS Field Service Management · Entel
+      </p>
+    </div>
+  </div>
+</body>
+</html>"""
 
 
 def build_magic_link_html(
