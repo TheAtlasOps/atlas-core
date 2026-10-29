@@ -200,6 +200,7 @@ export function buildColumnsFromOrders(ordersList) {
 
 /**
  * Formatea una fecha ISO en hora local chilena (America/Santiago).
+ * Soporta automáticamente horarios de verano (UTC-3) e invierno (UTC-4).
  * Retorna null si la fecha es inválida o no está definida.
  */
 export function formatChileanDateTime(dateSource, includeYear = false) {
@@ -207,21 +208,24 @@ export function formatChileanDateTime(dateSource, includeYear = false) {
   try {
     const d = new Date(dateSource);
     if (isNaN(d.getTime())) return null;
-    const dateOptions = {
+    const parts = new Intl.DateTimeFormat("es-CL", {
       timeZone: "America/Santiago",
       day: "2-digit",
       month: "2-digit",
-      ...(includeYear ? { year: "numeric" } : {}),
-    };
-    const timeOptions = {
-      timeZone: "America/Santiago",
+      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    };
-    const datePart = d.toLocaleDateString("es-CL", dateOptions);
-    const timePart = d.toLocaleTimeString("es-CL", timeOptions);
-    return `${datePart} ${timePart}`;
+    }).formatToParts(d);
+
+    const day = (parts.find((p) => p.type === "day")?.value || "").padStart(2, "0");
+    const month = (parts.find((p) => p.type === "month")?.value || "").padStart(2, "0");
+    const year = parts.find((p) => p.type === "year")?.value || "";
+    const hour = (parts.find((p) => p.type === "hour")?.value || "").padStart(2, "0");
+    const minute = (parts.find((p) => p.type === "minute")?.value || "").padStart(2, "0");
+
+    const datePart = includeYear ? `${day}/${month}/${year}` : `${day}/${month}`;
+    return `${datePart} ${hour}:${minute}`;
   } catch {
     return null;
   }

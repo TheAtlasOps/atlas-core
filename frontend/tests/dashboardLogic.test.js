@@ -9,13 +9,32 @@ import {
 describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
   // ─── 1. Horarios Chilenos y Formateo en America/Santiago ───────────────────
   describe("1 & 6. Formato de fecha y hora según America/Santiago", () => {
-    it("debe formatear correctamente una fecha ISO en hora de Santiago (UTC-3)", () => {
+    it("debe formatear correctamente una fecha ISO en hora de Santiago en período UTC-3 (horario de verano)", () => {
       // 2026-10-28 15:30:00 UTC corresponde a 12:30:00 en Santiago (horario de verano UTC-3)
       const iso = "2026-10-28T15:30:00Z";
       const formatted = formatChileanDateTime(iso);
       assert.ok(formatted, "Debe retornar un string formateado");
-      assert.match(formatted, /^\d{2}[/-]\d{2}\s\d{2}:\d{2}$/, "Formato debe ser DD/MM HH:mm o DD-MM HH:mm");
-      assert.ok(formatted.includes("12:30"), `Esperado 12:30 para UTC 15:30 en Chile, obtenido: ${formatted}`);
+      assert.match(formatted, /^\d{2}[/-]\d{2}\s\d{2}:\d{2}$/, "Formato debe ser DD/MM HH:mm");
+      assert.equal(formatted, "28/10 12:30", `Esperado 28/10 12:30 para UTC 15:30 en Chile (UTC-3), obtenido: ${formatted}`);
+    });
+
+    it("debe formatear correctamente una fecha ISO en hora de Santiago en período UTC-4 (horario de invierno)", () => {
+      // 2026-06-15 15:30:00 UTC corresponde a 11:30:00 en Santiago (horario de invierno estándar UTC-4)
+      const iso = "2026-06-15T15:30:00Z";
+      const formatted = formatChileanDateTime(iso);
+      assert.ok(formatted, "Debe retornar un string formateado");
+      assert.match(formatted, /^\d{2}[/-]\d{2}\s\d{2}:\d{2}$/, "Formato debe ser DD/MM HH:mm");
+      assert.equal(formatted, "15/06 11:30", `Esperado 15/06 11:30 para UTC 15:30 en Chile (UTC-4), obtenido: ${formatted}`);
+    });
+
+    it("debe formatear incluyendo año cuando includeYear es true", () => {
+      const isoSummer = "2026-10-28T15:30:00Z";
+      const formattedSummer = formatChileanDateTime(isoSummer, true);
+      assert.equal(formattedSummer, "28/10/2026 12:30");
+
+      const isoWinter = "2026-06-15T15:30:00Z";
+      const formattedWinter = formatChileanDateTime(isoWinter, true);
+      assert.equal(formattedWinter, "15/06/2026 11:30");
     });
 
     it("debe retornar null ante valores nulos, indefinidos o fechas inválidas", () => {

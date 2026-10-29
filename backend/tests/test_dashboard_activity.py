@@ -113,3 +113,42 @@ def test_activity_log_invalid_limit(client, db, test_user, auth_headers):
 
     response = client.get("/api/v1/orders/activity-log?limit=200", headers=auth_headers)
     assert response.status_code == 422
+
+
+def test_activity_log_no_conflict_with_dynamic_routes(client, db, test_user, auth_headers):
+    """
+    Verifica que /api/v1/orders/activity-log sea resuelto por su handler propio y
+    no colisione con el handler dinámico /{order_id} (que espera un UUID).
+    """
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = test_user
+
+    history_res = MagicMock()
+    scalars_mock = MagicMock()
+    scalars_mock.all.return_value = []
+    history_res.scalars.return_value = scalars_mock
+
+    db.execute.side_effect = [user_res, history_res]
+
+    # 1. /activity-log retorna 200 (resuelto como ruta estática, no intenta castear a UUID)
+    response = client.get("/api/v1/orders/activity-log", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json() == []
+
+    # 2. Una ruta no-UUID que no existe retorna 422 (validación de UUID en /{order_id})
+    user_res2 = MagicMock()
+    user_res2.scalar_one_or_none.return_value = test_user
+    db.execute.side_effect = [user_res2]
+    bad_slug_response = client.get("/api/v1/orders/no-un-uuid", headers=auth_headers)
+    assert bad_slug_response.status_code == 422
+
+    # 3. Un UUID válido que no existe en BD es resuelto por /{order_id} retornando 404
+    user_res3 = MagicMock()
+    user_res3.scalar_one_or_none.return_value = test_user
+    order_res = MagicMock()
+    order_res.scalar_one_or_none.return_value = None
+    db.execute.side_effect = [user_res3, order_res]
+    non_existent_uuid = uuid.uuid4()
+    uuid_response = client.get(f"/api/v1/orders/{non_existent_uuid}", headers=auth_headers)
+    assert uuid_response.status_code == 404
+

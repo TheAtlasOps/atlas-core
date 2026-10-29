@@ -506,7 +506,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 3 — Próximas visitas
 // ═══════════════════════════════════════════════════════════════════════════════
-function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
+function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) {
   const isEmpty = visits.length === 0;
 
   return (
@@ -545,13 +545,19 @@ function UpcomingVisitsCard({ isLoading, visits = [], onSelectOrderId }) {
             </div>
           ))}
         </div>
+      ) : error && isEmpty ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertTriangle className="h-6 w-6 text-rose-500" />
+          <p className="text-xs font-semibold text-rose-500">
+            No se pudieron sincronizar las visitas programadas
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">{error}</p>
+        </div>
       ) : isEmpty ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
           <CheckCircle2 className="h-8 w-8 text-slate-500 dark:text-gray-400" />
           <p className="text-xs text-muted-foreground leading-relaxed">
-            No se encontraron visitas
-            <br />
-            para los filtros o búsqueda aplicados.
+            No hay visitas registradas.
           </p>
         </div>
       ) : (
@@ -642,7 +648,7 @@ function ActivityTableSkeleton() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tabla — Registro de actividad reciente
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActivityTable({ log = [], onSelectOrderId }) {
+function ActivityTable({ log = [], onSelectOrderId, error }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
@@ -684,7 +690,19 @@ function ActivityTable({ log = [], onSelectOrderId }) {
                   colSpan={4}
                   className="px-5 py-8 text-center text-xs text-muted-foreground"
                 >
-                  No hay actividad reciente registrada
+                  {error ? (
+                    <div className="flex flex-col items-center justify-center gap-1.5 py-2">
+                      <AlertTriangle className="h-5 w-5 text-rose-500" />
+                      <span className="font-semibold text-rose-500">
+                        No se pudo sincronizar la bitácora de actividad
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {error}
+                      </span>
+                    </div>
+                  ) : (
+                    "No hay actividad reciente registrada"
+                  )}
                 </td>
               </tr>
             ) : (
@@ -914,7 +932,7 @@ export default function DispatchBoard() {
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
   const [mapMarkers, setMapMarkers] = useState([]);
-  const [activityLog, setActivityLog] = useState([]);
+  const [activityLog, setActivityLog] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -1126,8 +1144,43 @@ export default function DispatchBoard() {
     };
   }, [hardwareInventory, kpis]);
 
-  const dynamicKpiData = useMemo(
-    () => [
+  const isKpiError = Boolean(apiError && !kpis);
+
+  const dynamicKpiData = useMemo(() => {
+    if (isKpiError) {
+      return [
+        {
+          label: "Órdenes Activas",
+          value: "—",
+          delta: "No disponible (sin conexión)",
+          icon: ClipboardList,
+          isError: true,
+        },
+        {
+          label: "Técnicos en Terreno",
+          value: "—",
+          delta: "No disponible (sin conexión)",
+          icon: Users,
+          isError: true,
+        },
+        {
+          label: "SIMs Disponibles",
+          value: "—",
+          delta: "No disponible (sin conexión)",
+          icon: CreditCard,
+          isError: true,
+        },
+        {
+          label: "Órdenes Completadas",
+          value: "—",
+          delta: "No disponible (sin conexión)",
+          icon: CheckCircle2,
+          isError: true,
+        },
+      ];
+    }
+
+    return [
       {
         label: "Órdenes Activas",
         value: String(activeOrdersCount),
@@ -1155,17 +1208,17 @@ export default function DispatchBoard() {
         delta: `${completedOrdersCount} de ${totalCycleOrders} órdenes registradas`,
         icon: CheckCircle2,
       },
-    ],
-    [
-      activeOrdersCount,
-      statusCounts.enRuta,
-      statusCounts.pendientes,
-      techStats,
-      simStats,
-      completedOrdersCount,
-      totalCycleOrders,
-    ]
-  );
+    ];
+  }, [
+    isKpiError,
+    activeOrdersCount,
+    statusCounts.enRuta,
+    statusCounts.pendientes,
+    techStats,
+    simStats,
+    completedOrdersCount,
+    totalCycleOrders,
+  ]);
 
   const filteredVisits = visitsList.filter((visit) => {
     if (statusFilter && normalize(visit.status) !== normalize(statusFilter))
@@ -1188,7 +1241,7 @@ export default function DispatchBoard() {
     return true;
   });
 
-  const displayActivities = activityLog.length > 0 ? activityLog : activityList;
+  const displayActivities = activityLog !== null ? activityLog : activityList;
   const filteredActivityLog = displayActivities.filter((row) => {
     if (statusFilter && normalize(row.status) !== normalize(statusFilter))
       return false;
@@ -1487,6 +1540,7 @@ export default function DispatchBoard() {
             <div className="w-full">
               <UpcomingVisitsCard
                 isLoading={isLoading}
+                error={apiError}
                 visits={filteredVisits}
                 onSelectOrderId={handleSelectOrderId}
               />
@@ -1514,6 +1568,7 @@ export default function DispatchBoard() {
         ) : (
           <ActivityTable
             log={filteredActivityLog}
+            error={apiError}
             onSelectOrderId={handleSelectOrderId}
           />
         )}
