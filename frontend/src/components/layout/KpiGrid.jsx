@@ -37,18 +37,39 @@ function KpiCard({ kpi }) {
   );
 }
 
-export default function KpiGrid({ metrics = [], isLoading = false }) {
+export default function KpiGrid({ metrics = [], isLoading = false, error = null }) {
   const skeletonCount = metrics.length || 4;
   const colClass =
     skeletonCount === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3";
 
+  if (isLoading) {
+    return (
+      <div className={`grid gap-4 sm:grid-cols-2 ${colClass}`}>
+        {Array.from({ length: skeletonCount }).map((_, i) => (
+          <KpiCardSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  if (error && metrics.length === 0) {
+    return (
+      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-5 text-center">
+        <p className="text-sm font-semibold text-rose-600 dark:text-rose-400">
+          No se pudieron cargar los indicadores clave (KPIs)
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {error}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className={`grid gap-4 sm:grid-cols-2 ${colClass}`}>
-      {isLoading
-        ? Array.from({ length: skeletonCount }).map((_, i) => (
-            <KpiCardSkeleton key={i} />
-          ))
-        : metrics.map((kpi) => <KpiCard key={kpi.label} kpi={kpi} />)}
+      {metrics.map((kpi) => (
+        <KpiCard key={kpi.label} kpi={kpi} />
+      ))}
     </div>
   );
 }

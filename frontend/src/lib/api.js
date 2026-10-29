@@ -86,6 +86,7 @@ export const api = {
     toggleTechnicianAvailability: (id) =>
       request(`/orders/technicians/${id}/toggle-availability`, { method: "PATCH" }),
     getClients: () => request("/orders/clients"),
+    getActivityLog: (limit = 50) => request(`/orders/activity-log?limit=${limit}`),
   },
   evidences: {
     getByOrderId: (workOrderId) => request(`/evidences/order/${workOrderId}`),

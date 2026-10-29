@@ -22,6 +22,7 @@ from app.schemas.work_order import (
     TechnicianSummary,
     TechnicianCreate,
     OrderStatusHistoryResponse,
+    OrderActivityLogItem,
 )
 from app.services.order_service import (
     list_orders,
@@ -35,6 +36,7 @@ from app.services.order_service import (
     list_clients,
     create_technician,
     toggle_technician_availability,
+    get_recent_activity_log,
 )
 
 router = APIRouter()
@@ -228,6 +230,21 @@ async def get_clients(
 ):
     """Consulta de clientes registrados."""
     return await list_clients(db)
+
+
+@router.get(
+    "/activity-log",
+    response_model=List[OrderActivityLogItem],
+    summary="Bitácora de actividad reciente",
+    description="Retorna las transiciones de estado y eventos registrados reales en order_status_history (RF-BO-12).",
+)
+async def get_activity_log(
+    limit: int = Query(50, ge=1, le=100, description="Cantidad máxima de eventos"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Consulta de bitácora de actividad reciente verificable."""
+    return await get_recent_activity_log(db=db, limit=limit)
 
 
 @router.get(

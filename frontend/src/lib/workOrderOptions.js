@@ -199,11 +199,42 @@ export function buildColumnsFromOrders(ordersList) {
 }
 
 /**
+ * Formatea una fecha ISO en hora local chilena (America/Santiago).
+ * Retorna null si la fecha es inválida o no está definida.
+ */
+export function formatChileanDateTime(dateSource, includeYear = false) {
+  if (!dateSource) return null;
+  try {
+    const d = new Date(dateSource);
+    if (isNaN(d.getTime())) return null;
+    const dateOptions = {
+      timeZone: "America/Santiago",
+      day: "2-digit",
+      month: "2-digit",
+      ...(includeYear ? { year: "numeric" } : {}),
+    };
+    const timeOptions = {
+      timeZone: "America/Santiago",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    };
+    const datePart = d.toLocaleDateString("es-CL", dateOptions);
+    const timePart = d.toLocaleTimeString("es-CL", timeOptions);
+    return `${datePart} ${timePart}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Adapta una lista de órdenes para el listado de visitas en el Dispatch Board.
+ * Utiliza exclusivamente fechas reales entregadas por la API (America/Santiago).
+ * Si no cuenta con fecha programada, indica "Por coordinar".
  */
 export function buildVisitsFromOrders(ordersList) {
   if (!Array.isArray(ordersList)) return [];
-  return ordersList.map((o, idx) => {
+  return ordersList.map((o) => {
     const norm = normalizeOrderItem(o);
     let statusLabel = "Programada";
     let statusStyle = "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25";
@@ -218,34 +249,15 @@ export function buildVisitsFromOrders(ordersList) {
       statusStyle = "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25";
     }
 
-    let timeStr = "";
-    if (o.scheduled_date) {
-      try {
-        const d = new Date(o.scheduled_date);
-        if (!isNaN(d.getTime())) {
-          timeStr = d.toLocaleTimeString("es-CL", {
-            timeZone: "America/Santiago",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          });
-        }
-      } catch {
-        // Fallback
-      }
-    }
-    if (!timeStr) {
-      const baseHours = 14 + Math.floor(idx / 2);
-      const baseMins = (idx % 2) * 30;
-      timeStr = `${String(baseHours).padStart(2, "0")}:${String(baseMins).padStart(2, "0")}`;
-    }
+    const formattedSchedule = formatChileanDateTime(o.scheduled_date);
+    const timeDisplay = formattedSchedule || "Por coordinar";
 
     const locationPart = (norm.comuna || norm.location || "Santiago").split(",")[0].trim();
     const clientDisplay = `${norm.clientName} — ${locationPart}`;
 
     return {
       id: norm.orderId,
-      time: o.scheduled_time || timeStr,
+      time: timeDisplay,
       service: norm.title,
       serviceType: norm.tag,
       client: clientDisplay,
@@ -255,67 +267,61 @@ export function buildVisitsFromOrders(ordersList) {
       rawStatus: norm.status,
       statusStyle,
       technician: norm.assigneeName,
+      hasScheduledDate: Boolean(formattedSchedule),
     };
   });
 }
 
 /**
  * Adapta una lista de órdenes para la bitácora de actividad reciente del Dispatch Board.
+ * Extrae única y exclusivamente eventos registrados y verificables desde order_status_history.
+ * No genera eventos sintéticos ni inventa historiales retrospectivos.
  */
 export function buildActivitiesFromOrders(ordersList) {
   if (!Array.isArray(ordersList)) return [];
-  return ordersList.map((o, idx) => {
+  const activities = [];
+
+  for (const o of ordersList) {
     const norm = normalizeOrderItem(o);
-    let action = "Actualizó estado de la OT";
-    let status = "Programada";
-    if (norm.status === "COMPLETADA") {
-      action = "Marcó visita como completada";
-      status = "Completada";
-    } else if (norm.status === "EN_RUTA") {
-      action = "Inició desplazamiento hacia el lugar";
-      status = "En camino";
-    } else if (norm.status === "EN_SITIO") {
-      action = "Llegó al sitio del cliente";
-      status = "En camino";
-    } else if (norm.status === "CONFIRMADA") {
-      action = "Confirmó asignación de visita técnica";
-      status = "Programada";
-    } else {
-      action = "Orden registrada pendiente de inicio";
-      status = "Programada";
-    }
+    const historyList = Array.isArray(o.status_history) ? o.status_history : [];
 
-    let timeFormatted = "";
-    const dateSource = o.updated_at || o.created_at || o.scheduled_date;
-    if (dateSource) {
-      try {
-        const d = new Date(dateSource);
-        if (!isNaN(d.getTime())) {
-          timeFormatted = d.toLocaleTimeString("es-CL", {
-            timeZone: "America/Santiago",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          });
+    for (const h of historyList) {
+      if (!h || !h.created_at) continue;
+
+      const formattedTime = formatChileanDateTime(h.created_at);
+      if (!formattedTime) continue;
+
+      let action = h.comment;
+      if (!action) {
+        if (h.old_status && h.new_status) {
+          action = `Cambio de estado de ${h.old_status} a ${h.new_status}`;
+        } else if (h.new_status) {
+          action = `Orden creada en estado ${h.new_status}`;
+        } else {
+          action = "Actualización de orden registrada";
         }
-      } catch {
-        // Fallback
       }
-    }
-    if (!timeFormatted) {
-      const minuteVal = Math.max(10, 58 - idx * 8);
-      const minuteStr = String(minuteVal).padStart(2, "0");
-      timeFormatted = `13:${minuteStr}`;
-    }
 
-    return {
-      id: norm.orderId,
-      technician: norm.assigneeName,
-      client: norm.clientName,
-      action,
-      status,
-      serviceType: norm.tag,
-      time: timeFormatted,
-    };
-  });
+      const techName =
+        norm.assigneeName && norm.assigneeName !== "Sin asignar"
+          ? norm.assigneeName
+          : "Coordinación";
+
+      activities.push({
+        id: norm.orderId,
+        historyId: h.id,
+        technician: techName,
+        client: norm.clientName,
+        action,
+        status: h.new_status || norm.status,
+        serviceType: norm.tag,
+        time: formattedTime,
+        rawTimestamp: new Date(h.created_at).getTime(),
+      });
+    }
+  }
+
+  // Ordenar cronológicamente descendente (eventos más recientes primero)
+  activities.sort((a, b) => b.rawTimestamp - a.rawTimestamp);
+  return activities;
 }

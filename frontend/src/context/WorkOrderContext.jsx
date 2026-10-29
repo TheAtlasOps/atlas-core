@@ -10,6 +10,7 @@ import {
   buildColumnsFromOrders,
   buildVisitsFromOrders,
   buildActivitiesFromOrders,
+  formatChileanDateTime,
 } from "../lib/workOrderOptions";
 import { api } from "../lib/api";
 
@@ -42,7 +43,7 @@ export function WorkOrderProvider({ children }) {
   const refreshOrders = useCallback(async () => {
     try {
       const response = await api.orders.getAll({ size: 100 });
-      if (response && Array.isArray(response.items) && response.items.length > 0) {
+      if (response && Array.isArray(response.items)) {
         setRawOrders(response.items);
         setColumns(buildColumnsFromOrders(response.items));
         setVisitsList(buildVisitsFromOrders(response.items));
@@ -164,9 +165,13 @@ export function WorkOrderProvider({ children }) {
         )
       );
 
+      const scheduledTimeDisplay =
+        formatChileanDateTime(apiCreatedOrder?.scheduled_date || form.scheduledDate) ||
+        "Por coordinar";
+
       const newVisit = {
         id: newId,
-        time: "Ahora",
+        time: scheduledTimeDisplay,
         service: orderTitle,
         serviceType: form.serviceType,
         client: `${newTask.clientName} — ${form.address}`,
@@ -177,9 +182,11 @@ export function WorkOrderProvider({ children }) {
         statusStyle:
           "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25",
         technician: newTask.assigneeName,
+        hasScheduledDate: Boolean(apiCreatedOrder?.scheduled_date || form.scheduledDate),
       };
       setVisitsList((prev) => [newVisit, ...prev]);
 
+      const nowTimeDisplay = formatChileanDateTime(new Date().toISOString()) || "";
       const newActivity = {
         id: newId,
         technician: newTask.assigneeName,
@@ -187,7 +194,7 @@ export function WorkOrderProvider({ children }) {
         action: `OT creada: ${orderTitle}`,
         status: "Programada",
         serviceType: form.serviceType,
-        time: "Hace un momento",
+        time: nowTimeDisplay,
       };
       setActivityList((prev) => [newActivity, ...prev]);
 

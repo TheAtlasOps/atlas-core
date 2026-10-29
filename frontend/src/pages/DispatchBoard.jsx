@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import {
   Sparkles,
@@ -15,6 +15,8 @@ import {
   Filter,
   Cpu,
   Database,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -24,7 +26,12 @@ import { useTheme } from "../hooks/useTheme";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
-import { SERVICE_TYPES } from "../lib/workOrderOptions";
+import {
+  SERVICE_TYPES,
+  formatChileanDateTime,
+  mapServiceEnumToTag,
+  buildActivitiesFromOrders,
+} from "../lib/workOrderOptions";
 import { useWorkOrders } from "../context/WorkOrderContext";
 import { api } from "../lib/api";
 
@@ -46,60 +53,6 @@ function FilterPill({ label, active, onClick }) {
     </button>
   );
 }
-
-// ─── Marcadores base de respaldo (coordenadas reales de las OTs en Santiago) ─
-const DEFAULT_MAP_MARKERS = [
-  {
-    id: "d0000000-0000-4000-8000-000000000001",
-    orderNumber: "#OT-08491",
-    title: "Instalación fibra óptica — Providencia",
-    client: "Enel Distribución Chile",
-    label: "Providencia",
-    lat: -33.432,
-    lng: -70.6093,
-    status: "EN_RUTA",
-  },
-  {
-    id: "d0000000-0000-4000-8000-000000000002",
-    orderNumber: "#OT-08492",
-    title: "Cambio de SIM corporativa — Santiago Centro",
-    client: "Falabella Retail S.A.",
-    label: "Santiago Centro",
-    lat: -33.4489,
-    lng: -70.6693,
-    status: "CONFIRMADA",
-  },
-  {
-    id: "d0000000-0000-4000-8000-000000000003",
-    orderNumber: "#OT-08493",
-    title: "Revisión antena 4G — Providencia",
-    client: "Torre Costanera Hub",
-    label: "Providencia",
-    lat: -33.4172,
-    lng: -70.606,
-    status: "IDLE",
-  },
-  {
-    id: "d0000000-0000-4000-8000-000000000005",
-    orderNumber: "#OT-08495",
-    title: "Activación Magic Link — Ñuñoa",
-    client: "Clínica Alemana Vitacura",
-    label: "Ñuñoa",
-    lat: -33.4569,
-    lng: -70.599,
-    status: "IDLE",
-  },
-  {
-    id: "d0000000-0000-4000-8000-000000000008",
-    orderNumber: "#OT-08498",
-    title: "Reemplazo router con falla — Santiago Centro",
-    client: "BancoEstado Casa Matriz",
-    label: "Santiago Centro",
-    lat: -33.442,
-    lng: -70.654,
-    status: "COMPLETADA",
-  },
-];
 
 // Componente auxiliar para ajustar encuadre a marcadores reales
 function MapAutoBounds({ markers }) {
@@ -161,7 +114,7 @@ function makeIcon(hex) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrderId }) {
+function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
   const { isDark } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -201,6 +154,15 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
         ) : (
           <>
             <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
+              {markers.length === 0 && (
+                <div className="absolute inset-x-4 top-4 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
+                  <span>
+                    {error
+                      ? "No se pudieron sincronizar las ubicaciones geográficas"
+                      : "No hay órdenes con ubicación geográfica registrada en este momento"}
+                  </span>
+                </div>
+              )}
               <MapContainer
                 center={[-33.4489, -70.6693]}
                 zoom={12}
@@ -287,10 +249,13 @@ function ActiveZonesCard({ isLoading, markers = DEFAULT_MAP_MARKERS, onSelectOrd
               </button>
             </div>
 
-
-
             {/* Mapa interactivo expandido */}
             <div className="relative flex-1 w-full z-0 isolate">
+              {markers.length === 0 && (
+                <div className="absolute inset-x-6 top-6 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-4 py-2.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
+                  <span>No hay órdenes con ubicación geográfica registrada en este momento</span>
+                </div>
+              )}
               <MapContainer
                 center={[-33.4489, -70.6693]}
                 zoom={13}
@@ -376,35 +341,40 @@ const CIRCUMFERENCE = 251.2;
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 2 — Estado de visitas (Donut Chart SVG nativo sincronizado con KPIs)
 // ═══════════════════════════════════════════════════════════════════════════════
-function DonutChartCard({ isLoading, statusCounts }) {
+function DonutChartCard({ isLoading, error, statusCounts = {} }) {
   const dynamicSegments = useMemo(
     () => [
       {
         label: "Completadas",
-        value: statusCounts.completadas,
+        value: statusCounts?.completadas ?? 0,
         color: "#22c55e",
         strokeColor: "#22c55e",
       },
       {
         label: "En Ruta",
-        value: statusCounts.enRuta,
+        value: statusCounts?.enRuta ?? 0,
         color: "#3b82f6",
         strokeColor: "#3b82f6",
       },
       {
         label: "Pendientes",
-        value: statusCounts.pendientes,
+        value: statusCounts?.pendientes ?? 0,
         color: "#f59e0b",
         strokeColor: "#f59e0b",
       },
       {
         label: "Canceladas",
-        value: statusCounts.canceladas,
+        value: statusCounts?.canceladas ?? 0,
         color: "#ef4444",
         strokeColor: "#ef4444",
       },
     ],
-    [statusCounts]
+    [
+      statusCounts?.completadas,
+      statusCounts?.enRuta,
+      statusCounts?.pendientes,
+      statusCounts?.canceladas,
+    ]
   );
 
   const total = dynamicSegments.reduce((acc, s) => acc + s.value, 0);
@@ -448,6 +418,13 @@ function DonutChartCard({ isLoading, statusCounts }) {
             ))}
           </div>
         </>
+      ) : error && total === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center py-6">
+          <p className="text-xs font-semibold text-rose-500">
+            No se pudo obtener la distribución de estados
+          </p>
+          <p className="text-[11px] text-muted-foreground">{error}</p>
+        </div>
       ) : (
         <>
           <div className="flex items-center justify-center py-2">
@@ -488,7 +465,7 @@ function DonutChartCard({ isLoading, statusCounts }) {
                   {total}
                 </span>
                 <span className="text-xs font-medium text-muted-foreground">
-                  órdenes registradas
+                  {total === 0 ? "Sin órdenes" : "órdenes registradas"}
                 </span>
               </div>
             </div>
@@ -707,7 +684,7 @@ function ActivityTable({ log = [], onSelectOrderId }) {
                   colSpan={4}
                   className="px-5 py-8 text-center text-xs text-muted-foreground"
                 >
-                  No se registraron actividades que coincidan con la búsqueda.
+                  No hay actividad reciente registrada
                 </td>
               </tr>
             ) : (
@@ -765,10 +742,9 @@ function AiInsights({
     const sortedTechs = Object.entries(loadByTech).sort(
       (a, b) => b[1].length - a[1].length
     );
-    const [topTechName, topTechOrders] = sortedTechs[0] || [
-      "Alexander Sáez López",
-      ["#OT-08491", "#OT-08492", "#OT-08495"],
-    ];
+    const topTech = sortedTechs[0];
+    const topTechName = topTech ? topTech[0] : null;
+    const topTechOrders = topTech ? topTech[1] : [];
 
     // 2. Análisis real de órdenes críticas pendientes de inicio de ruta (IDLE / Asignada)
     const urgentPending = asignadas.filter((t) =>
@@ -786,13 +762,24 @@ function AiInsights({
     return [
       {
         id: "workload",
-        badge: `${topTechOrders.length} de ${activeTasks.length} OT activas`,
-        title: "Concentración de carga en técnico",
-        body: `${topTechName} concentra ${topTechOrders.length} órdenes activas (${topTechOrders.join(
-          ", "
-        )}) de un total de ${
-          activeTasks.length
-        } en curso, mientras hay ${techniciansCount} técnicos disponibles en plataforma.`,
+        badge:
+          topTechOrders.length > 0
+            ? `${topTechOrders.length} de ${activeTasks.length} OT activas`
+            : `${activeTasks.length} OT activas`,
+        title:
+          topTechOrders.length > 0
+            ? "Concentración de carga en técnico"
+            : "Distribución de carga técnica",
+        body:
+          topTechOrders.length > 0
+            ? `${topTechName} concentra ${topTechOrders.length} órdenes activas (${topTechOrders.join(
+                ", "
+              )}) de un total de ${
+                activeTasks.length
+              } en curso, mientras hay ${techniciansCount} técnicos disponibles en plataforma.`
+            : activeTasks.length > 0
+              ? `Carga operativa distribuida. ${activeTasks.length} órdenes activas en curso con ${techniciansCount} técnicos disponibles.`
+              : `No se registran órdenes de trabajo activas en curso en este momento.`,
       },
       {
         id: "sla-priority",
@@ -814,7 +801,7 @@ function AiInsights({
         badge: `${availSims}/${sims.length} SIMs · ${availRouters}/${routers.length} Routers`,
         title: "Disponibilidad de inventario y hardware",
         body: `Stock actual en bodega: ${availSims} de ${sims.length} SIMs disponibles (${
-          sims.length > 0 ? Math.round((availSims / sims.length) * 100) : 50
+          sims.length > 0 ? Math.round((availSims / sims.length) * 100) : 0
         }%)${
           faultySims > 0 ? `, ${faultySims} SIM reportada DEFECTUOSA` : ""
         } y ${availRouters} de ${
@@ -926,63 +913,111 @@ export default function DispatchBoard() {
 
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
-  const [mapMarkers, setMapMarkers] = useState(DEFAULT_MAP_MARKERS);
+  const [mapMarkers, setMapMarkers] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(async () => {
     let cancelled = false;
-    async function loadDashboard() {
-      try {
-        setIsLoading(true);
-        const [kpisRes, ordersData, techsData] = await Promise.allSettled([
-          api.orders.getKpis(),
-          api.orders.getAll({ size: 50 }),
-          api.orders.getTechnicians(),
-        ]);
+    try {
+      setIsLoading(true);
+      setApiError(null);
+      const [kpisRes, ordersData, techsData, activityRes] = await Promise.allSettled([
+        api.orders.getKpis(),
+        api.orders.getAll({ size: 50 }),
+        api.orders.getTechnicians(),
+        api.orders.getActivityLog ? api.orders.getActivityLog(50) : Promise.reject(new Error("No endpoint")),
+      ]);
 
-        if (!cancelled) {
-          if (kpisRes.status === "fulfilled" && kpisRes.value) {
-            setKpis(kpisRes.value);
-          }
-          if (
-            techsData.status === "fulfilled" &&
-            Array.isArray(techsData.value)
-          ) {
-            setTechniciansList(techsData.value);
-          }
-          if (
-            ordersData.status === "fulfilled" &&
-            ordersData.value?.items?.length
-          ) {
-            const markers = ordersData.value.items
-              .filter((o) => o.lat && o.lng)
-              .map((o) => ({
-                id: o.id,
-                orderNumber: o.order_number,
-                title: o.title,
-                client: o.client?.business_name || o.client?.name || o.client_name || "Cliente Corporativo",
-                lat: parseFloat(o.lat),
-                lng: parseFloat(o.lng),
-                status: o.status,
-              }));
-            if (markers.length > 0) {
-              setMapMarkers(markers);
-            }
-          }
-        }
-      } catch {
-        // Continúa con el estado sincronizado del contexto
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
-        }
+      if (cancelled) return;
+
+      const isKpisRejected = kpisRes.status === "rejected";
+      const isOrdersRejected = ordersData.status === "rejected";
+
+      if (isKpisRejected && isOrdersRejected) {
+        setApiError(
+          "Error de conexión con el backend de Render / Neon. No se pudieron obtener los datos actualizados del tablero."
+        );
+      } else if (isKpisRejected) {
+        setApiError("Advertencia: No se pudieron sincronizar las métricas KPI desde la API.");
       }
+
+      if (kpisRes.status === "fulfilled" && kpisRes.value) {
+        setKpis(kpisRes.value);
+      }
+      if (
+        techsData.status === "fulfilled" &&
+        Array.isArray(techsData.value)
+      ) {
+        setTechniciansList(techsData.value);
+      }
+
+      if (
+        ordersData.status === "fulfilled" &&
+        Array.isArray(ordersData.value?.items)
+      ) {
+        const markers = ordersData.value.items
+          .filter((o) => {
+            const lat = parseFloat(o.lat);
+            const lng = parseFloat(o.lng);
+            return (
+              !isNaN(lat) &&
+              !isNaN(lng) &&
+              o.lat !== null &&
+              o.lng !== null &&
+              lat >= -90 &&
+              lat <= 90 &&
+              lng >= -180 &&
+              lng <= 180
+            );
+          })
+          .map((o) => ({
+            id: o.id,
+            orderNumber: o.order_number,
+            title: o.title,
+            client:
+              o.client?.business_name ||
+              o.client?.name ||
+              o.client_name ||
+              "Cliente Corporativo",
+            lat: parseFloat(o.lat),
+            lng: parseFloat(o.lng),
+            status: o.status,
+          }));
+        setMapMarkers(markers);
+      } else {
+        setMapMarkers([]);
+      }
+
+      // Actividad verificable:
+      if (activityRes.status === "fulfilled" && Array.isArray(activityRes.value)) {
+        const mapped = activityRes.value.map((item) => ({
+          id: item.order_number || item.order_id,
+          historyId: item.id,
+          technician: item.technician_name || "Coordinación",
+          client: item.client_name || "Cliente Corporativo",
+          action: item.action,
+          status: item.new_status,
+          serviceType: mapServiceEnumToTag(item.service_type),
+          time: formatChileanDateTime(item.created_at) || "",
+          rawTimestamp: new Date(item.created_at).getTime(),
+        }));
+        setActivityLog(mapped);
+      } else if (ordersData.status === "fulfilled" && Array.isArray(ordersData.value?.items)) {
+        const fromOrders = buildActivitiesFromOrders(ordersData.value.items);
+        setActivityLog(fromOrders);
+      }
+    } catch (err) {
+      setApiError(err.message || "Error al cargar los datos del tablero.");
+    } finally {
+      setIsLoading(false);
     }
-    loadDashboard();
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
   const hasActiveFilters = Boolean(search.trim()) || activeFilterCount > 0;
@@ -1013,46 +1048,43 @@ export default function DispatchBoard() {
     }
   };
 
-  // Conteos unificados entre tarjetas KPI, tablero Kanban y Donut Chart
+  // Conteos unificados con kpis.status_distribution como única fuente de verdad
   const statusCounts = useMemo(() => {
+    const dist = kpis?.status_distribution;
+    if (dist) {
+      return {
+        pendientes: (dist.CONFIRMADA || 0) + (dist.IDLE || 0),
+        enRuta: (dist.EN_RUTA || 0) + (dist.EN_SITIO || 0),
+        completadas: dist.COMPLETADA || 0,
+        canceladas: dist.CANCELADA || 0,
+      };
+    }
+
     const asignadasCol = columns.find((c) => c.id === "asignada")?.tasks || [];
     const enTransitoCol =
       columns.find((c) => c.id === "en-transito")?.tasks || [];
     const completadasCol =
       columns.find((c) => c.id === "completada")?.tasks || [];
 
-    const hasColTasks =
-      asignadasCol.length + enTransitoCol.length + completadasCol.length > 0;
-
-    if (hasColTasks) {
-      return {
-        pendientes: asignadasCol.length,
-        enRuta: enTransitoCol.length,
-        completadas: completadasCol.length,
-        canceladas: kpis?.status_distribution?.CANCELADA || 0,
-      };
-    }
-
-    const dist = kpis?.status_distribution || {};
     return {
-      pendientes: (dist.CONFIRMADA || 0) + (dist.IDLE || 0),
-      enRuta: (dist.EN_RUTA || 0) + (dist.EN_SITIO || 0),
-      completadas: dist.COMPLETADA || 0,
-      canceladas: dist.CANCELADA || 0,
+      pendientes: asignadasCol.length,
+      enRuta: enTransitoCol.length,
+      completadas: completadasCol.length,
+      canceladas: 0,
     };
-  }, [columns, kpis]);
+  }, [kpis, columns]);
 
   const activeOrdersCount = statusCounts.pendientes + statusCounts.enRuta;
   const completedOrdersCount = statusCounts.completadas;
   const totalCycleOrders =
     activeOrdersCount + completedOrdersCount + statusCounts.canceladas;
 
-  // Técnicos disponibles y técnicos con órdenes activas asignadas
+  // Técnicos disponibles y técnicos con órdenes activas asignadas (sin fallbacks hardcodeados)
   const techStats = useMemo(() => {
     const availableCount =
       techniciansList.length > 0
         ? techniciansList.filter((t) => t.is_available !== false).length
-        : kpis?.technicians_in_field || 8;
+        : kpis?.technicians_in_field ?? 0;
 
     const activeTasks = [
       ...(columns.find((c) => c.id === "asignada")?.tasks || []),
@@ -1065,11 +1097,11 @@ export default function DispatchBoard() {
     );
     return {
       availableCount,
-      assignedActiveCount: activeTechNames.size || 5,
+      assignedActiveCount: activeTechNames.size,
     };
   }, [techniciansList, kpis, columns]);
 
-  // Stock real de SIMs desde hardwareInventory (coherente con /sim-inventory)
+  // Stock real de SIMs desde hardwareInventory (sin fallbacks duros)
   const simStats = useMemo(() => {
     const sims = hardwareInventory.filter((i) => i.deviceType === "SIM");
     const totalSims = sims.length;
@@ -1083,7 +1115,7 @@ export default function DispatchBoard() {
     const rate =
       totalSims > 0
         ? Math.round((availSims / totalSims) * 100)
-        : kpis?.available_sims_rate ?? 50;
+        : (kpis?.available_sims_rate != null ? Math.round(kpis.available_sims_rate) : 0);
 
     return {
       totalSims,
@@ -1156,7 +1188,8 @@ export default function DispatchBoard() {
     return true;
   });
 
-  const filteredActivityLog = activityList.filter((row) => {
+  const displayActivities = activityLog.length > 0 ? activityLog : activityList;
+  const filteredActivityLog = displayActivities.filter((row) => {
     if (statusFilter && normalize(row.status) !== normalize(statusFilter))
       return false;
     if (
@@ -1405,14 +1438,47 @@ export default function DispatchBoard() {
               )}
             </div>
 
+            {/* Banner de error o advertencia de conexión */}
+            {apiError && (
+              <div
+                role="alert"
+                className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-700 dark:text-rose-300"
+              >
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-rose-500" />
+                  <div>
+                    <p className="text-xs font-semibold">Problema de conexión con la API en tiempo real</p>
+                    <p className="text-[11px] text-rose-600/90 dark:text-rose-300/90">{apiError}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadDashboard();
+                    refreshOrders?.();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/20 px-3 py-1.5 text-xs font-semibold text-rose-700 dark:text-rose-200 hover:bg-rose-500/30 transition-colors shrink-0"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Reintentar conexión
+                </button>
+              </div>
+            )}
+
             {/* KPIs — muestra skeleton mientras carga */}
-            <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} />
+            <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} error={apiError} />
 
             {/* Fila 1: Mapa geoespacial y Distribución de estado */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ActiveZonesCard isLoading={isLoading} markers={mapMarkers} onSelectOrderId={handleSelectOrderId} />
+              <ActiveZonesCard
+                isLoading={isLoading}
+                error={apiError}
+                markers={mapMarkers}
+                onSelectOrderId={handleSelectOrderId}
+              />
               <DonutChartCard
                 isLoading={isLoading}
+                error={apiError}
                 statusCounts={statusCounts}
               />
             </div>
