@@ -25,6 +25,7 @@ from app.schemas.work_order import (
     TechnicianSummary,
     TechnicianCreate,
     ClientSummary,
+    OrderActivityLogItem,
 )
 from app.services.auth_service import generate_magic_link_for_order
 from app.core.security import get_password_hash
@@ -615,3 +616,61 @@ async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.U
         vehicle_plate=tech.vehicle_plate,
         is_available=tech.is_available,
     )
+
+
+async def get_recent_activity_log(
+    db: AsyncSession, limit: int = 50
+) -> List[OrderActivityLogItem]:
+    """Retorna la bitácora cronológica inmutable de transiciones de estado reales (RF-BO-12)."""
+    query = (
+        select(OrderStatusHistory)
+        .options(
+            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.client),
+            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.technician).selectinload(Technician.user),
+            selectinload(OrderStatusHistory.changed_by_user),
+        )
+        .order_by(desc(OrderStatusHistory.created_at))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    entries = result.scalars().all()
+
+    items = []
+    for h in entries:
+        order = h.work_order
+        order_num = order.order_number if order else "Desconocida"
+        client = order.client.business_name if (order and order.client) else None
+
+        user_name = None
+        if h.changed_by_user:
+            user_name = h.changed_by_user.full_name
+        elif order and order.technician and order.technician.user:
+            user_name = order.technician.user.full_name
+        else:
+            user_name = "Sistema / Coordinación"
+
+        action_text = h.comment
+        if not action_text:
+            if h.old_status:
+                action_text = f"Transición de estado: {h.old_status.value} → {h.new_status.value}"
+            else:
+                action_text = f"Orden creada en estado {h.new_status.value}"
+
+        items.append(
+            OrderActivityLogItem(
+                id=h.id,
+                order_id=h.work_order_id,
+                order_number=order_num,
+                client_name=client,
+                technician_name=user_name,
+                action=action_text,
+                old_status=h.old_status,
+                new_status=h.new_status,
+                service_type=order.service_type if order else None,
+                created_at=h.created_at,
+                comment=h.comment,
+                lat=h.lat,
+                lng=h.lng,
+            )
+        )
+    return items

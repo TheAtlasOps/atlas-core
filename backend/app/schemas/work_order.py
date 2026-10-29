@@ -57,6 +57,24 @@ class OrderStatusHistoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OrderActivityLogItem(BaseModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    order_number: str
+    client_name: Optional[str] = None
+    technician_name: Optional[str] = None
+    action: str
+    old_status: Optional[OrderStatusEnum] = None
+    new_status: OrderStatusEnum
+    service_type: Optional[ServiceTypeEnum] = None
+    created_at: datetime
+    comment: Optional[str] = None
+    lat: Optional[Decimal] = None
+    lng: Optional[Decimal] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ─── Creación y Actualización de Órdenes ─────────────────────────────────────
 class WorkOrderBase(BaseModel):
     title: str = Field(..., max_length=250)
