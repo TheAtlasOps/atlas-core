@@ -4,7 +4,9 @@ import {
   formatChileanDateTime,
   buildVisitsFromOrders,
   buildActivitiesFromOrders,
+  normalizeOrderItem,
 } from "../src/lib/workOrderOptions.js";
+import { getOrderAuditPackage } from "../src/lib/auditAndHardwareData.js";
 
 describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
   // ─── 1. Horarios Chilenos y Formateo en America/Santiago ───────────────────
@@ -310,6 +312,43 @@ describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
 
       const simRate = emptyKpis?.available_sims_rate ?? 0;
       assert.equal(simRate, 0, "No debe usar fallback 50% cuando no hay inventario");
+    });
+  });
+
+  // ─── 9. Limpieza de fallbacks hardcodeados en formularios y modales ───────
+  describe("9. Limpieza de fallbacks hardcodeados en formularios y modales", () => {
+    it("normalizeOrderItem no debe asignar DEFAULT_CLIENT_UUID ni técnicos seed cuando no vienen provistos", () => {
+      const emptyOrder = {
+        id: "new-uuid",
+        order_number: "#OT-08503",
+        title: "Instalación Enlace",
+        status: "IDLE",
+        client_name: "Nuevo Cliente Real",
+      };
+
+      const normalized = normalizeOrderItem(emptyOrder);
+      assert.equal(normalized.client_id, null, "client_id debe ser null si no está provisto");
+      assert.equal(normalized.client.id, null, "client.id debe ser null si no está provisto");
+      assert.equal(normalized.assigneeName, "Sin asignar", "assigneeName debe ser 'Sin asignar' si no viene técnico");
+      assert.equal(normalized.technician_summary.id, null, "technician_summary.id debe ser null");
+    });
+
+    it("getOrderAuditPackage no debe inyectar evidencias mock para OT-08498 cuando no existen en API", () => {
+      const order = {
+        order_number: "#OT-08498",
+        title: "Revisión técnica",
+        status: "COMPLETADA",
+      };
+
+      const auditPackage = getOrderAuditPackage(order, {}, null, {
+        hardwareInventory: [],
+        apiEvidences: { items: [] },
+      });
+      assert.equal(auditPackage.evidences.length, 0, "No debe inyectar evidencias mock de prueba para OT-08498");
+      assert.equal(auditPackage.conformity.isSigned, false, "No debe marcar firma mock para OT-08498");
+      assert.equal(auditPackage.hardware.sim.isLinked, false, "No debe asociar SIM hardcodeada si no está en inventario");
+      assert.equal(auditPackage.hardware.router.isLinked, false, "No debe asociar Router hardcodeado si no está en inventario");
+      assert.equal(auditPackage.telemetry.hasRealTelemetry, false, "No debe inyectar telemetría mock para OT-08498");
     });
   });
 });

@@ -23,29 +23,9 @@ export const SERVICE_TYPES = ["Fibra", "SIM", "Red", "Hardware", "Magic Link"];
 
 export const PRIORITIES = ["BAJA", "MEDIA", "ALTA", "URGENTE"];
 
-export const TECHNICIANS = [
-  "Alexander Sáez López",
-  "Carlos Mendoza",
-  "Juan Rojas",
-  "Luis Paredes",
-  "Matías Koch",
-  "Tomás Castro",
-  "Esteban Kral",
-  "Sebastián Araya",
-];
-
-export const TECHNICIAN_UUID_MAP = {
-  "Alexander Sáez López": "a0000000-0000-0000-0000-000000000003",
-  "Carlos Mendoza": "b0000000-0000-0000-0000-000000000001",
-  "Juan Rojas": "b0000000-0000-0000-0000-000000000002",
-  "Luis Paredes": "b0000000-0000-0000-0000-000000000003",
-  "Matías Koch": "b0000000-0000-0000-0000-000000000004",
-  "Tomás Castro": "b0000000-0000-0000-0000-000000000005",
-  "Esteban Kral": "b0000000-0000-0000-0000-000000000006",
-  "Sebastián Araya": "b0000000-0000-0000-0000-000000000007",
-};
-
-export const DEFAULT_CLIENT_UUID = "c0000000-0000-0000-0000-000000000001";
+export const TECHNICIANS = [];
+export const TECHNICIAN_UUID_MAP = {};
+export const DEFAULT_CLIENT_UUID = null;
 
 export function getInitials(name) {
   return (
@@ -121,7 +101,7 @@ export function normalizeOrderItem(o) {
     priority,
     status,
     client: {
-      id: o.client?.id || o.client_id || DEFAULT_CLIENT_UUID,
+      id: o.client?.id || o.client_id || null,
       business_name: clientName,
       contact_person: contactPerson,
       contact_phone: contactPhone,
@@ -132,7 +112,7 @@ export function normalizeOrderItem(o) {
         return clientName;
       },
     },
-    client_id: o.client_id || o.client?.id || DEFAULT_CLIENT_UUID,
+    client_id: o.client_id || o.client?.id || null,
     clientName,
     contactPerson,
     contactPhone,

@@ -168,32 +168,24 @@ export function mapApiSimToInventoryItem(sim, ordersList = []) {
   const notesText = sim.notes || "";
   const is4G = notesText.toUpperCase().includes("4G");
 
-  // En la base de datos, la SIM 89560200102400018495 (INSTALADA) corresponde al alta de línea #OT-08498
-  let linkedOrder = null;
-  if (sim.iccid === "89560200102400018495" && status === "INSTALADA") {
-    linkedOrder = ordersList.find(
-      (o) => (o.order_number || o.orderId) === "#OT-08498"
-    );
-  }
+  // Relación con orden de trabajo según datos de API
+  const linkedOrder = ordersList.find(
+    (o) => (o.order_number || o.orderId) === sim.work_order_number || (o.id && o.id === sim.work_order_id)
+  );
 
-  const orderId =
-    linkedOrder?.order_number ||
-    linkedOrder?.orderId ||
-    (sim.iccid === "89560200102400018495" && status === "INSTALADA"
-      ? "#OT-08498"
-      : null);
+  const orderId = linkedOrder?.order_number || linkedOrder?.orderId || null;
 
   const technicianName =
     linkedOrder?.technician_summary?.full_name ||
     linkedOrder?.assigneeName ||
     sim.assigned_technician_name ||
-    (orderId === "#OT-08498" ? "Esteban Kral" : null);
+    null;
 
   const clientName =
     linkedOrder?.client?.business_name ||
     linkedOrder?.clientName ||
     sim.installed_client_name ||
-    (orderId === "#OT-08498" ? "BancoEstado Casa Matriz" : null);
+    null;
 
   const location =
     clientName ||
@@ -399,14 +391,11 @@ export function getOrderAuditPackage(
     (i) =>
       i.deviceType === "SIM" &&
       (i.orderId === orderKey ||
-        (overrideHw.simIccid && i.identifier === overrideHw.simIccid) ||
-        (orderKey === "#OT-08498" && i.identifier === "89560200102400018495"))
+        (overrideHw.simIccid && i.identifier === overrideHw.simIccid))
   );
 
   const hasLinkedRouter = Boolean(inventoryRouter || overrideHw.routerSerial);
-  const hasLinkedSim = Boolean(
-    inventorySim || overrideHw.simIccid || orderKey === "#OT-08498"
-  );
+  const hasLinkedSim = Boolean(inventorySim || overrideHw.simIccid);
 
   const routerData = hasLinkedRouter
     ? {
@@ -436,7 +425,7 @@ export function getOrderAuditPackage(
         iccid:
           inventorySim?.identifier ||
           overrideHw.simIccid ||
-          "89560200102400018495",
+          "",
         operator: inventorySim?.operator || "Entel",
         technology:
           inventorySim?.technology || overrideHw.simTechnology || "5G",
@@ -458,28 +447,6 @@ export function getOrderAuditPackage(
     ? apiEvidences.items
     : Array.isArray(apiOrderDetail?.evidences)
     ? apiOrderDetail.evidences
-    : orderKey === "#OT-08498"
-    ? [
-        {
-          id: "719e36b3-4a6f-41ab-8ea7-ac229143084c",
-          evidence_type: "TEST_VELOCIDAD",
-          storage_url:
-            "https://storage.googleapis.com/atlas-evidences/ot_8498_speed.png",
-          signal_dbm: -78.5,
-          speed_download_mbps: 112.4,
-          speed_upload_mbps: 45.2,
-          notes: "Test de enlace exitoso en rack principal.",
-          captured_at: "2026-09-14T04:32:37Z",
-        },
-        {
-          id: "df6f6042-60f7-47d0-9f0a-2222184791ec",
-          evidence_type: "FIRMA_CLIENTE",
-          storage_url:
-            "https://storage.googleapis.com/atlas-evidences/ot_8498_signature.png",
-          notes: "Firma conforme de Gonzalo Vidal (Jefe Infraestructura).",
-          captured_at: "2026-09-14T04:32:37Z",
-        },
-      ]
     : [];
 
   const technicalEvidences = rawEvidenceItems.filter(

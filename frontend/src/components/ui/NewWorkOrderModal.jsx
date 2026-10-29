@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, FilePlus, RefreshCw } from "lucide-react";
+import { X, Plus, FilePlus, RefreshCw, AlertTriangle } from "lucide-react";
 import {
   SERVICE_TYPES,
   PRIORITIES,
-  TECHNICIANS,
-  TECHNICIAN_UUID_MAP,
-  DEFAULT_CLIENT_UUID,
   mapServiceTagToEnum,
 } from "../../lib/workOrderOptions";
 import { api } from "../../lib/api";
@@ -36,6 +33,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableTechs, setAvailableTechs] = useState([]);
   const [availableClients, setAvailableClients] = useState([]);
+  const [formError, setFormError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -48,7 +46,6 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         if (isMounted) {
           if (techsRes.status === "fulfilled" && Array.isArray(techsRes.value)) {
             setAvailableTechs(techsRes.value);
-            // Si hay técnicos y el formulario no tiene seleccionado ninguno, podemos preseleccionar o esperar selección
           }
           if (clientsRes.status === "fulfilled" && Array.isArray(clientsRes.value)) {
             setAvailableClients(clientsRes.value);
@@ -64,12 +61,15 @@ function NewWorkOrderForm({ onClose, onCreate }) {
     };
   }, []);
 
-  const setField = (field) => (e) =>
+  const setField = (field) => (e) => {
+    setFormError(null);
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setFormError(null);
 
     const addressParts = form.address.split(",");
     const comunaOverride =
@@ -77,24 +77,17 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         ? addressParts[addressParts.length - 1].trim()
         : "Santiago";
 
-    // Determinar ID del técnico seleccionado (UUID directo o mapeo por nombre)
+    // Determinar ID del técnico seleccionado (UUID real o null)
     const matchedTech = availableTechs.find(
       (t) => t.id === form.technician || t.full_name === form.technician
     );
-    const technicianId = matchedTech
-      ? matchedTech.id
-      : (TECHNICIAN_UUID_MAP[form.technician] ||
-         form.technician ||
-         availableTechs[0]?.id ||
-         "b0000000-0000-0000-0000-000000000001");
+    const technicianId = matchedTech ? matchedTech.id : null;
 
-    // Determinar ID del cliente (por coincidencia o primer cliente disponible)
+    // Determinar ID del cliente (por coincidencia de nombre o null para que el backend cree uno nuevo)
     const matchedClient = availableClients.find(
       (c) => c.business_name.toLowerCase() === form.clientName.trim().toLowerCase()
     );
-    const clientId = matchedClient
-      ? matchedClient.id
-      : (availableClients[0]?.id || DEFAULT_CLIENT_UUID);
+    const clientId = matchedClient ? matchedClient.id : null;
 
     const orderPayload = {
       title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
@@ -113,9 +106,13 @@ function NewWorkOrderForm({ onClose, onCreate }) {
 
     try {
       const createdOrder = await api.orders.create(orderPayload);
+      if (!createdOrder || !createdOrder.id) {
+        throw new Error("El backend no confirmó la persistencia de la orden.");
+      }
+
       let finalOrder = createdOrder;
 
-      if (form.technician && createdOrder?.id && !createdOrder?.technician_id) {
+      if (technicianId && createdOrder?.id && !createdOrder?.technician_id) {
         try {
           finalOrder = await api.orders.assign(
             createdOrder.id,
@@ -129,12 +126,14 @@ function NewWorkOrderForm({ onClose, onCreate }) {
 
       if (onCreate) onCreate(form, finalOrder);
       await refreshOrders();
-    } catch {
-      // Fallback en Vercel o sin backend activo: mantiene la creación en estado local
-      if (onCreate) onCreate(form, null);
+      onClose();
+    } catch (err) {
+      console.error("Error al crear la orden de trabajo:", err);
+      const msg = err?.message || "No se pudo conectar con el servidor para guardar la orden en Neon.";
+      setFormError(msg);
+      // NUNCA llamar a onCreate con null ni simular guardado local
     } finally {
       setIsSubmitting(false);
-      onClose();
     }
   };
 
@@ -166,6 +165,16 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           <X className="h-4 w-4" />
         </button>
       </div>
+
+      {formError && (
+        <div className="mt-4 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs font-medium text-rose-600 dark:text-rose-400 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Error al guardar en el servidor</p>
+            <p className="text-[11px] mt-0.5">{formError}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 flex flex-col gap-4">
         <div>
@@ -281,26 +290,31 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           </label>
           <select
             id="new-wo-tech"
-            required
             value={form.technician}
             onChange={setField("technician")}
             className={FIELD_CLASS}
+            disabled={availableTechs.length === 0}
           >
-            <option value="" disabled>
-              Seleccionar técnico...
-            </option>
-            {availableTechs.length > 0
-              ? availableTechs.map((tech) => (
+            {availableTechs.length > 0 ? (
+              <>
+                <option value="">Sin asignar / Por coordinar</option>
+                {availableTechs.map((tech) => (
                   <option key={tech.id} value={tech.id}>
                     {tech.full_name} {tech.vehicle_plate ? `(${tech.vehicle_plate})` : ""}
                   </option>
-                ))
-              : TECHNICIANS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
                 ))}
+              </>
+            ) : (
+              <option value="" disabled>
+                No hay técnicos registrados
+              </option>
+            )}
           </select>
+          {availableTechs.length === 0 && (
+            <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
+              No hay técnicos registrados en la base de datos. La orden se creará en estado pendiente (Sin asignar).
+            </p>
+          )}
         </div>
       </div>
 
