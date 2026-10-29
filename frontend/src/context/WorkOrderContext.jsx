@@ -5,7 +5,6 @@ import {
   reconcileInventoryWithOrders,
 } from "../lib/auditAndHardwareData";
 import {
-  getInitials,
   normalizeOrderItem,
   buildColumnsFromOrders,
   buildVisitsFromOrders,
@@ -25,9 +24,7 @@ export function WorkOrderProvider({ children }) {
   const [activityList, setActivityList] = useState([]);
   const [rawInventory, setRawInventory] = useState([]);
   const [orderHardwareOverrides, setOrderHardwareOverrides] = useState({});
-  const [auditedOrders, setAuditedOrders] = useState({
-    "#OT-08498": true,
-  });
+  const [auditedOrders, setAuditedOrders] = useState({});
   const [toast, setToast] = useState(null);
 
   const showNotification = useCallback((title, description) => {
@@ -71,7 +68,7 @@ export function WorkOrderProvider({ children }) {
       const routers = Array.isArray(routersRes?.items)
         ? routersRes.items.map((r) => mapApiRouterToInventoryItem(r, ordersRef))
         : [];
-      if (sims.length > 0 || routers.length > 0) {
+      if (Array.isArray(simsRes?.items) || Array.isArray(routersRes?.items)) {
         const combined = [...sims, ...routers];
         setRawInventory(combined);
         return combined;
@@ -123,39 +120,16 @@ export function WorkOrderProvider({ children }) {
 
   const createWorkOrder = useCallback(
     (form, apiCreatedOrder = null) => {
-      const nextNum = 8500 + totalOrders + 1;
-      const newId =
-        apiCreatedOrder?.order_number || `#OT-${String(nextNum).padStart(5, "0")}`;
-      const orderTitle =
-        apiCreatedOrder?.title ||
-        form.title?.trim() ||
-        `${form.serviceType} — ${form.clientName}`;
-      const priorityEnum = (
-        apiCreatedOrder?.priority ||
-        form.priority ||
-        "MEDIA"
-      ).toUpperCase();
+      // Solo actualizar estado local y notificar éxito si la API confirmó la persistencia en Neon
+      if (!apiCreatedOrder || !apiCreatedOrder.id) {
+        console.warn("createWorkOrder omitido: la orden no fue confirmada por el servidor.");
+        return null;
+      }
 
-      const newTask = normalizeOrderItem({
-        id: apiCreatedOrder?.id || Date.now(),
-        order_number: newId,
-        title: orderTitle,
-        status: apiCreatedOrder?.status || "CONFIRMADA",
-        priority: priorityEnum,
-        client: {
-          business_name:
-            apiCreatedOrder?.client?.business_name || form.clientName,
-        },
-        address_override: apiCreatedOrder?.address_override || form.address,
-        technician_summary: {
-          full_name:
-            apiCreatedOrder?.technician_summary?.full_name || form.technician,
-          initials: getInitials(
-            apiCreatedOrder?.technician_summary?.full_name || form.technician
-          ),
-        },
-        tag: form.serviceType,
-      });
+      const newId = apiCreatedOrder.order_number;
+      const orderTitle = apiCreatedOrder.title || `${form.serviceType} — ${form.clientName}`;
+
+      const newTask = normalizeOrderItem(apiCreatedOrder);
 
       setColumns((prev) =>
         prev.map((col) =>
@@ -205,7 +179,7 @@ export function WorkOrderProvider({ children }) {
 
       return newTask;
     },
-    [totalOrders, showNotification]
+    [showNotification]
   );
 
   const approveOrderAudit = useCallback(
