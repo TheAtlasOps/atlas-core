@@ -23,6 +23,7 @@ from app.schemas.work_order import (
     TechnicianCreate,
     OrderStatusHistoryResponse,
     OrderActivityLogItem,
+    WorkOrderItemResponse,
 )
 from app.services.order_service import (
     list_orders,
@@ -126,6 +127,19 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
         technician_summary=tech_summary,
         active_magic_link_token=active_token,
         status_history=history_responses,
+        items=[
+            WorkOrderItemResponse(
+                id=it.id,
+                work_order_id=it.work_order_id,
+                sim_card_id=it.sim_card_id,
+                equipment_id=it.equipment_id,
+                action_type=it.action_type,
+                created_at=it.created_at,
+                sim_iccid=it.sim_card.iccid if getattr(it, 'sim_card', None) else None,
+                equipment_serial=it.equipment.serial_number if getattr(it, 'equipment', None) else None,
+            )
+            for it in (order.items or [])
+        ] if getattr(order, 'items', None) else [],
     )
 
 

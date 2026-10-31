@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
@@ -32,6 +33,20 @@ def build_sim_response(sim: SimCard) -> SimCardResponse:
     if sim.installed_client:
         client_name = sim.installed_client.business_name
 
+    work_order_id = None
+    work_order_number = None
+    if getattr(sim, "work_order_associations", None):
+        sorted_assocs = sorted(
+            sim.work_order_associations,
+            key=lambda a: a.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        if sorted_assocs:
+            latest = sorted_assocs[0]
+            work_order_id = latest.work_order_id
+            if latest.work_order:
+                work_order_number = latest.work_order.order_number
+
     return SimCardResponse(
         id=sim.id,
         iccid=sim.iccid,
@@ -44,8 +59,10 @@ def build_sim_response(sim: SimCard) -> SimCardResponse:
         installed_client_id=sim.installed_client_id,
         assigned_technician_name=tech_name,
         installed_client_name=client_name,
-        created_at=sim.created_at,
-        updated_at=sim.updated_at,
+        work_order_id=work_order_id,
+        work_order_number=work_order_number,
+        created_at=sim.created_at or datetime.now(timezone.utc),
+        updated_at=sim.updated_at or datetime.now(timezone.utc),
     )
 
 
@@ -57,6 +74,20 @@ def build_equipment_response(equip: Equipment) -> EquipmentResponse:
     client_name = None
     if equip.installed_client:
         client_name = equip.installed_client.business_name
+
+    work_order_id = None
+    work_order_number = None
+    if getattr(equip, "work_order_associations", None):
+        sorted_assocs = sorted(
+            equip.work_order_associations,
+            key=lambda a: a.created_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        if sorted_assocs:
+            latest = sorted_assocs[0]
+            work_order_id = latest.work_order_id
+            if latest.work_order:
+                work_order_number = latest.work_order.order_number
 
     return EquipmentResponse(
         id=equip.id,
@@ -71,8 +102,10 @@ def build_equipment_response(equip: Equipment) -> EquipmentResponse:
         installed_client_id=equip.installed_client_id,
         assigned_technician_name=tech_name,
         installed_client_name=client_name,
-        created_at=equip.created_at,
-        updated_at=equip.updated_at,
+        work_order_id=work_order_id,
+        work_order_number=work_order_number,
+        created_at=equip.created_at or datetime.now(timezone.utc),
+        updated_at=equip.updated_at or datetime.now(timezone.utc),
     )
 
 
@@ -91,6 +124,7 @@ async def list_sim_cards(
     query = select(SimCard).options(
         selectinload(SimCard.assigned_technician).selectinload(Technician.user),
         selectinload(SimCard.installed_client),
+        selectinload(SimCard.work_order_associations).selectinload(WorkOrderItem.work_order),
     )
 
     conditions = []
@@ -126,6 +160,7 @@ async def get_sim_by_id(db: AsyncSession, sim_id: uuid.UUID) -> Optional[SimCard
         .options(
             selectinload(SimCard.assigned_technician).selectinload(Technician.user),
             selectinload(SimCard.installed_client),
+            selectinload(SimCard.work_order_associations).selectinload(WorkOrderItem.work_order),
         )
         .where(SimCard.id == sim_id)
     )
@@ -145,7 +180,7 @@ async def create_sim_card(db: AsyncSession, sim_in: SimCardCreate) -> SimCard:
         iccid=sim_in.iccid.strip(),
         imsi=sim_in.imsi,
         msisdn=sim_in.msisdn,
-        operator=sim_in.operator or "Entel",
+        operator=sim_in.operator.strip() if sim_in.operator and sim_in.operator.strip() else "Entel",
         status=sim_in.status or SimStatusEnum.DISPONIBLE,
         assigned_technician_id=sim_in.assigned_technician_id,
         installed_client_id=sim_in.installed_client_id,
@@ -190,6 +225,7 @@ async def list_equipment(
     query = select(Equipment).options(
         selectinload(Equipment.assigned_technician).selectinload(Technician.user),
         selectinload(Equipment.installed_client),
+        selectinload(Equipment.work_order_associations).selectinload(WorkOrderItem.work_order),
     )
 
     conditions = []
@@ -233,6 +269,7 @@ async def get_equipment_by_id(db: AsyncSession, equip_id: uuid.UUID) -> Optional
         .options(
             selectinload(Equipment.assigned_technician).selectinload(Technician.user),
             selectinload(Equipment.installed_client),
+            selectinload(Equipment.work_order_associations).selectinload(WorkOrderItem.work_order),
         )
         .where(Equipment.id == equip_id)
     )
@@ -250,9 +287,15 @@ async def create_equipment(db: AsyncSession, equip_in: EquipmentCreate) -> Equip
             detail=f"Ya existe un equipo registrado con el número de serie {equip_in.serial_number}"
         )
 
+    clean_mac = (
+        equip_in.mac_address.strip().upper()
+        if equip_in.mac_address and equip_in.mac_address.strip()
+        else None
+    )
+
     equip = Equipment(
         serial_number=equip_in.serial_number.strip(),
-        mac_address=equip_in.mac_address,
+        mac_address=clean_mac,
         brand=equip_in.brand,
         model=equip_in.model,
         type=equip_in.type,
@@ -278,6 +321,9 @@ async def update_equipment(
         )
 
     update_data = equip_in.model_dump(exclude_unset=True)
+    if "mac_address" in update_data and update_data["mac_address"]:
+        update_data["mac_address"] = update_data["mac_address"].strip().upper()
+
     for field, val in update_data.items():
         setattr(equip, field, val)
 
@@ -322,43 +368,83 @@ async def pair_devices(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No es posible emparejar o reasignar la tarjeta SIM '{sim.iccid}': actualmente figura como INSTALADA en otra orden o sede. Requiere flujo formal de desinstalación o reemplazo."
             )
+        if equip.status in (EquipmentStatusEnum.DEFECTUOSO, EquipmentStatusEnum.BAJA):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El router '{equip.serial_number}' está en estado {equip.status.value} y no puede ser asignado."
+            )
+        if sim.status in (SimStatusEnum.DEFECTUOSA, SimStatusEnum.BAJA):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"La tarjeta SIM '{sim.iccid}' está en estado {sim.status.value} y no puede ser asignada."
+            )
 
-    # 4. Actualizar asignación de sede o técnico
-    if pair_req.client_id:
-        client_res = await db.execute(select(Client).where(Client.id == pair_req.client_id))
+    # 4. Si está vinculado a una orden de trabajo, resolver cliente/técnico y validar unicidad
+    order_item_id = None
+    target_client_id = pair_req.client_id
+    target_tech_id = pair_req.technician_id
+
+    if pair_req.work_order_id:
+        order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == pair_req.work_order_id))
+        order_obj = order_res.scalar_one_or_none()
+        if not order_obj:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Orden de trabajo con ID {pair_req.work_order_id} no encontrada"
+            )
+
+        # Prevenir asociaciones duplicadas exactas en la misma orden
+        existing_item_res = await db.execute(
+            select(WorkOrderItem).where(
+                WorkOrderItem.work_order_id == pair_req.work_order_id,
+                WorkOrderItem.equipment_id == equip.id,
+                WorkOrderItem.sim_card_id == sim.id,
+            )
+        )
+        if existing_item_res.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"El router '{equip.serial_number}' y la SIM '{sim.iccid}' ya se encuentran vinculados a la orden {order_obj.order_number}."
+            )
+
+        if not target_client_id and order_obj.client_id:
+            target_client_id = order_obj.client_id
+        if not target_tech_id and order_obj.technician_id:
+            target_tech_id = order_obj.technician_id
+
+    # 5. Actualizar asignación de sede o técnico
+    if target_client_id:
+        client_res = await db.execute(select(Client).where(Client.id == target_client_id))
         if not client_res.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Cliente con ID {pair_req.client_id} no encontrado"
+                detail=f"Cliente con ID {target_client_id} no encontrado"
             )
-        equip.installed_client_id = pair_req.client_id
+        equip.installed_client_id = target_client_id
         equip.status = EquipmentStatusEnum.INSTALADO
-        sim.installed_client_id = pair_req.client_id
+        sim.installed_client_id = target_client_id
         sim.status = SimStatusEnum.INSTALADA
-    elif pair_req.technician_id:
-        tech_res = await db.execute(select(Technician).where(Technician.id == pair_req.technician_id))
+    elif target_tech_id:
+        tech_res = await db.execute(select(Technician).where(Technician.id == target_tech_id))
         if not tech_res.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Técnico con ID {pair_req.technician_id} no encontrado"
+                detail=f"Técnico con ID {target_tech_id} no encontrado"
             )
-        equip.assigned_technician_id = pair_req.technician_id
+        equip.assigned_technician_id = target_tech_id
         equip.status = EquipmentStatusEnum.ASIGNADO_TECNICO
-        sim.assigned_technician_id = pair_req.technician_id
+        sim.assigned_technician_id = target_tech_id
         sim.status = SimStatusEnum.ASIGNADA_TECNICO
     else:
         equip.status = EquipmentStatusEnum.INSTALADO
         sim.status = SimStatusEnum.INSTALADA
 
-    # 5. Si está vinculado a una orden de trabajo, crear registro en work_order_items (RF-API-05)
-    order_item_id = None
+    if target_tech_id:
+        equip.assigned_technician_id = target_tech_id
+        sim.assigned_technician_id = target_tech_id
+
+    # 6. Registrar en work_order_items si aplica
     if pair_req.work_order_id:
-        order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == pair_req.work_order_id))
-        if not order_res.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Orden de trabajo con ID {pair_req.work_order_id} no encontrada"
-            )
         order_item = WorkOrderItem(
             work_order_id=pair_req.work_order_id,
             sim_card_id=sim.id,

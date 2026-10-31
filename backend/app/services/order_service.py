@@ -8,12 +8,12 @@ from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
-from app.models.work_order import WorkOrder, OrderStatusHistory
+from app.models.work_order import WorkOrder, OrderStatusHistory, WorkOrderItem
 from app.models.client import Client
 from app.models.user import User, Technician
 from app.models.magic_link import MagicLink
 from app.models.evidence import WorkOrderEvidence
-from app.models.inventory import SimCard
+from app.models.inventory import SimCard, Equipment
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum, SimStatusEnum, UserRoleEnum
 from app.schemas.work_order import (
     WorkOrderCreate,
@@ -51,6 +51,8 @@ async def list_orders(
         selectinload(WorkOrder.technician).selectinload(Technician.user),
         selectinload(WorkOrder.magic_links),
         selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
+        selectinload(WorkOrder.items).selectinload(WorkOrderItem.sim_card),
+        selectinload(WorkOrder.items).selectinload(WorkOrderItem.equipment),
     )
 
     conditions = []
@@ -104,7 +106,8 @@ async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Optional[Wor
             selectinload(WorkOrder.technician).selectinload(Technician.user),
             selectinload(WorkOrder.magic_links),
             selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
-            selectinload(WorkOrder.items),
+            selectinload(WorkOrder.items).selectinload(WorkOrderItem.sim_card),
+            selectinload(WorkOrder.items).selectinload(WorkOrderItem.equipment),
             selectinload(WorkOrder.evidences),
         )
         .where(WorkOrder.id == order_id)

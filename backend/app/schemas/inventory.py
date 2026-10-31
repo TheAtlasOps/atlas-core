@@ -1,7 +1,8 @@
+import re
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.enums import SimStatusEnum, EquipmentTypeEnum, EquipmentStatusEnum
 
 
@@ -24,6 +25,7 @@ class SimCardUpdate(BaseModel):
     status: Optional[SimStatusEnum] = None
     imsi: Optional[str] = None
     msisdn: Optional[str] = None
+    operator: Optional[str] = None
     assigned_technician_id: Optional[uuid.UUID] = None
     installed_client_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
@@ -36,6 +38,8 @@ class SimCardResponse(SimCardBase):
     installed_client_id: Optional[uuid.UUID] = None
     assigned_technician_name: Optional[str] = None
     installed_client_name: Optional[str] = None
+    work_order_id: Optional[uuid.UUID] = None
+    work_order_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -59,6 +63,20 @@ class EquipmentBase(BaseModel):
     type: EquipmentTypeEnum
     notes: Optional[str] = None
 
+    @field_validator("mac_address", mode="before")
+    @classmethod
+    def validate_mac_address(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            clean = v.strip()
+            if not clean:
+                return None
+            if not re.match(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", clean):
+                raise ValueError("Formato de dirección MAC inválido. Debe ser XX:XX:XX:XX:XX:XX o XX-XX-XX-XX-XX-XX")
+            return clean.upper()
+        return v
+
 
 class EquipmentCreate(EquipmentBase):
     status: Optional[EquipmentStatusEnum] = EquipmentStatusEnum.DISPONIBLE
@@ -76,6 +94,20 @@ class EquipmentUpdate(BaseModel):
     installed_client_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
 
+    @field_validator("mac_address", mode="before")
+    @classmethod
+    def validate_mac_address(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            clean = v.strip()
+            if not clean:
+                return None
+            if not re.match(r"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$", clean):
+                raise ValueError("Formato de dirección MAC inválido. Debe ser XX:XX:XX:XX:XX:XX o XX-XX-XX-XX-XX-XX")
+            return clean.upper()
+        return v
+
 
 class EquipmentResponse(EquipmentBase):
     id: uuid.UUID
@@ -84,6 +116,8 @@ class EquipmentResponse(EquipmentBase):
     installed_client_id: Optional[uuid.UUID] = None
     assigned_technician_name: Optional[str] = None
     installed_client_name: Optional[str] = None
+    work_order_id: Optional[uuid.UUID] = None
+    work_order_number: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

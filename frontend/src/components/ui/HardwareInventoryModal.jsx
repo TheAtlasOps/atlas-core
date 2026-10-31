@@ -94,6 +94,9 @@ export function HardwareInventoryContent({ onClose }) {
     identifier: "",
     technology: "5G",
     status: "DISPONIBLE",
+    macAddress: "",
+    operator: "Entel",
+    customOperator: "",
   });
 
   // Sincroniza inventario con el contexto unificado de órdenes y hardware al abrir la vista
@@ -203,6 +206,8 @@ export function HardwareInventoryContent({ onClose }) {
   const [formError, setFormError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const MAC_REGEX = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!newItem.identifier.trim()) return;
@@ -221,9 +226,14 @@ export function HardwareInventoryContent({ onClose }) {
 
     try {
       if (newItem.deviceType === "SIM") {
+        let resolvedOperator = newItem.operator;
+        if (newItem.operator === "Otro") {
+          resolvedOperator = newItem.customOperator.trim() || "Otro";
+        }
+
         const apiSim = await api.inventory.createSim({
           iccid: cleanId.slice(0, 22),
-          operator: "Entel",
+          operator: resolvedOperator,
           status: newItem.status,
           notes: `${modelText} (${newItem.technology})`,
         });
@@ -231,12 +241,23 @@ export function HardwareInventoryContent({ onClose }) {
           created = mapApiSimToInventoryItem(apiSim);
         }
       } else {
+        let cleanMac = null;
+        if (newItem.macAddress && newItem.macAddress.trim()) {
+          const rawMac = newItem.macAddress.trim();
+          if (!MAC_REGEX.test(rawMac)) {
+            setFormError("Formato de Dirección MAC inválido. Debe ser XX:XX:XX:XX:XX:XX o XX-XX-XX-XX-XX-XX (hexadecimal).");
+            setIsSubmitting(false);
+            return;
+          }
+          cleanMac = rawMac.toUpperCase();
+        }
+
         const parts = modelText.split(" ");
         const brand = parts[0] || "Teltonika";
         const model = parts.slice(1).join(" ") || modelText;
         const apiRouter = await api.inventory.createRouter({
           serial_number: cleanId,
-          mac_address: "B8:27:EB:99:10:AA",
+          mac_address: cleanMac,
           brand,
           model,
           type: newItem.technology === "5G" ? "ROUTER_5G" : "ROUTER_4G",
@@ -257,6 +278,9 @@ export function HardwareInventoryContent({ onClose }) {
           identifier: "",
           technology: "5G",
           status: "DISPONIBLE",
+          macAddress: "",
+          operator: "Entel",
+          customOperator: "",
         });
 
         if (setToast) {
@@ -491,10 +515,10 @@ export function HardwareInventoryContent({ onClose }) {
       {showAddForm && (
         <form
           onSubmit={handleAddSubmit}
-          className="mx-6 mt-4 rounded-xl border border-orange-500/40 bg-slate-50 dark:bg-[#141414] p-4 grid grid-cols-1 sm:grid-cols-5 gap-3 items-end shrink-0"
+          className="mx-6 mt-4 rounded-xl border border-orange-500/40 bg-slate-50 dark:bg-[#141414] p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end shrink-0"
         >
           {formError && (
-            <div className="col-span-1 sm:col-span-5 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400">
+            <div className="col-span-1 sm:col-span-2 md:col-span-3 lg:col-span-6 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400">
               <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
               <span className="font-medium">{formError}</span>
             </div>
@@ -518,7 +542,7 @@ export function HardwareInventoryContent({ onClose }) {
 
           <div>
             <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
-              ICCID o N° de Serie
+              {newItem.deviceType === "SIM" ? "ICCID (Obligatorio)" : "N° de Serie (Obligatorio)"}
             </label>
             <input
               type="text"
@@ -536,6 +560,61 @@ export function HardwareInventoryContent({ onClose }) {
               className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
             />
           </div>
+
+          {newItem.deviceType === "Router" ? (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+                Dirección MAC (Opcional)
+              </label>
+              <input
+                type="text"
+                value={newItem.macAddress}
+                onChange={(e) => {
+                  setFormError(null);
+                  setNewItem((prev) => ({ ...prev, macAddress: e.target.value }));
+                }}
+                placeholder="B8:27:EB:99:10:AA"
+                className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white font-mono"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+                Operador
+              </label>
+              <select
+                value={newItem.operator}
+                onChange={(e) =>
+                  setNewItem((prev) => ({ ...prev, operator: e.target.value }))
+                }
+                className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+              >
+                <option value="Entel">Entel</option>
+                <option value="Movistar">Movistar</option>
+                <option value="Claro">Claro</option>
+                <option value="WOM">WOM</option>
+                <option value="Otro">Otro (especificar)</option>
+              </select>
+            </div>
+          )}
+
+          {newItem.deviceType === "SIM" && newItem.operator === "Otro" && (
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
+                Especificar Operador
+              </label>
+              <input
+                type="text"
+                required
+                value={newItem.customOperator}
+                onChange={(e) =>
+                  setNewItem((prev) => ({ ...prev, customOperator: e.target.value }))
+                }
+                placeholder="ej: VTR, Virgin..."
+                className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white"
+              />
+            </div>
+          )}
 
           <div>
             <label className="mb-1 block text-[11px] font-medium text-slate-600 dark:text-gray-400">
