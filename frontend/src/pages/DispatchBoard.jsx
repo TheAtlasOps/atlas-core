@@ -35,7 +35,13 @@ import {
 import { useWorkOrders } from "../context/WorkOrderContext";
 import { api } from "../lib/api";
 
-const STATUS_OPTIONS = ["En camino", "Completada", "Programada", "Reagendada"];
+const STATUS_OPTIONS = [
+  "En camino",
+  "Completada",
+  "Programada",
+  "Por coordinar",
+  "Reagendada",
+];
 
 function FilterPill({ label, active, onClick }) {
   return (
@@ -657,7 +663,7 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
             Registro de actividad reciente
           </h2>
           <p className="text-xs text-muted-foreground">
-            Últimas acciones registradas por los técnicos · Haz clic en una fila para ver auditoría
+            Últimas acciones registradas por los usuarios del sistema · Haz clic en una fila para ver auditoría
           </p>
         </div>
         <span className="text-xs text-muted-foreground font-medium">
