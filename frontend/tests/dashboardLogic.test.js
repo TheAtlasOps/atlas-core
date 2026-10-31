@@ -72,8 +72,13 @@ describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
       const visits = buildVisitsFromOrders(orders);
       assert.equal(visits.length, 2);
       assert.equal(visits[0].time, "Por coordinar");
+      assert.equal(visits[0].status, "Por coordinar");
+      assert.ok(visits[0].statusStyle.includes("slate"));
+      assert.equal(visits[0].rawStatus, "CONFIRMADA", "El estado operativo debe conservarse sin alteración");
       assert.equal(visits[0].hasScheduledDate, false);
       assert.equal(visits[1].time, "Por coordinar");
+      assert.equal(visits[1].status, "Por coordinar");
+      assert.ok(visits[1].statusStyle.includes("slate"));
       assert.equal(visits[1].hasScheduledDate, false);
     });
 
@@ -403,12 +408,13 @@ describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
       assert.equal(normalized.lng, null, "lng debe ser null cuando no viene provisto");
     });
 
-    it("buildVisitsFromOrders debe marcar hasScheduledDate en false y time en 'Por coordinar' cuando scheduled_date es null", () => {
+    it("buildVisitsFromOrders debe marcar hasScheduledDate en false, time en 'Por coordinar' y statusLabel en 'Por coordinar' cuando scheduled_date es null", () => {
       const orders = [
         {
           id: "wo-null-schedule",
           order_number: "#OT-08493",
           title: "Visita sin programar",
+          status: "CONFIRMADA",
           scheduled_date: null,
         },
       ];
@@ -417,6 +423,9 @@ describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
       assert.equal(visits.length, 1);
       assert.equal(visits[0].hasScheduledDate, false);
       assert.equal(visits[0].time, "Por coordinar");
+      assert.equal(visits[0].status, "Por coordinar");
+      assert.ok(visits[0].statusStyle.includes("slate"));
+      assert.equal(visits[0].rawStatus, "CONFIRMADA", "El estado operativo debe conservarse sin alteración");
     });
   });
 });

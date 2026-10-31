@@ -220,9 +220,17 @@ export function buildVisitsFromOrders(ordersList) {
   if (!Array.isArray(ordersList)) return [];
   return ordersList.map((o) => {
     const norm = normalizeOrderItem(o);
+    const formattedSchedule = formatChileanDateTime(o.scheduled_date);
+    const timeDisplay = formattedSchedule || "Por coordinar";
+    const hasScheduledDate = Boolean(formattedSchedule);
+
     let statusLabel = "Programada";
     let statusStyle = "bg-blue-500/15 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/25";
-    if (norm.status === "EN_RUTA" || norm.status === "EN_SITIO") {
+
+    if (!hasScheduledDate) {
+      statusLabel = "Por coordinar";
+      statusStyle = "bg-slate-500/15 text-slate-600 dark:text-slate-400 ring-1 ring-slate-500/25";
+    } else if (norm.status === "EN_RUTA" || norm.status === "EN_SITIO") {
       statusLabel = "En camino";
       statusStyle = "bg-orange-500/15 text-orange-600 dark:text-orange-400 ring-1 ring-orange-500/25";
     } else if (norm.status === "COMPLETADA") {
@@ -232,9 +240,6 @@ export function buildVisitsFromOrders(ordersList) {
       statusLabel = "Cancelada";
       statusStyle = "bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-1 ring-rose-500/25";
     }
-
-    const formattedSchedule = formatChileanDateTime(o.scheduled_date);
-    const timeDisplay = formattedSchedule || "Por coordinar";
 
     const locationPart = (norm.comuna || norm.location || "Santiago").split(",")[0].trim();
     const clientDisplay = `${norm.clientName} — ${locationPart}`;
@@ -251,7 +256,7 @@ export function buildVisitsFromOrders(ordersList) {
       rawStatus: norm.status,
       statusStyle,
       technician: norm.assigneeName,
-      hasScheduledDate: Boolean(formattedSchedule),
+      hasScheduledDate,
     };
   });
 }
