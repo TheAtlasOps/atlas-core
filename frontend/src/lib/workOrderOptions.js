@@ -286,15 +286,24 @@ export function buildActivitiesFromOrders(ordersList) {
         }
       }
 
-      const techName =
-        norm.assigneeName && norm.assigneeName !== "Sin asignar"
+      const performerName =
+        h.changed_by_name ||
+        (norm.assigneeName && norm.assigneeName !== "Sin asignar"
           ? norm.assigneeName
-          : "Coordinación";
+          : "Coordinación");
+
+      const performerRole =
+        h.changed_by_role ||
+        (norm.assigneeName && norm.assigneeName !== "Sin asignar"
+          ? "TECNICO"
+          : "SISTEMA");
 
       activities.push({
         id: norm.orderId,
         historyId: h.id,
-        technician: techName,
+        performer: performerName,
+        performerRole: performerRole,
+        technician: performerName,
         client: norm.clientName,
         action,
         status: h.new_status || norm.status,

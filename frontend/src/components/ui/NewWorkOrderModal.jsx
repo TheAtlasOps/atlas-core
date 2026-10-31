@@ -21,6 +21,7 @@ const INITIAL_FORM = {
   serviceType: "",
   technician: "",
   priority: "MEDIA",
+  scheduledDate: "",
 };
 
 /**
@@ -89,6 +90,17 @@ function NewWorkOrderForm({ onClose, onCreate }) {
     );
     const clientId = matchedClient ? matchedClient.id : null;
 
+    // Manejo de fecha programada: si el usuario no la especifica, se envía null (Por coordinar)
+    let scheduledDateIso = null;
+    let etaIso = null;
+    if (form.scheduledDate && form.scheduledDate.trim()) {
+      const parsedDate = new Date(form.scheduledDate);
+      if (!isNaN(parsedDate.getTime())) {
+        scheduledDateIso = parsedDate.toISOString();
+        etaIso = new Date(parsedDate.getTime() + 2 * 60 * 60 * 1000).toISOString();
+      }
+    }
+
     const orderPayload = {
       title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
       description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
@@ -97,8 +109,8 @@ function NewWorkOrderForm({ onClose, onCreate }) {
       client_id: clientId,
       client_name: form.clientName.trim(),
       technician_id: technicianId,
-      scheduled_date: new Date().toISOString(),
-      eta: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      scheduled_date: scheduledDateIso,
+      eta: etaIso,
       address_override: form.address,
       comuna_override: comunaOverride,
       tag: form.serviceType,
@@ -117,7 +129,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           finalOrder = await api.orders.assign(
             createdOrder.id,
             technicianId,
-            new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+            etaIso
           );
         } catch {
           // Si falla la asignación puntual, conserva la orden recién creada
@@ -315,6 +327,22 @@ function NewWorkOrderForm({ onClose, onCreate }) {
               No hay técnicos registrados en la base de datos. La orden se creará en estado pendiente (Sin asignar).
             </p>
           )}
+        </div>
+
+        <div>
+          <label htmlFor="new-wo-scheduled-date" className={LABEL_CLASS}>
+            Fecha y Hora Programada (Opcional)
+          </label>
+          <input
+            id="new-wo-scheduled-date"
+            type="datetime-local"
+            value={form.scheduledDate}
+            onChange={setField("scheduledDate")}
+            className={FIELD_CLASS}
+          />
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">
+            Dejar en blanco si la visita técnica aún está por coordinar con el cliente.
+          </p>
         </div>
       </div>
 

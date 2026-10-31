@@ -77,9 +77,28 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
                 break
 
     # Mapeo de historial
-    history_responses = [
-        OrderStatusHistoryResponse.model_validate(h) for h in (order.status_history or [])
-    ]
+    history_responses = []
+    for h in (order.status_history or []):
+        u_name = h.changed_by_user.full_name if h.changed_by_user else None
+        u_role = (
+            h.changed_by_user.role.value
+            if (h.changed_by_user and hasattr(h.changed_by_user.role, "value"))
+            else (str(h.changed_by_user.role) if h.changed_by_user else None)
+        )
+        history_responses.append(
+            OrderStatusHistoryResponse(
+                id=h.id,
+                old_status=h.old_status,
+                new_status=h.new_status,
+                changed_by_user_id=h.changed_by_user_id,
+                changed_by_name=u_name,
+                changed_by_role=u_role,
+                lat=h.lat,
+                lng=h.lng,
+                comment=h.comment,
+                created_at=h.created_at,
+            )
+        )
 
     return WorkOrderResponse(
         id=order.id,

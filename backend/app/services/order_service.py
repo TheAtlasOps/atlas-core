@@ -50,7 +50,7 @@ async def list_orders(
         selectinload(WorkOrder.client),
         selectinload(WorkOrder.technician).selectinload(Technician.user),
         selectinload(WorkOrder.magic_links),
-        selectinload(WorkOrder.status_history),
+        selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
     )
 
     conditions = []
@@ -103,7 +103,7 @@ async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Optional[Wor
             selectinload(WorkOrder.client),
             selectinload(WorkOrder.technician).selectinload(Technician.user),
             selectinload(WorkOrder.magic_links),
-            selectinload(WorkOrder.status_history),
+            selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
             selectinload(WorkOrder.items),
             selectinload(WorkOrder.evidences),
         )
@@ -136,8 +136,8 @@ async def create_order(
                 address=order_in.address_override or "Santiago, RM",
                 comuna=order_in.comuna_override or "Santiago",
                 region="Metropolitana",
-                lat=order_in.lat or Decimal("-33.4372"),
-                lng=order_in.lng or Decimal("-70.6506"),
+                lat=order_in.lat,
+                lng=order_in.lng,
             )
             db.add(client)
             await db.flush()
@@ -200,8 +200,8 @@ async def create_order(
         eta=order_in.eta,
         address_override=order_in.address_override or client.address,
         comuna_override=order_in.comuna_override or client.comuna,
-        lat=order_in.lat or client.lat,
-        lng=order_in.lng or client.lng,
+        lat=order_in.lat if order_in.lat is not None else client.lat,
+        lng=order_in.lng if order_in.lng is not None else client.lng,
         tag=order_in.tag,
         created_by=creator_user.id,
         created_at=now_utc,
@@ -642,12 +642,20 @@ async def get_recent_activity_log(
         client = order.client.business_name if (order and order.client) else None
 
         user_name = None
+        user_role = None
         if h.changed_by_user:
             user_name = h.changed_by_user.full_name
+            user_role = (
+                h.changed_by_user.role.value
+                if hasattr(h.changed_by_user.role, "value")
+                else str(h.changed_by_user.role)
+            )
         elif order and order.technician and order.technician.user:
             user_name = order.technician.user.full_name
+            user_role = "TECNICO"
         else:
             user_name = "Sistema / Coordinación"
+            user_role = "SISTEMA"
 
         action_text = h.comment
         if not action_text:
@@ -663,6 +671,7 @@ async def get_recent_activity_log(
                 order_number=order_num,
                 client_name=client,
                 technician_name=user_name,
+                performer_role=user_role,
                 action=action_text,
                 old_status=h.old_status,
                 new_status=h.new_status,

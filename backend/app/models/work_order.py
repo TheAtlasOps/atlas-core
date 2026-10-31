@@ -48,8 +48,8 @@ class WorkOrder(Base):
     technician_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("technicians.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    scheduled_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, index=True
+    scheduled_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
     eta: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     address_override: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)

@@ -351,4 +351,72 @@ describe("Dashboard - Pruebas Obligatorias de Datos Reales", () => {
       assert.equal(auditPackage.telemetry.hasRealTelemetry, false, "No debe inyectar telemetría mock para OT-08498");
     });
   });
+
+  // ─── 10. Trazabilidad, Agenda y Geolocalización Real ─────────────────────
+  describe("10. Trazabilidad, Agenda y Geolocalización Real", () => {
+    it("buildActivitiesFromOrders debe mapear performer y performerRole desde changed_by del historial", () => {
+      const orders = [
+        {
+          id: "wo-1",
+          order_number: "#OT-08491",
+          status_history: [
+            {
+              id: "h-1",
+              created_at: "2026-10-30T10:00:00Z",
+              comment: "Creación de orden de servicio",
+              new_status: "CONFIRMADA",
+              changed_by_name: "Diego Jiménez",
+              changed_by_role: "ADMIN",
+            },
+            {
+              id: "h-2",
+              created_at: "2026-10-30T11:00:00Z",
+              comment: "Técnico inició traslado a terreno",
+              new_status: "EN_RUTA",
+              changed_by_name: "Técnico Prueba ATLAS 01",
+              changed_by_role: "TECNICO",
+            },
+          ],
+        },
+      ];
+
+      const activities = buildActivitiesFromOrders(orders);
+      assert.equal(activities.length, 2);
+      // El más reciente primero
+      assert.equal(activities[0].performer, "Técnico Prueba ATLAS 01");
+      assert.equal(activities[0].performerRole, "TECNICO");
+      assert.equal(activities[1].performer, "Diego Jiménez");
+      assert.equal(activities[1].performerRole, "ADMIN");
+    });
+
+    it("normalizeOrderItem debe preservar lat y lng como null sin inventar coordenadas de Santiago", () => {
+      const orderWithoutCoords = {
+        id: "wo-no-coords",
+        order_number: "#OT-08492",
+        title: "Instalación",
+        lat: null,
+        lng: null,
+      };
+
+      const normalized = normalizeOrderItem(orderWithoutCoords);
+      assert.equal(normalized.lat, null, "lat debe ser null cuando no viene provisto");
+      assert.equal(normalized.lng, null, "lng debe ser null cuando no viene provisto");
+    });
+
+    it("buildVisitsFromOrders debe marcar hasScheduledDate en false y time en 'Por coordinar' cuando scheduled_date es null", () => {
+      const orders = [
+        {
+          id: "wo-null-schedule",
+          order_number: "#OT-08493",
+          title: "Visita sin programar",
+          scheduled_date: null,
+        },
+      ];
+
+      const visits = buildVisitsFromOrders(orders);
+      assert.equal(visits.length, 1);
+      assert.equal(visits[0].hasScheduledDate, false);
+      assert.equal(visits[0].time, "Por coordinar");
+    });
+  });
 });
