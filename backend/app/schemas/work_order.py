@@ -49,6 +49,8 @@ class OrderStatusHistoryResponse(BaseModel):
     old_status: Optional[OrderStatusEnum] = None
     new_status: OrderStatusEnum
     changed_by_user_id: Optional[uuid.UUID] = None
+    changed_by_name: Optional[str] = None
+    changed_by_role: Optional[str] = None
     lat: Optional[Decimal] = None
     lng: Optional[Decimal] = None
     comment: Optional[str] = None
@@ -63,6 +65,7 @@ class OrderActivityLogItem(BaseModel):
     order_number: str
     client_name: Optional[str] = None
     technician_name: Optional[str] = None
+    performer_role: Optional[str] = None
     action: str
     old_status: Optional[OrderStatusEnum] = None
     new_status: OrderStatusEnum
@@ -81,7 +84,7 @@ class WorkOrderBase(BaseModel):
     description: Optional[str] = None
     service_type: ServiceTypeEnum
     priority: OrderPriorityEnum = OrderPriorityEnum.MEDIA
-    scheduled_date: datetime
+    scheduled_date: Optional[datetime] = None
     eta: Optional[datetime] = None
     address_override: Optional[str] = None
     comuna_override: Optional[str] = None

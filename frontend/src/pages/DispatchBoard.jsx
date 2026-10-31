@@ -673,7 +673,7 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
                 ID Orden
               </th>
               <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
-                Técnico
+                Realizado por
               </th>
               <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Acción
@@ -716,7 +716,14 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
                     {row.id}
                   </td>
                   <td className="px-5 py-3 text-sm text-slate-900 dark:text-white font-medium whitespace-nowrap">
-                    {row.technician}
+                    <div className="flex items-center gap-2">
+                      <span>{row.performer || row.technician}</span>
+                      {row.performerRole && (
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300 border border-slate-200 dark:border-gray-700">
+                          {row.performerRole}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-5 py-3 text-sm text-slate-500 dark:text-gray-400">
                     {row.action}
@@ -1013,6 +1020,8 @@ export default function DispatchBoard() {
         const mapped = activityRes.value.map((item) => ({
           id: item.order_number || item.order_id,
           historyId: item.id,
+          performer: item.technician_name || "Coordinación",
+          performerRole: item.performer_role || null,
           technician: item.technician_name || "Coordinación",
           client: item.client_name || "Cliente Corporativo",
           action: item.action,

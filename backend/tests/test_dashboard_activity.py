@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 import pytest
 from app.core.security import create_access_token
-from app.models.enums import UserRoleEnum, OrderStatusEnum, ServiceTypeEnum
+from app.models.enums import UserRoleEnum, OrderStatusEnum, ServiceTypeEnum, OrderPriorityEnum
 from app.models.user import User, Technician
 from app.models.client import Client
 from app.models.work_order import WorkOrder, OrderStatusHistory
+from app.schemas.work_order import WorkOrderCreate
 
 
 @pytest.fixture
@@ -101,6 +102,7 @@ def test_activity_log_returns_real_records(client, db, test_user, auth_headers):
     item = data[0]
     assert item["order_number"] == "#OT-08501"
     assert item["technician_name"] == "Admin Pruebas"
+    assert item["performer_role"] == "ADMIN"
     assert item["action"] == "Técnico inició ruta hacia el cliente"
     assert item["old_status"] == "CONFIRMADA"
     assert item["new_status"] == "EN_RUTA"
@@ -152,3 +154,28 @@ def test_activity_log_no_conflict_with_dynamic_routes(client, db, test_user, aut
     uuid_response = client.get(f"/api/v1/orders/{non_existent_uuid}", headers=auth_headers)
     assert uuid_response.status_code == 404
 
+
+def test_work_order_create_accepts_null_schedule_and_null_coordinates():
+    """
+    Verifica que el schema WorkOrderCreate permita crear órdenes sin fecha programada
+    (scheduled_date=None -> Por coordinar) y sin coordenadas fijas de Santiago (lat=None, lng=None).
+    """
+    payload = {
+        "title": "Instalación Enlace Fibra Óptica",
+        "service_type": "INSTALACION_FIBRA",
+        "priority": "MEDIA",
+        "scheduled_date": None,
+        "eta": None,
+        "lat": None,
+        "lng": None,
+        "address_override": "Av. Providencia 1234, Providencia",
+        "comuna_override": "Providencia",
+        "client_name": "Cliente Prueba ATLAS",
+    }
+    order_in = WorkOrderCreate(**payload)
+    assert order_in.scheduled_date is None
+    assert order_in.eta is None
+    assert order_in.lat is None
+    assert order_in.lng is None
+    assert order_in.address_override == "Av. Providencia 1234, Providencia"
+    assert order_in.comuna_override == "Providencia"
