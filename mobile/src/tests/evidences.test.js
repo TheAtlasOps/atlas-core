@@ -351,4 +351,53 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
     assert.match(patchedComment, /Cierre formal/);
     assert.equal(res.status, 'COMPLETADA');
   });
+
+  // ─── 8. Carga e Hidratación de Evidencias Guardadas ─────────────────────────
+  test('fetchOrderEvidences consulta las evidencias existentes en Neon para hidratar la UI', async () => {
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes('/evidences/order/wo-uuid-001')) {
+        return new Response(
+          JSON.stringify({
+            work_order_id: 'wo-uuid-001',
+            order_number: 'OT-08492',
+            total_evidences: 2,
+            has_photo_before: true,
+            has_photo_after: false,
+            has_signature: false,
+            has_signal_check: true,
+            is_ready_for_closing: false,
+            items: [
+              {
+                id: 'ev-photo-1',
+                work_order_id: 'wo-uuid-001',
+                technician_id: 'tech-001',
+                evidence_type: 'FOTO_ANTES',
+                storage_url: 'https://storage.neon.tech/presigned-photo-1.jpg',
+                captured_at: '2026-11-01T12:00:00Z',
+              },
+              {
+                id: 'ev-signal-1',
+                work_order_id: 'wo-uuid-001',
+                technician_id: 'tech-001',
+                evidence_type: 'DIAGNOSTICO_DBM',
+                storage_url: 'telemetry/signal_dbm',
+                signal_dbm: -75,
+                captured_at: '2026-11-01T12:01:00Z',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response('Not Found', { status: 404 });
+    };
+
+    const audit = await fetchOrderEvidences('wo-uuid-001');
+
+    assert.equal(audit.items.length, 2);
+    assert.equal(audit.items[0].evidence_type, 'FOTO_ANTES');
+    assert.equal(audit.items[1].evidence_type, 'DIAGNOSTICO_DBM');
+    assert.equal(audit.items[1].signal_dbm, -75);
+  });
 });

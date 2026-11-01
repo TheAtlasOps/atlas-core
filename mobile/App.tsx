@@ -9,7 +9,12 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { useVisits } from './src/hooks/useVisits';
 import { updateOrderStatus } from './src/api/orders';
-import { uploadEvidenceFile, createEvidenceRecord, saveSignalMeasurement } from './src/api/evidences';
+import {
+  uploadEvidenceFile,
+  createEvidenceRecord,
+  saveSignalMeasurement,
+  fetchOrderEvidences,
+} from './src/api/evidences';
 import { CHECKLIST_ITEMS, MAX_PHOTOS } from './src/data/mockData';
 import { AgendaScreen } from './src/screens/AgendaScreen';
 import { DetailScreen } from './src/screens/DetailScreen';
@@ -44,10 +49,62 @@ function AtlasTecnicoApp() {
   const dbm       = dbmMap[key] ?? -76;
   const estado: Estado = estadoMap[key] ?? 'operativo';
 
+  async function loadExistingEvidences(orderId: string) {
+    try {
+      const res = await fetchOrderEvidences(orderId);
+      if (res && Array.isArray(res.items) && res.items.length > 0) {
+        const photos: PhotoEvidence[] = [];
+        let savedDbm: number | null = null;
+        let signalId: string | null = null;
+
+        for (const ev of res.items) {
+          if (ev.evidence_type === 'FOTO_ANTES' || ev.evidence_type === 'FOTO_DESPUES') {
+            photos.push({
+              id: ev.id,
+              uri: ev.storage_url,
+              type: ev.evidence_type,
+              status: 'synced',
+              storageUrl: ev.storage_url,
+              evidenceId: ev.id,
+            });
+          } else if (ev.evidence_type === 'DIAGNOSTICO_DBM') {
+            signalId = ev.id;
+            if (ev.signal_dbm !== null && ev.signal_dbm !== undefined) {
+              savedDbm = Number(ev.signal_dbm);
+            }
+          }
+        }
+
+        if (photos.length > 0) {
+          setEvidenceMap((prev) => {
+            const current = prev[orderId] ?? [];
+            const combined = [...current];
+            for (const p of photos) {
+              if (!combined.some((c) => c.evidenceId === p.evidenceId)) {
+                combined.push(p);
+              }
+            }
+            return { ...prev, [orderId]: combined };
+          });
+        }
+
+        if (signalId) {
+          setSignalSyncedMap((prev) => ({ ...prev, [orderId]: signalId }));
+        }
+        if (savedDbm !== null) {
+          setDbmMap((prev) => ({ ...prev, [orderId]: savedDbm }));
+        }
+      }
+    } catch {
+      // Si la carga falla por estar offline o no haber evidencias, se conserva el estado local
+    }
+  }
+
   function openVisit(id: string) {
     setSelectedId(id);
     setTab('resumen');
     setView('detail');
+    void loadExistingEvidences(id);
   }
 
   function toggleItem(id: number) {
@@ -215,12 +272,12 @@ function AtlasTecnicoApp() {
       return;
     }
 
-    // Validación 2: fotos en estado de error
-    const errorCount = currentEvidence.filter((p) => p.status === 'error').length;
-    if (errorCount > 0) {
+    // Validación 2: fotos en estado pendiente o con error (únicamente 'synced' es aceptado)
+    const unsyncedCount = currentEvidence.filter((p) => p.status !== 'synced').length;
+    if (unsyncedCount > 0) {
       Alert.alert(
         'Evidencias pendientes',
-        'Hay fotografías con error de subida a Neon. Por favor pulsa "Reintentar" antes de finalizar la visita.'
+        'Hay fotografías pendientes o con error de subida a Neon. Por favor pulsa "Reintentar" antes de finalizar la visita.'
       );
       return;
     }
