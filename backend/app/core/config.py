@@ -80,9 +80,17 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     EMAILS_FROM_EMAIL: str = "notificaciones@atlasops.cl"
 
-    # Google Cloud Storage (Evidencias de Terreno)
+    # Google Cloud Storage (Evidencias de Terreno - Alternativa)
     GCS_BUCKET_NAME: str = "atlas-evidences"
     GCS_CREDENTIALS_JSON: str = ""
+
+    # Neon Object Storage (Compatible S3 / Evidencias de Terreno - Opción Principal)
+    NEON_STORAGE_ENDPOINT: str = ""
+    NEON_STORAGE_REGION: str = "us-east-2"
+    NEON_STORAGE_BUCKET: str = "atlas-evidences-dev"
+    NEON_STORAGE_ACCESS_KEY_ID: str = ""
+    NEON_STORAGE_SECRET_ACCESS_KEY: str = ""
+    NEON_STORAGE_PRESIGN_EXPIRES_IN: int = 3600
 
     model_config = SettingsConfigDict(
         env_file=".env",

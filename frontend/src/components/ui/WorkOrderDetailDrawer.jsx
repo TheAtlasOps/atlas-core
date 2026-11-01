@@ -20,6 +20,7 @@ import {
   ChevronRight,
   ExternalLink,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
@@ -49,142 +50,49 @@ import { api } from "../../lib/api";
  * Ilustración técnica SVG de alta fidelidad para cada tipo de evidencia en terreno.
  * Garantiza carga instantánea en Vercel sin enlaces rotos externos.
  */
-function EvidenceVisualPreview({ kind, modelRef, serialRef, large = false }) {
-  if (kind === "router") {
+function EvidenceVisualPreview({ url, title, kind: _kind, modelRef, serialRef, large = false }) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(Boolean(url));
+
+  useEffect(() => {
+    setHasError(false);
+    setIsLoading(Boolean(url));
+  }, [url]);
+
+  if (url && !hasError) {
     return (
-      <svg
-        viewBox="0 0 400 240"
-        className={`w-full ${large ? "h-72 sm:h-96" : "h-32"} object-cover bg-slate-900`}
-        role="img"
-        aria-label="Evidencia fotográfica del estado físico del Router"
-      >
-        <defs>
-          <linearGradient id="bgRouter" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#0f172a" />
-            <stop offset="100%" stopColor="#1e293b" />
-          </linearGradient>
-        </defs>
-        <rect width="400" height="240" fill="url(#bgRouter)" />
-        {/* Fondo de rack metálico */}
-        <line x1="30" y1="0" x2="30" y2="240" stroke="#334155" strokeWidth="4" strokeDasharray="8 6" />
-        <line x1="370" y1="0" x2="370" y2="240" stroke="#334155" strokeWidth="4" strokeDasharray="8 6" />
-        {/* Antenas MIMO */}
-        <rect x="105" y="32" width="8" height="75" rx="4" fill="#475569" />
-        <rect x="196" y="24" width="8" height="83" rx="4" fill="#475569" />
-        <rect x="287" y="32" width="8" height="75" rx="4" fill="#475569" />
-        {/* Chasis del Router Industrial */}
-        <rect x="65" y="102" width="270" height="72" rx="8" fill="#090d16" stroke="#f97316" strokeWidth="2" />
-        <rect x="75" y="112" width="250" height="52" rx="4" fill="#111827" />
-        {/* Etiqueta marca Entel */}
-        <rect x="86" y="122" width="46" height="16" rx="3" fill="#f97316" />
-        <text x="109" y="133" textAnchor="middle" fill="#ffffff" fontSize="9" fontWeight="bold" fontFamily="monospace">
-          ENTEL
-        </text>
-        {/* LEDs de estado 5G activos */}
-        <circle cx="152" cy="130" r="4.5" fill="#22c55e" />
-        <circle cx="168" cy="130" r="4.5" fill="#22c55e" />
-        <circle cx="184" cy="130" r="4.5" fill="#22c55e" />
-        <circle cx="200" cy="130" r="4.5" fill="#38bdf8" />
-        <text x="150" y="148" fill="#94a3b8" fontSize="8" fontFamily="monospace">
-          PWR   5G   SIM   LAN
-        </text>
-        {/* Puertos RJ45 */}
-        <rect x="242" y="122" width="16" height="14" rx="2" fill="#334155" stroke="#64748b" strokeWidth="1" />
-        <rect x="264" y="122" width="16" height="14" rx="2" fill="#334155" stroke="#64748b" strokeWidth="1" />
-        <rect x="286" y="122" width="16" height="14" rx="2" fill="#f97316" />
-        {/* Etiqueta inferior de serie */}
-        <rect x="65" y="188" width="270" height="28" rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-        <text x="200" y="206" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontFamily="monospace">
-          {modelRef} · S/N: {serialRef}
-        </text>
-      </svg>
+      <div className={`relative w-full ${large ? "h-72 sm:h-96" : "h-32"} bg-slate-950 flex items-center justify-center overflow-hidden`}>
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/60 z-10">
+            <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+          </div>
+        )}
+        <img
+          src={url}
+          alt={title || "Evidencia fotográfica en terreno"}
+          className={`w-full h-full ${large ? "object-contain" : "object-cover"} transition-opacity duration-200 ${isLoading ? "opacity-0" : "opacity-100"}`}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setIsLoading(false);
+            setHasError(true);
+          }}
+        />
+      </div>
     );
   }
 
-  if (kind === "antenna") {
-    return (
-      <svg
-        viewBox="0 0 400 240"
-        className={`w-full ${large ? "h-72 sm:h-96" : "h-32"} object-cover bg-slate-900`}
-        role="img"
-        aria-label="Evidencia fotográfica de instalación de antena y cableado"
-      >
-        <defs>
-          <linearGradient id="bgAntenna" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0c192c" />
-            <stop offset="100%" stopColor="#1e293b" />
-          </linearGradient>
-        </defs>
-        <rect width="400" height="240" fill="url(#bgAntenna)" />
-        {/* Ondas de señal 5G */}
-        <circle cx="200" cy="82" r="38" fill="none" stroke="#f97316" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.65" />
-        <circle cx="200" cy="82" r="62" fill="none" stroke="#38bdf8" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.45" />
-        <circle cx="200" cy="82" r="86" fill="none" stroke="#22c55e" strokeWidth="1" strokeDasharray="3 5" opacity="0.3" />
-        {/* Mástil y panel de antena */}
-        <rect x="194" y="95" width="12" height="90" fill="#64748b" />
-        <rect x="155" y="42" width="90" height="68" rx="8" fill="#f8fafc" stroke="#94a3b8" strokeWidth="2" />
-        <line x1="175" y1="55" x2="225" y2="55" stroke="#cbd5e1" strokeWidth="2" />
-        <line x1="175" y1="75" x2="225" y2="75" stroke="#cbd5e1" strokeWidth="2" />
-        <circle cx="200" cy="95" r="5" fill="#f97316" />
-        {/* Cableado blindado con etiqueta */}
-        <path d="M 206 140 Q 260 145 280 185" fill="none" stroke="#f97316" strokeWidth="4" />
-        <rect x="65" y="188" width="270" height="28" rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-        <text x="200" y="206" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontFamily="monospace">
-          {modelRef} · {serialRef}
-        </text>
-      </svg>
-    );
-  }
-
-  // speedtest
   return (
-    <svg
-      viewBox="0 0 400 240"
-      className={`w-full ${large ? "h-72 sm:h-96" : "h-32"} object-cover bg-slate-900`}
-      role="img"
-      aria-label="Evidencia fotográfica del test de velocidad en pantalla"
-    >
-      <rect width="400" height="240" fill="#090d16" />
-      <rect x="24" y="18" width="352" height="160" rx="10" fill="#111827" stroke="#1e293b" strokeWidth="2" />
-      {/* Arco del velocímetro */}
-      <path
-        d="M 135 135 A 65 65 0 0 1 265 135"
-        fill="none"
-        stroke="#1e293b"
-        strokeWidth="12"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 135 135 A 65 65 0 0 1 252 98"
-        fill="none"
-        stroke="#22c55e"
-        strokeWidth="12"
-        strokeLinecap="round"
-      />
-      <text x="200" y="122" textAnchor="middle" fill="#ffffff" fontSize="18" fontWeight="bold" fontFamily="monospace">
-        {String(modelRef || "").split(" ")[0]}
-      </text>
-      <text x="200" y="138" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="bold" fontFamily="monospace">
-        Mbps DOWNLOAD · 5G ENTEL
-      </text>
-      {/* Indicadores laterales */}
-      <text x="68" y="65" fill="#94a3b8" fontSize="9" fontFamily="monospace">
-        SEÑAL RF
-      </text>
-      <text x="68" y="82" fill="#f97316" fontSize="12" fontWeight="bold" fontFamily="monospace">
-        -78.5 dBm
-      </text>
-      <text x="290" y="65" fill="#94a3b8" fontSize="9" fontFamily="monospace">
-        ESTADO
-      </text>
-      <text x="290" y="82" fill="#22c55e" fontSize="11" fontWeight="bold" fontFamily="monospace">
-        VERIFICADO
-      </text>
-      <rect x="65" y="188" width="270" height="28" rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1" />
-      <text x="200" y="206" textAnchor="middle" fill="#e2e8f0" fontSize="10" fontFamily="monospace">
-        {modelRef} · {serialRef}
-      </text>
-    </svg>
+    <div className={`w-full ${large ? "h-72 sm:h-96" : "h-32"} bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-center p-4 text-center select-none`}>
+      <Camera className={`${large ? "h-10 w-10" : "h-6 w-6"} text-slate-500 mb-1.5 opacity-60`} />
+      <span className="text-xs font-medium text-slate-300 dark:text-gray-300">
+        {hasError ? "No se pudo cargar la imagen de respaldo" : "Fotografía pendiente de captura en terreno"}
+      </span>
+      {modelRef && serialRef && (
+        <span className="text-[10px] font-mono text-slate-500 mt-1">
+          {modelRef} · {serialRef}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -230,6 +138,8 @@ function WorkOrderDetailDrawerContent({
   const [selectedSimId, setSelectedSimId] = useState("");
   const [apiOrderDetail, setApiOrderDetail] = useState(null);
   const [apiEvidences, setApiEvidences] = useState(null);
+  const [isEvidencesLoading, setIsEvidencesLoading] = useState(false);
+  const [evidencesError, setEvidencesError] = useState(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
   const [approveError, setApproveError] = useState(null);
@@ -244,21 +154,30 @@ function WorkOrderDetailDrawerContent({
     setApproveError(null);
     setApiOrderDetail(null);
     setApiEvidences(null);
+    setIsEvidencesLoading(false);
+    setEvidencesError(null);
 
     if (!order?.id) return undefined;
 
     let cancelled = false;
     async function fetchDetailAndEvidences() {
+      setIsEvidencesLoading(true);
+      setEvidencesError(null);
       const [detailRes, evidencesRes] = await Promise.allSettled([
         api.orders.getById(order.id),
         api.evidences.getByOrderId(order.id),
       ]);
       if (cancelled) return;
+      setIsEvidencesLoading(false);
       if (detailRes.status === "fulfilled" && detailRes.value) {
         setApiOrderDetail(detailRes.value);
       }
-      if (evidencesRes.status === "fulfilled" && Array.isArray(evidencesRes.value)) {
+      if (evidencesRes.status === "fulfilled" && evidencesRes.value) {
         setApiEvidences(evidencesRes.value);
+      } else if (evidencesRes.status === "rejected") {
+        setEvidencesError(
+          evidencesRes.reason?.message || "No fue posible cargar las evidencias de la orden"
+        );
       }
     }
     fetchDetailAndEvidences();
@@ -583,7 +502,22 @@ function WorkOrderDetailDrawerContent({
               </div>
 
               {/* Cuadrícula de fotos de respaldo o estado pendiente real */}
-              {auditData.evidences.length > 0 ? (
+              {isEvidencesLoading ? (
+                <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#1e1e1e]">
+                  <Loader2 className="h-6 w-6 animate-spin text-orange-500 mb-2" />
+                  <span className="text-xs text-slate-500 dark:text-gray-400">
+                    Cargando evidencias de la orden...
+                  </span>
+                </div>
+              ) : evidencesError ? (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 text-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Error al cargar evidencias</p>
+                    <p className="mt-0.5 text-slate-600 dark:text-gray-400">{evidencesError}</p>
+                  </div>
+                </div>
+              ) : auditData.evidences.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {auditData.evidences.map((ev, idx) => (
                     <button
@@ -594,6 +528,8 @@ function WorkOrderDetailDrawerContent({
                     >
                       <div className="relative w-full overflow-hidden">
                         <EvidenceVisualPreview
+                          url={ev.url}
+                          title={ev.title}
                           kind={ev.kind}
                           modelRef={ev.ModelRef}
                           serialRef={ev.SerialRef}
@@ -1033,29 +969,22 @@ function WorkOrderDetailDrawerContent({
                     <span className="absolute right-2.5 top-2 text-[9px] font-mono uppercase tracking-widest text-slate-400 dark:text-gray-500">
                       Firma Electrónica Simple · {auditData.conformity.signedAt}
                     </span>
-                    <svg
-                      viewBox="0 0 320 80"
-                      className="h-16 w-64 text-slate-800 dark:text-orange-400"
-                      aria-label="Firma digitalizada del cliente receptor"
-                    >
-                      <path
-                        d="M 24 56 C 42 22, 58 64, 78 36 C 94 16, 102 58, 122 44 C 142 30, 155 20, 168 48 C 178 66, 198 25, 218 40 C 235 52, 258 32, 292 26"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M 55 64 Q 160 52 275 60"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.4"
-                        strokeLinecap="round"
-                        opacity="0.65"
-                      />
-                    </svg>
+                    {auditData.conformity.signatureUrl ? (
+                      <div className="my-2 p-2 bg-white dark:bg-[#1a1a1a] rounded-md border border-slate-200 dark:border-gray-800 flex items-center justify-center max-w-sm">
+                        <img
+                          src={auditData.conformity.signatureUrl}
+                          alt="Firma digitalizada del cliente receptor"
+                          className="max-h-24 max-w-full object-contain dark:invert"
+                        />
+                      </div>
+                    ) : (
+                      <div className="my-3 flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                        <ShieldCheck className="h-5 w-5" />
+                        <span className="text-xs font-semibold">Firma de conformidad validada en acta</span>
+                      </div>
+                    )}
                     <p className="text-[10px] font-mono text-slate-400 dark:text-gray-500">
-                      {auditData.conformity.notes ||
+                      {auditData.conformity.recipientNotes ||
                         "Rúbrica digital registrada en dispositivo móvil de terreno"}
                     </p>
                   </div>
@@ -1195,6 +1124,8 @@ function WorkOrderDetailDrawerContent({
 
               <div className="relative bg-slate-950">
                 <EvidenceVisualPreview
+                  url={activePhoto.url}
+                  title={activePhoto.title}
                   kind={activePhoto.kind}
                   modelRef={activePhoto.ModelRef}
                   serialRef={activePhoto.SerialRef}
