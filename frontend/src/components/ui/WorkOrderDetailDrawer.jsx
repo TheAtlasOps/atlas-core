@@ -219,6 +219,8 @@ function WorkOrderDetailDrawerContent({
     approveOrderAudit,
     reassignOrderHardware,
     refreshOrders,
+    refreshHardwareInventory,
+    setToast,
   } = useWorkOrders();
 
   const [activeTab, setActiveTab] = useState("all");
@@ -346,12 +348,36 @@ function WorkOrderDetailDrawerContent({
           order?.client_id ||
           order?.client?.id ||
           null;
-        await api.inventory.pair(routerItem.id, simItem.id, clientId);
+        const workOrderId = apiOrderDetail?.id || order?.id || null;
+        await api.inventory.pair(routerItem.id, simItem.id, clientId, workOrderId);
       }
-    } catch {
-      // Fallback: continúa actualizando el estado local
-    } finally {
       reassignOrderHardware(order, { routerItem, simItem });
+      if (typeof refreshHardwareInventory === "function") {
+        await refreshHardwareInventory();
+      }
+      if (typeof refreshOrders === "function") {
+        await refreshOrders();
+      }
+      if (setToast) {
+        setToast({
+          title: "Hardware vinculado a la orden",
+          description: `Router ${routerItem?.identifier || ""} y SIM ${simItem?.identifier || ""} vinculados exitosamente en Neon DB.`,
+          type: "success",
+        });
+        setTimeout(() => setToast(null), 5000);
+      }
+    } catch (err) {
+      console.error("Error al vincular hardware:", err);
+      const msg = err?.message || "No se pudo vincular el hardware a la orden.";
+      if (setToast) {
+        setToast({
+          title: "Error al vincular hardware",
+          description: msg,
+          type: "error",
+        });
+        setTimeout(() => setToast(null), 6000);
+      }
+    } finally {
       setIsPairing(false);
       setIsReassigning(false);
       setSelectedRouterId("");
@@ -844,7 +870,7 @@ function WorkOrderDetailDrawerContent({
                   <div className="flex items-center justify-between">
                     <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
                       <CreditCard className="h-4 w-4 text-orange-500" />
-                      Tarjeta SIM Entel
+                      Tarjeta SIM {auditData.hardware.sim.operator ? `(${auditData.hardware.sim.operator})` : "Corporativa"}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <span
@@ -911,11 +937,14 @@ function WorkOrderDetailDrawerContent({
                         className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#121212] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="">Mantener router actual</option>
-                        {availableRouters.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.identifier} — {r.model} ({SAFE_STATUS_LABELS[r.status] || r.status})
-                          </option>
-                        ))}
+                        {availableRouters.map((r) => {
+                          const isInstalledElsewhere = (r.status === "INSTALADO" || r.status === "INSTALADA" || Boolean(r.orderId)) && r.orderId !== orderKey;
+                          return (
+                            <option key={r.id} value={r.id} disabled={isInstalledElsewhere}>
+                              {r.identifier} — {r.model} {isInstalledElsewhere ? `[Instalado en ${r.orderId || "OT"}] (No disponible)` : `(${SAFE_STATUS_LABELS[r.status] || r.status})`}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -929,11 +958,14 @@ function WorkOrderDetailDrawerContent({
                         className="w-full rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#121212] px-2.5 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                       >
                         <option value="">Mantener SIM actual</option>
-                        {availableSims.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.identifier} ({s.technology} · {SAFE_STATUS_LABELS[s.status] || s.status})
-                          </option>
-                        ))}
+                        {availableSims.map((s) => {
+                          const isInstalledElsewhere = (s.status === "INSTALADO" || s.status === "INSTALADA" || Boolean(s.orderId)) && s.orderId !== orderKey;
+                          return (
+                            <option key={s.id} value={s.id} disabled={isInstalledElsewhere}>
+                              {s.identifier} ({s.technology} · {s.operator || "Entel"}) {isInstalledElsewhere ? `[Instalada en ${s.orderId || "OT"}] (No disponible)` : `(${SAFE_STATUS_LABELS[s.status] || s.status})`}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>

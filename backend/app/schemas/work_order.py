@@ -43,7 +43,6 @@ class TechnicianCreate(BaseModel):
     initials: Optional[str] = Field(None, max_length=10, description="Iniciales del técnico")
 
 
-
 class OrderStatusHistoryResponse(BaseModel):
     id: uuid.UUID
     old_status: Optional[OrderStatusEnum] = None
@@ -55,6 +54,19 @@ class OrderStatusHistoryResponse(BaseModel):
     lng: Optional[Decimal] = None
     comment: Optional[str] = None
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkOrderItemResponse(BaseModel):
+    id: uuid.UUID
+    work_order_id: uuid.UUID
+    sim_card_id: Optional[uuid.UUID] = None
+    equipment_id: Optional[uuid.UUID] = None
+    action_type: str = "INSTALACION"
+    created_at: datetime
+    sim_iccid: Optional[str] = None
+    equipment_serial: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -144,6 +156,7 @@ class WorkOrderResponse(WorkOrderBase):
     technician_summary: Optional[TechnicianSummary] = None
     active_magic_link_token: Optional[str] = None
     status_history: List[OrderStatusHistoryResponse] = []
+    items: List[WorkOrderItemResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 

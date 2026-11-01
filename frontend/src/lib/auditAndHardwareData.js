@@ -173,7 +173,11 @@ export function mapApiSimToInventoryItem(sim, ordersList = []) {
     (o) => (o.order_number || o.orderId) === sim.work_order_number || (o.id && o.id === sim.work_order_id)
   );
 
-  const orderId = linkedOrder?.order_number || linkedOrder?.orderId || null;
+  const orderId =
+    sim.work_order_number ||
+    linkedOrder?.order_number ||
+    linkedOrder?.orderId ||
+    null;
 
   const technicianName =
     linkedOrder?.technician_summary?.full_name ||
@@ -223,14 +227,34 @@ export function mapApiSimToInventoryItem(sim, ordersList = []) {
  * Adapta un Router proveniente de `api.inventory.getRouters()` al formato de tabla
  * usando exclusivamente los campos reales de la API sin inventar asignaciones.
  */
-export function mapApiRouterToInventoryItem(router) {
+export function mapApiRouterToInventoryItem(router, ordersList = []) {
   const status = normalizeSimStatus(router.status);
   const typeStr = (router.type || "").toUpperCase();
   const is5G = typeStr.includes("5G") || (router.model || "").includes("50");
 
-  const technicianName = router.assigned_technician_name || null;
-  const clientName = router.installed_client_name || null;
-  const orderId = null;
+  const linkedOrder = ordersList.find(
+    (o) =>
+      (o.order_number || o.orderId) === router.work_order_number ||
+      (o.id && o.id === router.work_order_id)
+  );
+
+  const orderId =
+    router.work_order_number ||
+    linkedOrder?.order_number ||
+    linkedOrder?.orderId ||
+    null;
+
+  const technicianName =
+    linkedOrder?.technician_summary?.full_name ||
+    linkedOrder?.assigneeName ||
+    router.assigned_technician_name ||
+    null;
+
+  const clientName =
+    linkedOrder?.client?.business_name ||
+    linkedOrder?.clientName ||
+    router.installed_client_name ||
+    null;
 
   const location =
     clientName ||
@@ -259,7 +283,7 @@ export function mapApiRouterToInventoryItem(router) {
     technician: technicianName,
     client: clientName,
     clientName,
-    clientId: router.installed_client_id || null,
+    clientId: router.installed_client_id || linkedOrder?.client_id || null,
     location,
   };
 }
@@ -394,8 +418,16 @@ export function getOrderAuditPackage(
         (overrideHw.simIccid && i.identifier === overrideHw.simIccid))
   );
 
-  const hasLinkedRouter = Boolean(inventoryRouter || overrideHw.routerSerial);
-  const hasLinkedSim = Boolean(inventorySim || overrideHw.simIccid);
+  // Soporte directo para items provistos por el backend en la orden
+  const apiItemRouter = Array.isArray(apiOrderDetail?.items)
+    ? apiOrderDetail.items.find((it) => it.equipment_serial || it.equipment_id)
+    : null;
+  const apiItemSim = Array.isArray(apiOrderDetail?.items)
+    ? apiOrderDetail.items.find((it) => it.sim_iccid || it.sim_card_id)
+    : null;
+
+  const hasLinkedRouter = Boolean(inventoryRouter || overrideHw.routerSerial || apiItemRouter);
+  const hasLinkedSim = Boolean(inventorySim || overrideHw.simIccid || apiItemSim);
 
   const routerData = hasLinkedRouter
     ? {
@@ -404,7 +436,7 @@ export function getOrderAuditPackage(
           inventoryRouter?.model ||
           overrideHw.routerModel ||
           "Router CPE Corporativo",
-        serial: inventoryRouter?.identifier || overrideHw.routerSerial,
+        serial: inventoryRouter?.identifier || overrideHw.routerSerial || apiItemRouter?.equipment_serial || "Registrado en OT",
         mac: (inventoryRouter?.secondaryId || "").replace(/^MAC:\s*/i, "") || "Registrada en inventario",
         type: inventoryRouter?.technology === "5G" ? "ROUTER_5G" : "ROUTER_4G",
         status: inventoryRouter?.status || "INSTALADA",
@@ -418,27 +450,38 @@ export function getOrderAuditPackage(
         status: "PENDIENTE",
       };
 
+  const simOp = inventorySim?.operator || overrideHw.simOperator || "Entel";
+  const simApn =
+    simOp.toLowerCase().includes("movistar")
+      ? "wap.tmovil.cl"
+      : simOp.toLowerCase().includes("claro")
+      ? "bam.clarochile.cl"
+      : simOp.toLowerCase().includes("wom")
+      ? "internet.wom.cl"
+      : "m2m.entel.cl";
+
   const simData = hasLinkedSim
     ? {
         isLinked: true,
-        model: inventorySim?.model || "Tarjeta SIM Corporativa Entel",
+        model: inventorySim?.model || `Tarjeta SIM ${simOp}`,
         iccid:
           inventorySim?.identifier ||
           overrideHw.simIccid ||
+          apiItemSim?.sim_iccid ||
           "",
-        operator: inventorySim?.operator || "Entel",
+        operator: simOp,
         technology:
           inventorySim?.technology || overrideHw.simTechnology || "5G",
-        apn: "m2m.entel.cl",
+        apn: simApn,
         status: inventorySim?.status || "INSTALADA",
       }
     : {
         isLinked: false,
         model: "Sin tarjeta SIM vinculada en inventario",
         iccid: "Pendiente de asignación",
-        operator: "Entel",
+        operator: "Sin asignar",
         technology: "Pendiente",
-        apn: "m2m.entel.cl",
+        apn: "Pendiente",
         status: "PENDIENTE",
       };
 
