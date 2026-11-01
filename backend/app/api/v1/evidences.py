@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,15 +26,23 @@ router = APIRouter()
     response_model=FileUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Subida segura de archivos (Inspección Magic Bytes & Neon Object Storage)",
-    description="Recibe archivos de evidencias fotográficas, valida su encabezado binario (JPEG, PNG, WebP), restringe el peso a < 2 MB, almacena en Neon Object Storage y asigna un identificador único persistente (RNF-SEG-05 / 14-DocArq §3.2).",
+    description="Recibe archivos de evidencias fotográficas, valida su encabezado binario (JPEG, PNG, WebP), restringe el peso a < 2 MB, valida permisos sobre la orden asociada, almacena en Neon Object Storage y asigna un identificador persistente (RNF-SEG-05 / 14-DocArq §3.2).",
 )
 async def upload_file(
     file: UploadFile = File(..., description="Archivo de imagen capturado en terreno"),
+    work_order_id: Optional[uuid.UUID] = Form(None, description="ID de la orden de trabajo para validar asignación y permisos"),
     folder: str = Form("evidences", description="Subcarpeta de destino (evidences, signatures)"),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Subida sanitizada de archivos binarios a Neon Object Storage."""
-    return await process_and_save_evidence_file(file=file, folder=folder)
+    """Subida sanitizada de archivos binarios a Neon Object Storage con control de permisos."""
+    return await process_and_save_evidence_file(
+        file=file,
+        folder=folder,
+        work_order_id=work_order_id,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.post(
@@ -41,14 +50,14 @@ async def upload_file(
     response_model=EvidenceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar evidencia o medición técnica",
-    description="Persiste de forma vinculada a la OT una evidencia fotográfica, medición de potencia dBm, test de velocidad o validación de chip SIM (RF-API-07).",
+    description="Persiste de forma vinculada a la OT una evidencia fotográfica, medición de potencia dBm, test de velocidad o validación de chip SIM con control de permisos (RF-API-07).",
 )
 async def create_evidence(
     evidence_in: EvidenceCreateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Registro de evidencia o checklist técnico de terreno."""
+    """Registro de evidencia o checklist técnico de terreno con control de permisos."""
     return await create_evidence_record(db=db, evidence_in=evidence_in, current_user=current_user)
 
 

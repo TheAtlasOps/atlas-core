@@ -1,3 +1,4 @@
+import struct
 import uuid
 import base64
 import logging
@@ -251,28 +252,125 @@ async def confirm_client_visit(
     )
 
 
+
+DISALLOWED_SIGNATURE_SUBSTRINGS = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",  # Píxel 1x1 PNG transparente / simulado
+    "AAAAEAAAABCAYAAAAfFcSJ",           # Dummy base64 signature
+)
+
+
+def validate_and_decode_signature_image(signature_base64: str) -> bytes:
+    """
+    Valida rigurosamente la firma manuscrita recibida desde el canvas (RF-CLI-08 / RF-APP-09).
+    - Rechaza valores vacíos o nulos.
+    - Rechaza explícitamente el píxel transparente de 1x1 y firmas simuladas de prueba.
+    - Valida decodificación Base64 y magic bytes de PNG.
+    - Inspecciona el chunk IHDR para validar dimensiones mínimas (ancho y alto >= 10px).
+    - Exige contenido binario mínimo de trazos reales (> 120 bytes).
+    """
+    if not signature_base64 or not signature_base64.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La firma digital es obligatoria y no puede estar vacía."
+        )
+
+    clean_sig = signature_base64.strip()
+
+    # Rechazar explícitamente el píxel transparente de 1x1 y firmas dummy
+    for marker in DISALLOWED_SIGNATURE_SUBSTRINGS:
+        if marker in clean_sig:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Firma digital no válida: no se aceptan firmas simuladas ni píxeles transparentes de prueba. Debe registrar un trazo manuscrito real en el recuadro."
+            )
+
+    # Extraer parte base64 si incluye prefijo data URI
+    raw_b64 = clean_sig
+    if "," in raw_b64:
+        raw_b64 = raw_b64.split(",", 1)[1].strip()
+
+    try:
+        sig_bytes = base64.b64decode(raw_b64, validate=True)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La firma digital contiene una codificación Base64 inválida."
+        )
+
+    # Validar encabezado PNG (8 bytes: \x89PNG\r\n\x1a\n)
+    if not sig_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de firma no admitido. La firma debe ser una imagen PNG generada por el recuadro de firma."
+        )
+
+    # Validar chunk IHDR (mínimo 24 bytes para leer encabezado y dimensiones)
+    if len(sig_bytes) < 24 or sig_bytes[12:16] != b"IHDR":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Estructura de imagen PNG corrupta o sin encabezado IHDR."
+        )
+
+    # Extraer dimensiones de IHDR (ancho y alto son uint32 big-endian en bytes 16-24)
+    width, height = struct.unpack(">II", sig_bytes[16:24])
+    if width < 10 or height < 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Dimensiones de firma insuficientes ({width}x{height}px). Debe proporcionar un trazo manuscrito legible."
+        )
+
+    # Verificar que el binario contenga datos mínimos de trazo
+    if len(sig_bytes) < 120:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Trazo de firma insuficiente. Debe dibujar su firma antes de enviar la conformidad."
+        )
+
+    return sig_bytes
+
 async def submit_client_signature(
     db: AsyncSession, token: str, sign_data: SignConformityRequest
 ) -> SignConformityResponse:
     """
     Persiste la firma digital capturada en pantalla de conformidad de servicio (RF-CLI-08 / RF-APP-09).
-    Guarda el archivo binario en Neon Object Storage y enlaza la clave persistente en BD.
+    Valida firma real, sube el binario a Neon Object Storage y persiste la clave en BD de forma transaccional.
+    Si la subida falla, aborta inmediatamente con HTTP 502 sin modificar la orden.
     """
     magic_link = await validate_magic_link_token(db, token)
     order = magic_link.work_order
-    now_utc = datetime.now(timezone.utc)
 
-    # Persistir archivo binario de la firma en Neon Object Storage
+    # Validar que la orden esté en un estado donde sea procedente firmar
+    if order.status not in (OrderStatusEnum.EN_SITIO, OrderStatusEnum.COMPLETADA):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede firmar la conformidad de un servicio que aún no ha sido ejecutado en terreno."
+        )
+
+    # Validar y decodificar firma manuscrita real
+    sig_bytes = validate_and_decode_signature_image(sign_data.signature_base64)
+
+    signer_name = (sign_data.signed_by_name or "").strip()
+    if not signer_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El nombre de la persona que recibe y firma la conformidad es obligatorio."
+        )
+
+    now_utc = datetime.now(timezone.utc)
     signature_key = f"signatures/{order.id}_{uuid.uuid4().hex[:8]}.png"
-    if sign_data.signature_base64:
-        try:
-            raw_b64 = sign_data.signature_base64
-            if "," in raw_b64:
-                raw_b64 = raw_b64.split(",", 1)[1]
-            sig_bytes = base64.b64decode(raw_b64)
-            upload_file_to_storage(content=sig_bytes, object_key=signature_key, content_type="image/png")
-        except Exception as e:
-            logger.warning(f"No se pudo guardar archivo de firma en Neon Object Storage: {e}")
+
+    # Subir obligatoriamente a Neon Object Storage antes de modificar la base de datos
+    # Si la subida falla, se lanza HTTPException(502) y se aborta SIN registrar la firma en la orden
+    try:
+        upload_file_to_storage(content=sig_bytes, object_key=signature_key, content_type="image/png")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fallo al almacenar archivo de firma de la orden {order.id} en Neon Storage: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Error al almacenar el archivo de firma en Neon Object Storage: {str(e)}"
+        )
 
     # Guardar clave de objeto persistente en el enlace de la orden
     magic_link.signature_url = signature_key
@@ -284,7 +382,7 @@ async def submit_client_signature(
             technician_id=order.technician_id,
             evidence_type=EvidenceTypeEnum.FIRMA_CLIENTE,
             storage_url=signature_key,
-            notes=f"Firma conforme otorgada por: {sign_data.signed_by_name}",
+            notes=f"Firma conforme otorgada por: {signer_name}",
             lat=order.lat,
             lng=order.lng,
             captured_at=now_utc,
@@ -299,7 +397,7 @@ async def submit_client_signature(
         changed_by_user_id=None,
         lat=order.lat,
         lng=order.lng,
-        comment=f"Firma digital de conformidad registrada por receptor: {sign_data.signed_by_name}",
+        comment=f"Firma digital de conformidad registrada por receptor: {signer_name}",
         created_at=now_utc,
     )
     db.add(history)

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import uuid
 from typing import List, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,13 +53,75 @@ def inspect_image_magic_bytes(header: bytes) -> Tuple[str, str]:
     )
 
 
+async def verify_user_order_permission(
+    db: AsyncSession,
+    work_order_id: uuid.UUID,
+    user: User,
+    action_label: str = "gestionar evidencias en",
+) -> WorkOrder:
+    """
+    Valida la existencia de la orden de trabajo y los permisos del usuario según su rol (RNF-SEG-01 / RNF-SEG-02):
+    - ADMIN y COORDINADOR: autorizados para operar en cualquier orden.
+    - TECNICO: únicamente autorizado si la orden está asignada a su usuario (order.technician_id == user.id).
+    - Otros roles (CLIENTE, etc.): denegado con HTTP 403 Forbidden.
+    """
+    order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
+    order = order_res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {work_order_id} no encontrada"
+        )
+
+    if user.role in (UserRoleEnum.ADMIN, UserRoleEnum.COORDINADOR):
+        return order
+
+    if user.role == UserRoleEnum.TECNICO:
+        if not order.technician_id or order.technician_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"No tienes autorización para {action_label} una orden que no tienes asignada."
+            )
+        return order
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"El rol {user.role.value} no tiene autorización para gestionar evidencias de órdenes de trabajo."
+    )
+
+
 async def process_and_save_evidence_file(
-    file: UploadFile, folder: str = "evidences"
+    file: UploadFile,
+    folder: str = "evidences",
+    work_order_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+    current_user: Optional[User] = None,
 ) -> FileUploadResponse:
     """
-    Lee, valida magic bytes, restringe tamaño (< 2MB), asigna clave UUIDv4 y
-    almacena en Neon Object Storage de forma persistente (RNF-SEG-05).
+    Lee, valida magic bytes, restringe tamaño (< 2MB), valida permisos sobre la orden,
+    asigna clave UUIDv4 y almacena en Neon Object Storage de forma persistente (RNF-SEG-05).
     """
+    # Si un técnico sube archivos, exigir la orden para evitar subidas a órdenes ajenas
+    if current_user and current_user.role == UserRoleEnum.TECNICO:
+        if not work_order_id or not db:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Se requiere el ID de la orden de trabajo (work_order_id) para verificar asignación antes de subir archivos."
+            )
+
+    # Validar permisos sobre la orden si se suministra el contexto
+    if work_order_id and db and current_user:
+        await verify_user_order_permission(
+            db=db,
+            work_order_id=work_order_id,
+            user=current_user,
+            action_label="subir evidencias a",
+        )
+
+    # Sanitizar folder
+    if folder not in ("evidences", "signatures", "attachments"):
+        folder = "evidences"
+
     content = await file.read()
     size_bytes = len(content)
 
@@ -97,15 +160,14 @@ async def process_and_save_evidence_file(
 async def create_evidence_record(
     db: AsyncSession, evidence_in: EvidenceCreateRequest, current_user: User
 ) -> EvidenceResponse:
-    """Registra una evidencia o medición técnica vinculada a una OT (RF-API-07)."""
-    # Validar existencia de la orden
-    order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == evidence_in.work_order_id))
-    order = order_res.scalar_one_or_none()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Orden de trabajo con ID {evidence_in.work_order_id} no encontrada"
-        )
+    """Registra una evidencia o medición técnica vinculada a una OT con control de permisos (RF-API-07)."""
+    # Validar existencia de orden y permisos del usuario autenticado
+    order = await verify_user_order_permission(
+        db=db,
+        work_order_id=evidence_in.work_order_id,
+        user=current_user,
+        action_label="registrar evidencias en",
+    )
 
     # Obtener ID del técnico responsable
     technician_id = current_user.id
@@ -113,7 +175,9 @@ async def create_evidence_record(
         technician_id = order.technician_id
 
     # Persistir la clave de objeto inmutable en la base de datos
+    now_utc = datetime.now(timezone.utc)
     evidence = WorkOrderEvidence(
+        id=uuid.uuid4(),
         work_order_id=evidence_in.work_order_id,
         technician_id=technician_id,
         evidence_type=evidence_in.evidence_type,
@@ -126,6 +190,7 @@ async def create_evidence_record(
         notes=evidence_in.notes,
         lat=evidence_in.lat or order.lat,
         lng=evidence_in.lng or order.lng,
+        captured_at=now_utc,
     )
     db.add(evidence)
     await db.commit()
@@ -162,22 +227,21 @@ async def get_order_evidences_audit(
     Auditoría exhaustiva de evidencias para el cierre de la orden (RF-BO-09 / RF-APP-13).
     Verifica permisos del usuario y genera URLs temporales de lectura prefirmadas.
     """
-    order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
-    order = order_res.scalar_one_or_none()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Orden de trabajo con ID {work_order_id} no encontrada"
-        )
-
-    # Control de permisos sobre la orden antes de emitir URLs temporales (RNF-SEG-01 / RNF-SEG-02)
     if current_user:
-        if current_user.role == UserRoleEnum.TECNICO:
-            if order.technician_id and order.technician_id != current_user.id:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="No tienes permisos para consultar evidencias de una orden que no tienes asignada."
-                )
+        order = await verify_user_order_permission(
+            db=db,
+            work_order_id=work_order_id,
+            user=current_user,
+            action_label="consultar evidencias de",
+        )
+    else:
+        order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
+        order = order_res.scalar_one_or_none()
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Orden de trabajo con ID {work_order_id} no encontrada"
+            )
 
     evidences_res = await db.execute(
         select(WorkOrderEvidence)

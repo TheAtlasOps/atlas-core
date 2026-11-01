@@ -22,9 +22,9 @@ import {
   getPortalAccessError,
 } from "../lib/magicLinksData";
 import { api } from "../lib/api";
+import SignaturePad from "../components/ui/SignaturePad";
 
-const DEFAULT_SIGNATURE_BASE64 =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
 
 export default function CustomerTrackingView() {
   const { uuid } = useParams();
@@ -52,6 +52,9 @@ export default function CustomerTrackingView() {
   const [signedByName, setSignedByName] = useState("");
   const [isSigned, setIsSigned] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
+  const [signatureBase64, setSignatureBase64] = useState(null);
+  const [hasDrawing, setHasDrawing] = useState(false);
+  const [signError, setSignError] = useState(null);
 
   // Consulta en vivo a la API de Neon PostgreSQL con validación estricta de token
   useEffect(() => {
@@ -138,15 +141,28 @@ export default function CustomerTrackingView() {
 
   const handleSignConformity = async (e) => {
     e.preventDefault();
-    const signer = signedByName.trim() || order?.client || "Cliente Receptor";
+    setSignError(null);
+    const signer = signedByName.trim();
+    if (!signer) {
+      setSignError("Por favor ingrese el nombre y apellido del receptor antes de firmar.");
+      return;
+    }
+    if (!hasDrawing || !signatureBase64) {
+      setSignError("Por favor dibuje su firma manuscrita en el recuadro para respaldar la conformidad.");
+      return;
+    }
+
     setIsSigning(true);
     try {
-      await api.clientPortal.sign(token, DEFAULT_SIGNATURE_BASE64, signer);
-    } catch {
-      // Fallback: registra firma en estado local
-    } finally {
+      const res = await api.clientPortal.sign(token, signatureBase64, signer);
       setSignedByName(signer);
       setIsSigned(true);
+      if (res?.signature_url) {
+        setApiSummary((prev) => (prev ? { ...prev, signature_url: res.signature_url } : prev));
+      }
+    } catch (err) {
+      setSignError(err?.message || "No fue posible registrar la firma digital. Intente nuevamente.");
+    } finally {
       setIsSigning(false);
     }
   };
@@ -654,8 +670,9 @@ export default function CustomerTrackingView() {
             const canSign = ["EN_SITIO", "COMPLETADA"].includes(raw) || order.is_completed;
 
             if (isSigned) {
+              const signatureDisplayUrl = apiSummary?.signature_url || signatureBase64;
               return (
-                <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 px-3 py-2.5 text-xs text-orange-700 dark:text-orange-300 flex items-center justify-between gap-2">
+                <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 p-3.5 text-xs text-orange-700 dark:text-orange-300 space-y-2.5">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
                     <span>
@@ -663,6 +680,15 @@ export default function CustomerTrackingView() {
                       <strong>{signedByName || order.client}</strong>.
                     </span>
                   </div>
+                  {signatureDisplayUrl && (
+                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-orange-200 dark:border-gray-800 max-w-xs flex items-center justify-center">
+                      <img
+                        src={signatureDisplayUrl}
+                        alt="Rúbrica registrada del cliente"
+                        className="max-h-20 w-auto object-contain dark:invert"
+                      />
+                    </div>
+                  )}
                 </div>
               );
             }
@@ -683,26 +709,53 @@ export default function CustomerTrackingView() {
             return (
               <form
                 onSubmit={handleSignConformity}
-                className="pt-3 border-t border-slate-100 dark:border-gray-800 space-y-2.5"
+                className="pt-3 border-t border-slate-100 dark:border-gray-800 space-y-3"
               >
-                <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
-                  Firmar recepción conforme del servicio técnico realizado:
-                </label>
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-gray-200 mb-1">
+                    Nombre del receptor en terreno:
+                  </label>
                   <input
                     type="text"
                     value={signedByName}
-                    onChange={(e) => setSignedByName(e.target.value)}
-                    placeholder={`Nombre receptor (${order.client})`}
-                    className="flex-1 rounded-lg border border-slate-200 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400"
+                    onChange={(e) => {
+                      setSignedByName(e.target.value);
+                      if (signError) setSignError(null);
+                    }}
+                    placeholder={`Nombre completo de quien recibe (ej: ${order.client || "Juan Pérez"})`}
+                    className="w-full rounded-lg border border-slate-300 dark:border-gray-700 bg-slate-50 dark:bg-[#141414] px-3 py-2 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-gray-200 mb-1.5">
+                    Firma manuscrita de recepción conforme:
+                  </label>
+                  <SignaturePad
+                    disabled={isSigning}
+                    onChange={(dataUrl, hasStrokes) => {
+                      setSignatureBase64(dataUrl);
+                      setHasDrawing(hasStrokes);
+                      if (signError) setSignError(null);
+                    }}
+                  />
+                </div>
+
+                {signError && (
+                  <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-2.5 text-xs text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                    <span>{signError}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-1">
                   <button
                     type="submit"
-                    disabled={isSigning}
-                    className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-60"
+                    disabled={isSigning || !hasDrawing || !signedByName.trim()}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <FileSignature className="h-3.5 w-3.5" />
-                    {isSigning ? "Firmando..." : "Firmar Conformidad"}
+                    {isSigning ? "Firmando..." : "Firmar Recepción Conforme"}
                   </button>
                 </div>
               </form>
