@@ -1,4 +1,6 @@
 import uuid
+import base64
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,12 @@ from app.schemas.client_portal import (
     SignConformityRequest,
     SignConformityResponse,
 )
+from app.services.storage_service import (
+    upload_file_to_storage,
+    generate_presigned_download_url,
+)
+
+logger = logging.getLogger(__name__)
 
 
 async def validate_magic_link_token(db: AsyncSession, token: str) -> MagicLink:
@@ -147,7 +155,11 @@ def _build_summary_response(
     company = order.client.business_name if order.client else None
 
     confirmed_at = magic_link.client_confirmed_at if magic_link else None
-    signature_url = magic_link.signature_url if magic_link else None
+    signature_url = (
+        generate_presigned_download_url(magic_link.signature_url)
+        if magic_link and magic_link.signature_url
+        else None
+    )
     is_confirmed = (confirmed_at is not None) or (
         order.status in (OrderStatusEnum.CONFIRMADA, OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO, OrderStatusEnum.COMPLETADA)
     )
@@ -244,14 +256,26 @@ async def submit_client_signature(
 ) -> SignConformityResponse:
     """
     Persiste la firma digital capturada en pantalla de conformidad de servicio (RF-CLI-08 / RF-APP-09).
+    Guarda el archivo binario en Neon Object Storage y enlaza la clave persistente en BD.
     """
     magic_link = await validate_magic_link_token(db, token)
     order = magic_link.work_order
     now_utc = datetime.now(timezone.utc)
 
-    # Persistir referencia de la firma en el enlace de la orden
-    signature_storage_url = f"https://storage.googleapis.com/atlas-evidences/signatures/{order.id}_{uuid.uuid4().hex[:8]}.png"
-    magic_link.signature_url = signature_storage_url
+    # Persistir archivo binario de la firma en Neon Object Storage
+    signature_key = f"signatures/{order.id}_{uuid.uuid4().hex[:8]}.png"
+    if sign_data.signature_base64:
+        try:
+            raw_b64 = sign_data.signature_base64
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            sig_bytes = base64.b64decode(raw_b64)
+            upload_file_to_storage(content=sig_bytes, object_key=signature_key, content_type="image/png")
+        except Exception as e:
+            logger.warning(f"No se pudo guardar archivo de firma en Neon Object Storage: {e}")
+
+    # Guardar clave de objeto persistente en el enlace de la orden
+    magic_link.signature_url = signature_key
 
     # Registrar evidencia formal
     if order.technician_id:
@@ -259,7 +283,7 @@ async def submit_client_signature(
             work_order_id=order.id,
             technician_id=order.technician_id,
             evidence_type=EvidenceTypeEnum.FIRMA_CLIENTE,
-            storage_url=signature_storage_url,
+            storage_url=signature_key,
             notes=f"Firma conforme otorgada por: {sign_data.signed_by_name}",
             lat=order.lat,
             lng=order.lng,
@@ -282,9 +306,12 @@ async def submit_client_signature(
 
     await db.commit()
 
+    # Emitir URL temporal de lectura
+    presigned_url = generate_presigned_download_url(signature_key)
+
     return SignConformityResponse(
         success=True,
         message="Firma de conformidad registrada correctamente. Acta de servicio respaldada.",
-        signature_url=signature_storage_url,
+        signature_url=presigned_url,
         signed_at=now_utc,
     )

@@ -24,15 +24,15 @@ router = APIRouter()
     "/upload",
     response_model=FileUploadResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Subida segura de archivos (Inspección Magic Bytes)",
-    description="Recibe archivos de evidencias fotográficas, valida su encabezado binario (JPEG, PNG, WebP), restringe el peso a < 2 MB y asigna un identificador UUIDv4 único (RNF-SEG-05 / 14-DocArq §3.2).",
+    summary="Subida segura de archivos (Inspección Magic Bytes & Neon Object Storage)",
+    description="Recibe archivos de evidencias fotográficas, valida su encabezado binario (JPEG, PNG, WebP), restringe el peso a < 2 MB, almacena en Neon Object Storage y asigna un identificador único persistente (RNF-SEG-05 / 14-DocArq §3.2).",
 )
 async def upload_file(
     file: UploadFile = File(..., description="Archivo de imagen capturado en terreno"),
     folder: str = Form("evidences", description="Subcarpeta de destino (evidences, signatures)"),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Subida sanitizada de archivos binarios."""
+    """Subida sanitizada de archivos binarios a Neon Object Storage."""
     return await process_and_save_evidence_file(file=file, folder=folder)
 
 
@@ -56,12 +56,12 @@ async def create_evidence(
     "/order/{work_order_id}",
     response_model=OrderEvidencesAuditResponse,
     summary="Auditoría de evidencias para cierre de orden",
-    description="Permite a los coordinadores y supervisores auditar las actas de visita en terreno, verificando que se cumplan las fotos obligatorias, el diagnóstico de señal y la firma del cliente (RF-BO-09 / RF-APP-13).",
+    description="Permite a los coordinadores y supervisores auditar las actas de visita en terreno, verificando que se cumplan las fotos obligatorias, el diagnóstico de señal y la firma del cliente con URLs temporales de lectura (RF-BO-09 / RF-APP-13).",
 )
 async def get_order_evidences(
     work_order_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Consulta de evidencias y validación de cierre."""
-    return await get_order_evidences_audit(db=db, work_order_id=work_order_id)
+    """Consulta de evidencias y validación de cierre con control de permisos."""
+    return await get_order_evidences_audit(db=db, work_order_id=work_order_id, current_user=current_user)

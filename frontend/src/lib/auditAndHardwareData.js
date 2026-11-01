@@ -488,6 +488,8 @@ export function getOrderAuditPackage(
   // ── 2. Evidencias reales desde API (`work_order_evidences`) ──
   const rawEvidenceItems = Array.isArray(apiEvidences?.items)
     ? apiEvidences.items
+    : Array.isArray(apiEvidences)
+    ? apiEvidences
     : Array.isArray(apiOrderDetail?.evidences)
     ? apiOrderDetail.evidences
     : [];
@@ -525,6 +527,8 @@ export function getOrderAuditPackage(
       timestamp: timeLabel,
       status: "Verificado",
       kind: isSpeed ? "speedtest" : isBefore ? "antenna" : "router",
+      url: ev.storage_url || ev.url || null,
+      storage_url: ev.storage_url || null,
       ModelRef: isSpeed
         ? `${Number(ev.speed_download_mbps || 0).toFixed(1)} Mbps DL / ${Number(
             ev.speed_upload_mbps || 0
@@ -629,6 +633,8 @@ export function getOrderAuditPackage(
   ];
 
   // ── 4. Conformidad y Firma Digital ──
+  const signatureUrl =
+    signatureEvidence?.storage_url || apiOrderDetail?.signature_url || null;
   const isSigned = Boolean(
     signatureEvidence || apiOrderDetail?.signature_url || isAudited
   );
@@ -662,6 +668,7 @@ export function getOrderAuditPackage(
     },
     conformity: {
       isSigned,
+      signatureUrl,
       recipientName: isSigned ? contactPerson : "Pendiente de recepción en sitio",
       recipientRole: isSigned
         ? `${clientBusinessName}`

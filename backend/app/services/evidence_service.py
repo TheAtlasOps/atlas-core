@@ -1,12 +1,10 @@
 import uuid
-import os
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from fastapi import UploadFile, HTTPException, status
 
-from app.core.config import settings
 from app.models.evidence import WorkOrderEvidence
 from app.models.work_order import WorkOrder
 from app.models.user import User, Technician
@@ -16,6 +14,10 @@ from app.schemas.evidence import (
     EvidenceResponse,
     FileUploadResponse,
     OrderEvidencesAuditResponse,
+)
+from app.services.storage_service import (
+    upload_file_to_storage,
+    generate_presigned_download_url,
 )
 
 MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024  # 2 MB (RNF-SEG-05)
@@ -54,9 +56,9 @@ async def process_and_save_evidence_file(
     file: UploadFile, folder: str = "evidences"
 ) -> FileUploadResponse:
     """
-    Lee, valida magic bytes, restringe tamaño (< 2MB) y asigna un UUID criptográfico nuevo (RNF-SEG-05).
+    Lee, valida magic bytes, restringe tamaño (< 2MB), asigna clave UUIDv4 y
+    almacena en Neon Object Storage de forma persistente (RNF-SEG-05).
     """
-    # Leer contenido del archivo
     content = await file.read()
     size_bytes = len(content)
 
@@ -72,30 +74,23 @@ async def process_and_save_evidence_file(
             detail=f"El archivo excede el tamaño máximo permitido de 2 MB (tamaño recibido: {size_bytes / (1024*1024):.2f} MB)."
         )
 
-    # Validar magic bytes binarios
+    # Validar magic bytes binarios reales
     ext, mime_type = inspect_image_magic_bytes(content[:16])
 
-    # Asignar nuevo identificador UUIDv4 para impedir ataques de sobrescritura
+    # Asignar nuevo identificador UUIDv4 para impedir sobrescritura maliciosa
     secure_filename = f"{uuid.uuid4().hex}.{ext}"
+    object_key = f"{folder}/{secure_filename}"
 
-    # Guardar localmente en backend/uploads/{folder}/
-    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads", folder)
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, secure_filename)
-
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # URL pública (o referenciada en Google Cloud Storage)
-    storage_url = f"https://storage.googleapis.com/{settings.GCS_BUCKET_NAME}/{folder}/{secure_filename}"
+    # Subir a Neon Object Storage (falla inmediatamente si el almacenamiento no está disponible)
+    upload_file_to_storage(content=content, object_key=object_key, content_type=mime_type)
 
     return FileUploadResponse(
         success=True,
         filename=secure_filename,
         mime_type=mime_type,
         size_bytes=size_bytes,
-        storage_url=storage_url,
-        message="Archivo validado por magic bytes y almacenado de forma segura.",
+        storage_url=object_key,
+        message="Archivo validado por magic bytes y almacenado de forma segura en Neon Object Storage.",
     )
 
 
@@ -117,6 +112,7 @@ async def create_evidence_record(
     if current_user.role != UserRoleEnum.TECNICO and order.technician_id:
         technician_id = order.technician_id
 
+    # Persistir la clave de objeto inmutable en la base de datos
     evidence = WorkOrderEvidence(
         work_order_id=evidence_in.work_order_id,
         technician_id=technician_id,
@@ -135,13 +131,16 @@ async def create_evidence_record(
     await db.commit()
     await db.refresh(evidence)
 
+    # Generar URL temporal prefirmada para retorno al usuario
+    download_url = generate_presigned_download_url(evidence.storage_url)
+
     return EvidenceResponse(
         id=evidence.id,
         work_order_id=evidence.work_order_id,
         technician_id=evidence.technician_id,
         technician_name=current_user.full_name,
         evidence_type=evidence.evidence_type,
-        storage_url=evidence.storage_url,
+        storage_url=download_url,
         signal_dbm=evidence.signal_dbm,
         speed_download_mbps=evidence.speed_download_mbps,
         speed_upload_mbps=evidence.speed_upload_mbps,
@@ -155,11 +154,13 @@ async def create_evidence_record(
 
 
 async def get_order_evidences_audit(
-    db: AsyncSession, work_order_id: uuid.UUID
+    db: AsyncSession,
+    work_order_id: uuid.UUID,
+    current_user: Optional[User] = None,
 ) -> OrderEvidencesAuditResponse:
     """
     Auditoría exhaustiva de evidencias para el cierre de la orden (RF-BO-09 / RF-APP-13).
-    Verifica que se cumplan las fotos de rigor, potencia de señal y firma de conformidad.
+    Verifica permisos del usuario y genera URLs temporales de lectura prefirmadas.
     """
     order_res = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
     order = order_res.scalar_one_or_none()
@@ -168,6 +169,15 @@ async def get_order_evidences_audit(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Orden de trabajo con ID {work_order_id} no encontrada"
         )
+
+    # Control de permisos sobre la orden antes de emitir URLs temporales (RNF-SEG-01 / RNF-SEG-02)
+    if current_user:
+        if current_user.role == UserRoleEnum.TECNICO:
+            if order.technician_id and order.technician_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para consultar evidencias de una orden que no tienes asignada."
+                )
 
     evidences_res = await db.execute(
         select(WorkOrderEvidence)
@@ -192,6 +202,8 @@ async def get_order_evidences_audit(
     items = []
     for e in evidences:
         tech_name = e.technician.user.full_name if e.technician and e.technician.user else None
+        # Generar URL temporal prefirmada solo para usuarios autenticados y autorizados
+        presigned_url = generate_presigned_download_url(e.storage_url)
         items.append(
             EvidenceResponse(
                 id=e.id,
@@ -199,7 +211,7 @@ async def get_order_evidences_audit(
                 technician_id=e.technician_id,
                 technician_name=tech_name,
                 evidence_type=e.evidence_type,
-                storage_url=e.storage_url,
+                storage_url=presigned_url,
                 signal_dbm=e.signal_dbm,
                 speed_download_mbps=e.speed_download_mbps,
                 speed_upload_mbps=e.speed_upload_mbps,
