@@ -12,7 +12,7 @@ import { PhotoViewer } from '../components/PhotoViewer';
 import { useTheme } from '../theme/ThemeContext';
 import { CHECKLIST_ITEMS, TABS, MAX_PHOTOS } from '../data/mockData';
 import { dbmQuality } from '../utils/helpers';
-import type { Visit, TabId, Estado } from '../types';
+import type { Visit, TabId, Estado, PhotoEvidence } from '../types';
 
 // ─── Pantalla Detalle ─────────────────────────────────────────────────────────
 type DetailProps = {
@@ -24,7 +24,11 @@ type DetailProps = {
   onBack: () => void;
   checked: Record<number, boolean>; doneCount: number; allDone: boolean;
   onToggle: (id: number) => void; onConfirmAccess: () => void;
-  evidence: string[]; onAddEvidence: (uri: string) => void; onRemoveEvidence: (uri: string) => void;
+  evidence: PhotoEvidence[];
+  onAddEvidence: (uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES') => void;
+  onRemoveEvidence: (id: string) => void;
+  onRetryEvidence: (id: string) => void;
+  onToggleEvidenceType: (id: string) => void;
   notes: string; onNotesChange: (t: string) => void;
   dbm: number; onDbmChange: (v: number) => void;
   estado: Estado; onEstadoChange: (v: Estado) => void;
@@ -47,7 +51,7 @@ export function DetailScreen(p: DetailProps) {
     ]);
   }
 
-  async function tomarFoto() {
+  async function tomarFoto(type: 'FOTO_ANTES' | 'FOTO_DESPUES') {
     const permiso = await ImagePicker.requestCameraPermissionsAsync();
     if (!permiso.granted) {
       alertPermisoFaltante('Activa el acceso a la cámara para registrar evidencia fotográfica en terreno.');
@@ -55,11 +59,11 @@ export function DetailScreen(p: DetailProps) {
     }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6 });
     if (!result.canceled && result.assets?.[0]) {
-      p.onAddEvidence(result.assets[0].uri);
+      p.onAddEvidence(result.assets[0].uri, type);
     }
   }
 
-  async function elegirDeGaleria() {
+  async function elegirDeGaleria(type: 'FOTO_ANTES' | 'FOTO_DESPUES') {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permiso.granted) {
       alertPermisoFaltante('Activa el acceso a tus fotos para adjuntar evidencia desde la galería.');
@@ -67,23 +71,35 @@ export function DetailScreen(p: DetailProps) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
     if (!result.canceled && result.assets?.[0]) {
-      p.onAddEvidence(result.assets[0].uri);
+      p.onAddEvidence(result.assets[0].uri, type);
     }
   }
 
   function handleAddEvidence() {
     if (p.evidence.length >= MAX_PHOTOS) return;
-    Alert.alert('Agregar evidencia', '¿Cómo quieres adjuntar la foto?', [
-      { text: 'Tomar foto', onPress: tomarFoto },
-      { text: 'Elegir de galería', onPress: elegirDeGaleria },
+    const defaultType = p.evidence.length === 0 ? 'FOTO_ANTES' : 'FOTO_DESPUES';
+
+    Alert.alert('Capturar evidencia fotográfica', 'Selecciona el tipo de fotografía para esta orden:', [
+      {
+        text: 'Cámara (Foto Antes)',
+        onPress: () => tomarFoto('FOTO_ANTES'),
+      },
+      {
+        text: 'Cámara (Foto Después)',
+        onPress: () => tomarFoto('FOTO_DESPUES'),
+      },
+      {
+        text: 'Elegir de galería',
+        onPress: () => elegirDeGaleria(defaultType),
+      },
       { text: 'Cancelar', style: 'cancel' },
     ]);
   }
 
-  function handleRemoveEvidence(uri: string) {
+  function handleRemoveEvidence(id: string) {
     Alert.alert('Quitar foto', '¿Eliminar esta foto de la evidencia?', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: () => p.onRemoveEvidence(uri) },
+      { text: 'Eliminar', style: 'destructive', onPress: () => p.onRemoveEvidence(id) },
     ]);
   }
 
@@ -125,6 +141,7 @@ export function DetailScreen(p: DetailProps) {
           >
             <Text className={`text-xs ${p.tab === t.id ? 'font-semibold text-text1' : 'text-text3'}`}>
               {t.label}{t.id === 'checklist' ? ` ${p.doneCount}/${total}` : ''}
+              {t.id === 'evidencias' && p.evidence.length > 0 ? ` (${p.evidence.length})` : ''}
             </Text>
           </TouchableOpacity>
         ))}
@@ -146,11 +163,12 @@ export function DetailScreen(p: DetailProps) {
               <DataRow icon="tool"    label="Zona"      value={p.visit.zone} />
               <DataRow icon="clipboard" label="Trabajo"   value={p.visit.description || p.visit.title} last />
             </Card>
-            <SectionLabel>Información del equipo</SectionLabel>
+            <SectionLabel>Hardware asignado</SectionLabel>
             <Card className="mb-4">
-              <DataRow label="Modelo"       value={p.visit.equipo.modelo} />
-              <DataRow label="ICCID SIM"    value={p.visit.equipo.iccid} mono />
-              <DataRow label="Última falla" value={p.visit.equipo.falla} last />
+              <DataRow label="Modelo Router"  value={p.visit.equipo.modelo} />
+              <DataRow label="N° Serie"       value={p.visit.equipo.serie} mono />
+              <DataRow label="ICCID SIM"      value={p.visit.equipo.iccid} mono />
+              <DataRow label="Última falla"   value={p.visit.equipo.falla} last />
             </Card>
             {p.visit.status !== 'completada' && (
               <TouchableOpacity
@@ -216,20 +234,24 @@ export function DetailScreen(p: DetailProps) {
         {/* EQUIPO */}
         {p.tab === 'equipo' && (
           <View>
-            <SectionLabel>Datos del sistema</SectionLabel>
+            <SectionLabel>Hardware asignado en sistema</SectionLabel>
             <Card className="mb-3.5">
-              <DataRow label="Modelo"    value={p.visit.equipo.modelo} />
-              <DataRow label="ICCID SIM" value={p.visit.equipo.iccid} mono last />
+              <DataRow label="Modelo Router"  value={p.visit.equipo.modelo} />
+              <DataRow label="N° Serie"       value={p.visit.equipo.serie} mono />
+              <DataRow label="ICCID SIM"      value={p.visit.equipo.iccid} mono last />
             </Card>
 
-            <SectionLabel>Registro en terreno</SectionLabel>
+            <SectionLabel>Medición técnica en terreno</SectionLabel>
             <Card className="mb-[10px]">
-              <View className="flex-row items-center justify-between mb-2.5">
-                <Text className="text-xs text-text2 font-medium">Nivel de señal</Text>
+              <View className="flex-row items-center justify-between mb-1">
+                <Text className="text-xs text-text2 font-medium">Nivel de señal RF</Text>
                 <Text className="font-mono text-xs font-semibold" style={{ color: quality.color }}>
                   {p.dbm} dBm · {quality.label}
                 </Text>
               </View>
+              <Text className="text-[10px] text-text3 mb-2.5">
+                Medición manual ingresada en terreno por el técnico
+              </Text>
 
               {/* Signal bars */}
               <View className="flex-row items-end h-6 mb-2.5">
@@ -324,29 +346,75 @@ export function DetailScreen(p: DetailProps) {
         {p.tab === 'evidencias' && (
           <View>
             <View className="flex-row items-center justify-between mb-3">
-              <SectionLabel>Fotos</SectionLabel>
+              <SectionLabel>Fotografías en terreno</SectionLabel>
               <Text className="font-mono text-[10px] text-text3">
                 {p.evidence.length}/{MAX_PHOTOS}
               </Text>
             </View>
             <View className="flex-row flex-wrap gap-2">
-              {p.evidence.map((uri, idx) => (
-                <TouchableOpacity
-                  key={uri}
-                  onPress={() => setPreviewIndex(idx)}
-                  onLongPress={() => handleRemoveEvidence(uri)}
-                  className="w-[30%] aspect-square rounded-[10px] border border-brand/30 overflow-hidden relative"
-                  activeOpacity={0.85}
-                >
-                  <Image source={{ uri }} className="w-full h-full" resizeMode="cover" />
-                  <TouchableOpacity
-                    onPress={() => handleRemoveEvidence(uri)}
-                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 items-center justify-center"
+              {p.evidence.map((item, idx) => {
+                const isUploading = item.status === 'uploading';
+                const isSynced    = item.status === 'synced';
+                const isError     = item.status === 'error';
+
+                return (
+                  <View
+                    key={item.id}
+                    className="w-[30%] aspect-square rounded-[10px] border border-border overflow-hidden relative"
                   >
-                    <Feather name="x" size={12} color="#F5F5F5" />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))}
+                    <TouchableOpacity
+                      onPress={() => setPreviewIndex(idx)}
+                      activeOpacity={0.85}
+                      className="w-full h-full"
+                    >
+                      <Image source={{ uri: item.uri }} className="w-full h-full" resizeMode="cover" />
+                    </TouchableOpacity>
+
+                    {/* Badge tipo de foto (Antes / Después) */}
+                    <TouchableOpacity
+                      onPress={() => p.onToggleEvidenceType(item.id)}
+                      className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/70 flex-row items-center"
+                    >
+                      <Text className="text-[9px] font-bold text-white">
+                        {item.type === 'FOTO_ANTES' ? 'ANTES' : 'DESPUÉS'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Botón eliminar */}
+                    <TouchableOpacity
+                      onPress={() => handleRemoveEvidence(item.id)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 items-center justify-center"
+                    >
+                      <Feather name="x" size={12} color="#F5F5F5" />
+                    </TouchableOpacity>
+
+                    {/* Estado de subida overlay */}
+                    {isUploading && (
+                      <View className="absolute inset-0 bg-black/60 items-center justify-center p-1">
+                        <ActivityIndicator size="small" color="#F97316" />
+                        <Text className="text-[9px] text-white font-medium mt-1">Subiendo...</Text>
+                      </View>
+                    )}
+
+                    {isSynced && (
+                      <View className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-green/90 flex-row items-center gap-0.5">
+                        <Feather name="check" size={10} color="#fff" />
+                        <Text className="text-[8px] font-bold text-white">Neon</Text>
+                      </View>
+                    )}
+
+                    {isError && (
+                      <TouchableOpacity
+                        onPress={() => p.onRetryEvidence(item.id)}
+                        className="absolute inset-x-0 bottom-0 bg-red/90 p-1 flex-row items-center justify-center gap-1"
+                      >
+                        <Feather name="refresh-cw" size={10} color="#fff" />
+                        <Text className="text-[9px] font-bold text-white">Reintentar</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
               {p.evidence.length < MAX_PHOTOS && (
                 <TouchableOpacity
                   onPress={handleAddEvidence}
@@ -358,7 +426,7 @@ export function DetailScreen(p: DetailProps) {
               )}
             </View>
             <Text className="text-[10px] text-text3 mt-2">
-              Toca una foto para verla en grande · mantenla presionada para eliminarla
+              Toca una foto para verla en pantalla completa · Toca la etiqueta para alternar ANTES/DESPUÉS · Las fotos se almacenan directamente en Neon Object Storage.
             </Text>
           </View>
         )}
@@ -409,7 +477,7 @@ export function DetailScreen(p: DetailProps) {
 
       {/* Visor de fotos: zoom + deslizar entre fotos */}
       <PhotoViewer
-        uris={p.evidence}
+        uris={p.evidence.map((e) => e.uri)}
         index={previewIndex}
         onClose={() => setPreviewIndex(null)}
       />

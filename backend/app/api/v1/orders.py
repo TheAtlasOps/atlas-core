@@ -137,6 +137,8 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
                 created_at=it.created_at,
                 sim_iccid=it.sim_card.iccid if getattr(it, 'sim_card', None) else None,
                 equipment_serial=it.equipment.serial_number if getattr(it, 'equipment', None) else None,
+                equipment_model=it.equipment.model if getattr(it, 'equipment', None) else None,
+                equipment_brand=it.equipment.brand if getattr(it, 'equipment', None) else None,
             )
             for it in (order.items or [])
         ] if getattr(order, 'items', None) else [],

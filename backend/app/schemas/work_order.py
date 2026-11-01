@@ -67,6 +67,8 @@ class WorkOrderItemResponse(BaseModel):
     created_at: datetime
     sim_iccid: Optional[str] = None
     equipment_serial: Optional[str] = None
+    equipment_model: Optional[str] = None
+    equipment_brand: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
