@@ -28,7 +28,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "node --test --experimental-strip-types --loader ./src/tests/ts-loader.mjs src/tests/evidences.test.js"
   },
   "private": true,
   "devDependencies": {

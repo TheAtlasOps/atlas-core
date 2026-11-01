@@ -26,5 +26,23 @@ export type Visit = {
   address: string;
   zone: string;
   status: Status;
-  equipo: { modelo: string; iccid: string; falla: string };
+  equipo: {
+    modelo: string;
+    serie: string;
+    iccid: string;
+    falla: string;
+  };
+};
+
+export type PhotoUploadStatus = 'pending' | 'uploading' | 'synced' | 'error';
+
+/** Evidencia fotográfica con trazabilidad de subida a Neon Object Storage */
+export type PhotoEvidence = {
+  id: string;
+  uri: string;
+  type: 'FOTO_ANTES' | 'FOTO_DESPUES';
+  status: PhotoUploadStatus;
+  storageUrl?: string; // Clave persistente en Neon Object Storage
+  evidenceId?: string; // UUID devuelto por POST /api/v1/evidences
+  error?: string;
 };

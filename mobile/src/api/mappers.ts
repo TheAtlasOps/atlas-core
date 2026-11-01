@@ -52,6 +52,25 @@ export function orderToVisit(o: ApiOrder): Visit | null {
   const street = o.address_override || o.client?.address || 'Dirección no informada';
   const comuna = o.comuna_override || o.client?.comuna || '';
 
+  // Extraer hardware real asignado a la orden desde order.items
+  let modelo = 'Sin información';
+  let serie = 'Sin información';
+  let iccid = 'Sin información';
+
+  if (o.items && Array.isArray(o.items) && o.items.length > 0) {
+    for (const item of o.items) {
+      if (item.equipment_model && item.equipment_model.trim()) {
+        modelo = item.equipment_model.trim();
+      }
+      if (item.equipment_serial && item.equipment_serial.trim()) {
+        serie = item.equipment_serial.trim();
+      }
+      if (item.sim_iccid && item.sim_iccid.trim()) {
+        iccid = item.sim_iccid.trim();
+      }
+    }
+  }
+
   return {
     id: o.id,
     code: o.order_number,
@@ -64,7 +83,7 @@ export function orderToVisit(o: ApiOrder): Visit | null {
     address: comuna ? `${street}, ${comuna}` : street,
     zone: comuna || '—',
     status,
-    equipo: { modelo: 'Sin información', iccid: 'Sin información', falla: 'Sin registro' },
+    equipo: { modelo, serie, iccid, falla: 'Sin registro' },
   };
 }
 

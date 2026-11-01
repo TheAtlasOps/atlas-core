@@ -12,6 +12,18 @@ export type ApiClient = {
   comuna: string;
 };
 
+export type ApiOrderItem = {
+  id: string;
+  work_order_id: string;
+  sim_card_id?: string | null;
+  equipment_id?: string | null;
+  action_type?: string;
+  sim_iccid?: string | null;
+  equipment_serial?: string | null;
+  equipment_model?: string | null;
+  equipment_brand?: string | null;
+};
+
 export type ApiOrder = {
   id: string;
   order_number: string;
@@ -27,6 +39,7 @@ export type ApiOrder = {
   address_override: string | null;
   comuna_override: string | null;
   client: ApiClient | null;
+  items?: ApiOrderItem[];
 };
 
 export type ApiOrderList = {
@@ -53,4 +66,53 @@ export type SessionUser = {
   email: string;
   fullName: string;
   role: string;
+};
+
+// ─── DTOs de Evidencias y Mediciones Técnicas ─────────────────────────────────
+export type ApiEvidenceType =
+  | 'FOTO_ANTES'
+  | 'FOTO_DESPUES'
+  | 'TEST_VELOCIDAD'
+  | 'DIAGNOSTICO_DBM'
+  | 'FIRMA_CLIENTE';
+
+export type ApiFileUploadResponse = {
+  success: boolean;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  storage_url: string;
+  message: string;
+};
+
+export type ApiEvidenceCreate = {
+  work_order_id: string;
+  evidence_type: ApiEvidenceType;
+  storage_url: string;
+  signal_dbm?: number | null;
+  speed_download_mbps?: number | null;
+  speed_upload_mbps?: number | null;
+  validated_iccid?: string | null;
+  validated_imsi?: string | null;
+  notes?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+};
+
+export type ApiEvidenceResponse = {
+  id: string;
+  work_order_id: string;
+  technician_id: string;
+  technician_name?: string | null;
+  evidence_type: ApiEvidenceType;
+  storage_url: string;
+  signal_dbm?: number | null;
+  speed_download_mbps?: number | null;
+  speed_upload_mbps?: number | null;
+  validated_iccid?: string | null;
+  validated_imsi?: string | null;
+  notes?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  captured_at: string;
 };
