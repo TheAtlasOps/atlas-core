@@ -34,10 +34,12 @@ export default function SignaturePad({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { width: 400, height };
+    const width = rect.width || canvas.offsetWidth || 400;
+    const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
 
     // Asignar resolución interna proporcional
-    canvas.width = rect.width * dpr;
+    canvas.width = width * dpr;
     canvas.height = height * dpr;
 
     const ctx = setupContext();
@@ -45,7 +47,7 @@ export default function SignaturePad({
       ctx.scale(dpr, dpr);
       // Fondo blanco opaco para garantizar exportación PNG limpia
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, rect.width, height);
+      ctx.fillRect(0, 0, width, height);
     }
   }, [height, setupContext]);
 
@@ -53,9 +55,10 @@ export default function SignaturePad({
   const getCoordinates = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { left: 0, top: 0 };
     return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+      x: e.clientX - (rect.left || 0),
+      y: e.clientY - (rect.top || 0),
     };
   };
 
