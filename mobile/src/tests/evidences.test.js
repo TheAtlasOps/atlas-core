@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { orderToVisit } from '../api/mappers.ts';
 import { setAuthToken, apiRequest, apiUpload } from '../api/client.ts';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   uploadEvidenceFile,
   createEvidenceRecord,
@@ -21,23 +22,24 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
   afterEach(() => {
     globalThis.fetch = originalFetch;
     setAuthToken(null);
+    FileSystem.resetMockUploadAsync?.();
   });
 
-  // ─── 1. Subida de Archivos a Neon Object Storage ───────────────────────────
-  test('uploadEvidenceFile envía multipart con JWT, work_order_id y folder a Neon', async () => {
+  // ─── 1. Subida Nativa de Archivos a Neon Object Storage ───────────────────
+  test('uploadEvidenceFile envía multipart nativo con JWT, work_order_id y folder a Neon', async () => {
     let capturedUrl = '';
-    let capturedMethod = '';
-    let capturedHeaders = null;
-    let capturedBody = null;
+    let capturedFileUri = '';
+    let capturedOptions = null;
 
-    globalThis.fetch = async (url, init) => {
-      capturedUrl = String(url);
-      capturedMethod = init?.method || 'GET';
-      capturedHeaders = init?.headers;
-      capturedBody = init?.body;
+    FileSystem.setMockUploadAsync(async (url, fileUri, options) => {
+      capturedUrl = url;
+      capturedFileUri = fileUri;
+      capturedOptions = options;
 
-      return new Response(
-        JSON.stringify({
+      return {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
           success: true,
           filename: 'uuid-12345.jpg',
           mime_type: 'image/jpeg',
@@ -45,19 +47,94 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
           storage_url: 'evidences/2026/11/01/uuid-12345.jpg',
           message: 'Archivo validado y almacenado correctamente en Neon Object Storage',
         }),
-        { status: 201, headers: { 'Content-Type': 'application/json' } }
-      );
-    };
+      };
+    });
 
     const res = await uploadEvidenceFile('wo-uuid-001', 'file:///test/mock_photo.jpg');
 
     assert.equal(res.success, true);
     assert.equal(res.storage_url, 'evidences/2026/11/01/uuid-12345.jpg');
     assert.match(capturedUrl, /\/evidences\/upload$/);
-    assert.equal(capturedMethod, 'POST');
-    assert.equal(capturedHeaders.Authorization, 'Bearer mock-technician-jwt-token-xyz');
-    assert.equal(capturedHeaders['Content-Type'], undefined, 'No debe fijar Content-Type para permitir multipart boundary');
-    assert.ok(capturedBody instanceof FormData);
+    assert.equal(capturedFileUri, 'file:///test/mock_photo.jpg');
+    assert.equal(capturedOptions?.httpMethod, 'POST');
+    assert.equal(capturedOptions?.uploadType, FileSystem.FileSystemUploadType.MULTIPART);
+    assert.equal(capturedOptions?.fieldName, 'file');
+    assert.equal(capturedOptions?.mimeType, 'image/jpeg');
+    assert.equal(capturedOptions?.headers?.Authorization, 'Bearer mock-technician-jwt-token-xyz');
+    assert.equal(capturedOptions?.parameters?.work_order_id, 'wo-uuid-001');
+    assert.equal(capturedOptions?.parameters?.folder, 'evidences');
+  });
+
+  test('uploadEvidenceFile delega en streaming nativo evitando Unsupported FormDataPart en Expo Go', async () => {
+    let calledNative = false;
+
+    FileSystem.setMockUploadAsync(async (url, fileUri, options) => {
+      calledNative = true;
+      assert.equal(options.uploadType, FileSystem.FileSystemUploadType.MULTIPART);
+      assert.equal(options.parameters.work_order_id, 'wo-uuid-001');
+      return {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          success: true,
+          filename: 'evidence-android.jpg',
+          mime_type: 'image/jpeg',
+          size_bytes: 1024,
+          storage_url: 'evidences/2026/11/01/evidence-android.jpg',
+          message: 'Archivo validado y almacenado correctamente en Neon Object Storage',
+        }),
+      };
+    });
+
+    const res = await uploadEvidenceFile('wo-uuid-001', 'file:///cache/ImagePicker/test.jpg');
+    assert.equal(res.success, true);
+    assert.equal(calledNative, true, 'Debe ejecutarse a través de la API nativa de subida multipart');
+  });
+
+  test('Regresión: uploadEvidenceFile no invoca Blob(ArrayBuffer) previniendo error en Android React Native', async () => {
+    const originalBlob = globalThis.Blob;
+    // Simular el comportamiento estricto del BlobManager nativo de React Native:
+    globalThis.Blob = class BrokenBlob {
+      constructor(parts) {
+        for (const p of parts) {
+          if (p instanceof ArrayBuffer || ArrayBuffer.isView(p)) {
+            throw new Error("Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported");
+          }
+        }
+      }
+    };
+
+    try {
+      const res = await uploadEvidenceFile('wo-uuid-001', 'file:///cache/ImagePicker/real.jpg');
+      assert.equal(res.success, true);
+      assert.equal(res.storage_url, 'evidences/2026/11/01/mock-uploaded.jpg');
+    } finally {
+      globalThis.Blob = originalBlob;
+    }
+  });
+
+  test('uploadEvidenceFile propaga error 400 RNF-SEG-05 devuelto por el backend Neon/FastAPI', async () => {
+    FileSystem.setMockUploadAsync(async () => {
+      return {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          detail: 'Formato de archivo no permitido. Solo se aceptan imágenes JPEG, PNG o WebP verificadas por su estructura binaria (RNF-SEG-05).',
+        }),
+      };
+    });
+
+    await assert.rejects(
+      async () => {
+        await uploadEvidenceFile('wo-uuid-001', 'file:///cache/fake.txt');
+      },
+      (err) => {
+        assert.equal(err.name, 'ApiError');
+        assert.equal(err.status, 400);
+        assert.match(err.message, /RNF-SEG-05/);
+        return true;
+      }
+    );
   });
 
   // ─── 2. Registro de Evidencia con Clave Persistente ─────────────────────────
@@ -152,9 +229,9 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
   });
 
   test('Lanza ApiError de red cuando falla la conexión al backend o Neon', async () => {
-    globalThis.fetch = async () => {
+    FileSystem.setMockUploadAsync(async () => {
       throw new Error('Connection refused');
-    };
+    });
 
     await assert.rejects(
       async () => {

@@ -25,7 +25,7 @@ type DetailProps = {
   checked: Record<number, boolean>; doneCount: number; allDone: boolean;
   onToggle: (id: number) => void; onConfirmAccess: () => void;
   evidence: PhotoEvidence[];
-  onAddEvidence: (uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES') => void;
+  onAddEvidence: (uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES', base64?: string | null) => void;
   onRemoveEvidence: (id: string) => void;
   onRetryEvidence: (id: string) => void;
   onToggleEvidenceType: (id: string) => void;
@@ -57,9 +57,14 @@ export function DetailScreen(p: DetailProps) {
       alertPermisoFaltante('Activa el acceso a la cámara para registrar evidencia fotográfica en terreno.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6 });
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.4, // Compresión controlada: asegura archivos < 1.5 MB manteniendo nitidez técnica
+      base64: true, // Captura bytes reales sin alteración para validación RNF-SEG-05
+      allowsEditing: false,
+    });
     if (!result.canceled && result.assets?.[0]) {
-      p.onAddEvidence(result.assets[0].uri, type);
+      p.onAddEvidence(result.assets[0].uri, type, result.assets[0].base64);
     }
   }
 
@@ -69,9 +74,14 @@ export function DetailScreen(p: DetailProps) {
       alertPermisoFaltante('Activa el acceso a tus fotos para adjuntar evidencia desde la galería.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6 });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.4, // Compresión controlada: asegura archivos < 1.5 MB manteniendo nitidez técnica
+      base64: true, // Captura bytes reales sin alteración para validación RNF-SEG-05
+      allowsEditing: false,
+    });
     if (!result.canceled && result.assets?.[0]) {
-      p.onAddEvidence(result.assets[0].uri, type);
+      p.onAddEvidence(result.assets[0].uri, type, result.assets[0].base64);
     }
   }
 
@@ -363,7 +373,13 @@ export function DetailScreen(p: DetailProps) {
                     className="w-[30%] aspect-square rounded-[10px] border border-border overflow-hidden relative"
                   >
                     <TouchableOpacity
-                      onPress={() => setPreviewIndex(idx)}
+                      onPress={() => {
+                        if (item.status === 'error' && item.error) {
+                          Alert.alert('Diagnóstico de subida', `${item.error}\n\nToca "Reintentar" para volver a enviar.`);
+                        } else {
+                          setPreviewIndex(idx);
+                        }
+                      }}
                       activeOpacity={0.85}
                       className="w-full h-full"
                     >

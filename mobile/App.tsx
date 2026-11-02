@@ -141,12 +141,15 @@ function AtlasTecnicoApp() {
    */
   async function uploadAndRegisterPhoto(orderId: string, item: PhotoEvidence) {
     try {
+      console.log(`[ATLAS Sync] Iniciando sincronización de evidencia (${item.type}) para orden ${orderId}`);
       let storageUrl = item.storageUrl;
 
       // Paso 1: Subida física a Neon Object Storage si aún no tiene storageUrl
       if (!storageUrl) {
-        const uploadRes = await uploadEvidenceFile(orderId, item.uri);
+        console.log('[ATLAS Sync] Paso 1: Subiendo archivo binario a Neon Object Storage...');
+        const uploadRes = await uploadEvidenceFile(orderId, item.uri, 'evidences', item.base64);
         storageUrl = uploadRes.storage_url;
+        console.log('[ATLAS Sync] Paso 1 completado con éxito (storage_url asignada).');
 
         setEvidenceMap((prev) => {
           const list = prev[orderId] ?? [];
@@ -155,15 +158,19 @@ function AtlasTecnicoApp() {
             [orderId]: list.map((p) => (p.id === item.id ? { ...p, storageUrl } : p)),
           };
         });
+      } else {
+        console.log('[ATLAS Sync] Paso 1 omitido: el elemento ya cuenta con storage_url previa.');
       }
 
       // Paso 2: Registro formal de la evidencia en PostgreSQL
+      console.log('[ATLAS Sync] Paso 2: Registrando metadatos en Neon PostgreSQL...');
       const evRes = await createEvidenceRecord({
         work_order_id: orderId,
         evidence_type: item.type,
         storage_url: storageUrl,
         notes: `Fotografía (${item.type === 'FOTO_ANTES' ? 'previa' : 'posterior'}) capturada en terreno desde ATLAS Mobile`,
       });
+      console.log('[ATLAS Sync] Paso 2 completado: evidencia registrada con éxito.');
 
       setEvidenceMap((prev) => {
         const list = prev[orderId] ?? [];
@@ -176,6 +183,7 @@ function AtlasTecnicoApp() {
       });
     } catch (err) {
       const msg = (err as Error).message || 'Error en subida de evidencia a Neon';
+      console.error(`[ATLAS Sync Error] Error en sincronización de evidencia: ${msg}`);
       setEvidenceMap((prev) => {
         const list = prev[orderId] ?? [];
         return {
@@ -188,7 +196,7 @@ function AtlasTecnicoApp() {
     }
   }
 
-  function addEvidence(uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES') {
+  function addEvidence(uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES', base64?: string | null) {
     if (!selectedId) return;
     const newId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const newItem: PhotoEvidence = {
@@ -196,6 +204,7 @@ function AtlasTecnicoApp() {
       uri,
       type,
       status: 'uploading',
+      base64,
     };
 
     setEvidenceMap((prev) => {
@@ -213,6 +222,7 @@ function AtlasTecnicoApp() {
     const item = current.find((p) => p.id === id);
     if (!item || item.status === 'synced') return;
 
+    console.log(`[ATLAS Retry] Reintentando subida de foto id=${id}, tipo=${item.type}, tieneStorageUrl=${Boolean(item.storageUrl)}`);
     setEvidenceMap((prev) => ({
       ...prev,
       [key]: (prev[key] ?? []).map((p) => (p.id === id ? { ...p, status: 'uploading', error: undefined } : p)),
