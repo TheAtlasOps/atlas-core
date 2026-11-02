@@ -84,7 +84,7 @@ export default function CustomerTrackingView() {
         if (cancelled) return;
         setApiSummary(data);
         setVisitConfirmed(Boolean(data?.is_confirmed));
-        setIsSigned(Boolean(data?.signature_url || data?.is_completed));
+        setIsSigned(Boolean(data?.signature_url));
       } catch (err) {
         if (cancelled) return;
         const accessError = getPortalAccessError(err);
@@ -347,7 +347,11 @@ export default function CustomerTrackingView() {
                     ? "Hora de término registrada"
                     : "Hora estimada de atención"}
                 </p>
-                <p className="text-2xl font-bold tracking-tight">{order.eta}</p>
+                <p className="text-2xl font-bold tracking-tight">
+                  {isCompletedStatus
+                    ? order.completed_at || "Finalizada"
+                    : order.eta || "Por confirmar"}
+                </p>
               </div>
             </div>
             <div className="text-right">
@@ -517,10 +521,10 @@ export default function CustomerTrackingView() {
                       {step.description}
                     </p>
 
-                    {isCurrent && (
-                      <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 dark:text-orange-400 bg-white dark:bg-gray-900 px-2.5 py-0.5 rounded-full border border-orange-200 dark:border-orange-500/30 shadow-2xs">
-                        <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />
-                        Monitoreo en tiempo real activo
+                    {isCurrent && !isCompletedStatus && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 dark:text-gray-300 bg-white dark:bg-gray-900 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-gray-700 shadow-2xs">
+                        <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                        Etapa actual del servicio
                       </div>
                     )}
                   </div>
@@ -626,16 +630,36 @@ export default function CustomerTrackingView() {
                 Confirmación de Visita y Firma Digital
               </h3>
             </div>
-            {(visitConfirmed || isSigned) && (
+            {isSigned ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-3 w-3" />
-                {isSigned ? "Firmada" : "Confirmada"}
+                Firmada
               </span>
-            )}
+            ) : (["EN_SITIO", "COMPLETADA"].includes(String(order.raw_status || order.status_key || "").toUpperCase()) || order.is_completed) ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                <Clock className="h-3 w-3" />
+                Pendiente de firma
+              </span>
+            ) : visitConfirmed ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" />
+                Confirmada
+              </span>
+            ) : null}
           </div>
 
           {/* Bloque A: Confirmar recepción de visita */}
-          {!visitConfirmed ? (
+          {visitConfirmed ? (
+            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+              <span>Visita técnica confirmada por el cliente en sistema ATLAS.</span>
+            </div>
+          ) : isCompletedStatus ? (
+            <div className="rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-gray-800 px-3 py-2 text-xs text-slate-500 dark:text-gray-400 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-slate-400" />
+              <span>Atención técnica en terreno concluida.</span>
+            </div>
+          ) : (
             <form onSubmit={handleConfirmVisit} className="space-y-2.5">
               <label className="block text-xs font-medium text-slate-600 dark:text-gray-300">
                 Indicaciones de acceso / recepción para el técnico:
@@ -657,11 +681,6 @@ export default function CustomerTrackingView() {
                 </button>
               </div>
             </form>
-          ) : (
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-              <span>Visita técnica confirmada en sistema ATLAS.</span>
-            </div>
           )}
 
           {/* Bloque B: Firma digital de acta condicionada a que la atención se haya realizado */}
@@ -672,16 +691,16 @@ export default function CustomerTrackingView() {
             if (isSigned) {
               const signatureDisplayUrl = apiSummary?.signature_url || signatureBase64;
               return (
-                <div className="rounded-lg bg-orange-500/10 border border-orange-500/25 p-3.5 text-xs text-orange-700 dark:text-orange-300 space-y-2.5">
+                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 p-3.5 text-xs text-emerald-700 dark:text-emerald-300 space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
                     <span>
                       Acta de conformidad firmada digitalmente por{" "}
                       <strong>{signedByName || order.client}</strong>.
                     </span>
                   </div>
                   {signatureDisplayUrl && (
-                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-orange-200 dark:border-gray-800 max-w-xs flex items-center justify-center">
+                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-emerald-200 dark:border-gray-800 max-w-xs flex items-center justify-center">
                       <img
                         src={signatureDisplayUrl}
                         alt="Rúbrica registrada del cliente"

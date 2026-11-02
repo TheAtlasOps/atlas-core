@@ -558,29 +558,41 @@ export function getOrderAuditPackage(
   );
   const hasRealTelemetry = Boolean(signalEv);
 
+  const hasSpeedTest =
+    hasRealTelemetry &&
+    signalEv.speed_download_mbps != null &&
+    signalEv.speed_upload_mbps != null;
+
+  const hasRsrpSinr =
+    hasRealTelemetry &&
+    signalEv.rsrp != null &&
+    signalEv.sinr != null;
+
   const signalDbm = hasRealTelemetry
     ? `${Number(signalEv.signal_dbm).toFixed(1)} dBm`
     : "Pendiente";
   const downloadMbps =
-    hasRealTelemetry && signalEv.speed_download_mbps != null
+    hasSpeedTest
       ? `${Number(signalEv.speed_download_mbps).toFixed(1)} Mbps`
-      : "Pendiente";
+      : "No realizada";
   const uploadMbps =
-    hasRealTelemetry && signalEv.speed_upload_mbps != null
+    hasSpeedTest
       ? `${Number(signalEv.speed_upload_mbps).toFixed(1)} Mbps`
-      : "Pendiente";
+      : "No realizada";
 
   const telemetry = {
     hasRealTelemetry,
+    hasRsrpSinr,
+    hasSpeedTest,
     signalDbm,
     signalStatus: hasRealTelemetry
-      ? "Medición real registrada"
+      ? "Medición de potencia RF registrada"
       : "Pendiente de medición en sitio",
-    rsrp: hasRealTelemetry ? signalDbm : "Pendiente",
-    sinr: hasRealTelemetry ? "Verificado en sitio" : "Pendiente",
+    rsrp: hasRsrpSinr ? `${Number(signalEv.rsrp).toFixed(1)} dBm` : "No medido",
+    sinr: hasRsrpSinr ? `${Number(signalEv.sinr).toFixed(1)} dB` : "No medido",
     downloadMbps,
     uploadMbps,
-    pingMs: hasRealTelemetry ? "Verificado" : "—",
+    pingMs: hasSpeedTest && signalEv.ping_ms != null ? `${signalEv.ping_ms} ms` : "—",
     band: hasRealTelemetry
       ? `Red Entel ${simData.technology !== "Pendiente" ? simData.technology : "Corporativa"}`
       : "Sin telemetría registrada",
@@ -597,13 +609,13 @@ export function getOrderAuditPackage(
     },
     {
       id: "chk-nav",
-      label: hasRealTelemetry
+      label: hasSpeedTest
         ? "Prueba de velocidad de descarga y subida completada"
         : "Prueba de velocidad de enlace y conectividad corporativa",
-      metric: hasRealTelemetry
+      metric: hasSpeedTest
         ? `${downloadMbps} DL / ${uploadMbps} UL`
         : "Pendiente",
-      passed: hasRealTelemetry,
+      passed: hasSpeedTest,
     },
     {
       id: "chk-hw",

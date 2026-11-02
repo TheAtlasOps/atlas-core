@@ -68,6 +68,26 @@ function formatScheduledDateDisplay(rawDate) {
   }
 }
 
+export function formatCompletedDateDisplay(rawDate) {
+  if (!rawDate) return "";
+  const parsed = new Date(rawDate);
+  if (Number.isNaN(parsed.getTime())) return String(rawDate);
+  try {
+    const timeStr = parsed.toLocaleTimeString("es-CL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const dateStr = parsed.toLocaleDateString("es-CL", {
+      day: "2-digit",
+      month: "short",
+    });
+    return `${timeStr} hrs (${dateStr})`;
+  } catch {
+    return String(rawDate);
+  }
+}
+
 export function computeStepsFromStatusKey(statusKey, hasAssignedTech = false) {
   const rankMap = {
     idle: hasAssignedTech ? 1 : 0,
@@ -167,12 +187,18 @@ export function mapApiSummaryToTrackingOrder(summary) {
       : computeStepsFromStatusKey(statusKey, hasAssignedTech);
   const techPlate = tech?.vehicle_plate || "Por asignar";
 
+  const completedFormatted = formatCompletedDateDisplay(summary.completed_at);
   const etaLabel =
     statusKey === "completada"
       ? "Servicio finalizado"
       : statusKey === "en_ruta"
       ? "En trayecto a sitio"
       : summary.eta_label || "Horario programado";
+
+  const etaDisplay =
+    statusKey === "completada"
+      ? null
+      : summary.eta || "Por confirmar";
 
   return {
     order_id: summary.order_id,
@@ -187,7 +213,9 @@ export function mapApiSummaryToTrackingOrder(summary) {
     address: summary.address || "Dirección del Cliente",
     comuna: summary.comuna || "",
     scheduled_date: formatScheduledDateDisplay(summary.scheduled_date),
-    eta: summary.eta || "Por confirmar",
+    completed_at: completedFormatted,
+    raw_completed_at: summary.completed_at || null,
+    eta: etaDisplay,
     etaTimeLeft: etaLabel,
     client: summary.contact_person || summary.company || "Cliente Corporativo",
     company:
@@ -197,7 +225,9 @@ export function mapApiSummaryToTrackingOrder(summary) {
       "Cliente Entel Empresas",
     phone: summary.contact_phone || "+56 9 8765 4321",
     is_confirmed: Boolean(summary.is_confirmed),
+    client_confirmed_at: summary.client_confirmed_at || null,
     is_completed: Boolean(summary.is_completed),
+    is_signed: Boolean(summary.signature_url),
     signature_url: summary.signature_url || null,
     technician: {
       name: techName,
