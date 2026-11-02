@@ -72,6 +72,8 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
     """
     Calcula los 4 hitos secuenciales del Timeline del portal cliente
     contrastándolos con el historial de estados de PostgreSQL.
+    Solo marca como completados aquellos hitos que efectivamente ocurrieron
+    en el historial o que corresponden al estado terminal de la orden.
     """
     status_order = {
         OrderStatusEnum.IDLE: 0,
@@ -84,12 +86,17 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
 
     current_rank = status_order.get(order.status, 0)
 
-    # Extraer marcas de tiempo del historial
+    # Extraer marcas de tiempo del historial real
     timestamps = {}
     if order.status_history:
         for entry in order.status_history:
             if entry.new_status not in timestamps:
                 timestamps[entry.new_status] = entry.created_at.strftime("%H:%M")
+
+    # Si la orden está completada y no hay timestamp registrado en history, usar completed_at
+    completed_at_val = getattr(order, "completed_at", None)
+    if order.status == OrderStatusEnum.COMPLETADA and completed_at_val and OrderStatusEnum.COMPLETADA not in timestamps:
+        timestamps[OrderStatusEnum.COMPLETADA] = completed_at_val.strftime("%H:%M")
 
     steps_definitions = [
         ("confirmada", "Visita confirmada", 1, OrderStatusEnum.CONFIRMADA, "Cita agendada y aprobada"),
@@ -100,18 +107,29 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
 
     items = []
     for key, label, rank, enum_val, desc in steps_definitions:
-        completed = current_rank >= rank if current_rank != -1 else False
-        current = current_rank == rank
+        is_current = (current_rank == rank)
+        has_timestamp = enum_val in timestamps
         ts = timestamps.get(enum_val)
+
+        if is_current:
+            is_completed = (order.status == OrderStatusEnum.COMPLETADA)
+            step_desc = desc
+        elif rank < current_rank:
+            # Hito previo: solo completado si ocurrió en el historial registrado
+            is_completed = has_timestamp
+            step_desc = desc if is_completed else "Etapa no registrada en terreno"
+        else:
+            is_completed = False
+            step_desc = desc
 
         items.append(
             TimelineStepItem(
                 key=key,
                 label=label,
-                completed=completed,
-                current=current,
+                completed=is_completed,
+                current=is_current,
                 timestamp=ts,
-                description=desc,
+                description=step_desc,
             )
         )
 
@@ -142,10 +160,18 @@ def _build_summary_response(
         )
 
     eta_str = None
-    if order.eta:
+    if order.status == OrderStatusEnum.COMPLETADA:
+        eta_str = None
+        eta_label = "Servicio finalizado"
+    elif order.eta:
         eta_str = order.eta.strftime("%H:%M")
+        eta_label = "Llegada estimada"
     elif order.scheduled_date:
         eta_str = order.scheduled_date.strftime("%H:%M")
+        eta_label = "Llegada estimada"
+    else:
+        eta_str = None
+        eta_label = "Llegada estimada"
 
     timeline = compute_timeline_steps(order)
 
@@ -161,9 +187,7 @@ def _build_summary_response(
         if magic_link and magic_link.signature_url
         else None
     )
-    is_confirmed = (confirmed_at is not None) or (
-        order.status in (OrderStatusEnum.CONFIRMADA, OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO, OrderStatusEnum.COMPLETADA)
-    )
+    is_confirmed = (confirmed_at is not None)
 
     return ClientOrderSummaryResponse(
         order_id=order.id,
@@ -174,8 +198,9 @@ def _build_summary_response(
         status_key=status_key,
         service_type=order.service_type.value.replace("_", " ").title(),
         scheduled_date=order.scheduled_date,
+        completed_at=getattr(order, "completed_at", None),
         eta=eta_str,
-        eta_label="Llegada estimada",
+        eta_label=eta_label,
         address=address,
         comuna=comuna,
         contact_person=contact_person,

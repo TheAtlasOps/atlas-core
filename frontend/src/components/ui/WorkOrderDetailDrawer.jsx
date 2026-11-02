@@ -666,7 +666,7 @@ function WorkOrderDetailDrawerContent({
                         : "text-amber-600 dark:text-amber-400"
                     }`}
                   >
-                    {hasRealTelemetry ? "RSRP/SINR verificados" : "Sin telemetría RF aún"}
+                    {auditData.telemetry.hasRsrpSinr ? "RSRP/SINR verificados" : hasRealTelemetry ? "Potencia RF registrada" : "Sin telemetría RF aún"}
                   </p>
                 </div>
 

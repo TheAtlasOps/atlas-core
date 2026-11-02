@@ -119,6 +119,62 @@ def test_client_order_summary_schema_validates_both_none_and_datetime():
     assert obj_datetime.scheduled_date == now
 
 
+def test_summary_returns_real_completed_at_and_does_not_misuse_eta(client, db, link):
+    now = datetime.now(timezone.utc)
+    link.work_order.status = OrderStatusEnum.COMPLETADA
+    link.work_order.completed_at = now
+    link.work_order.eta = None
+    return_link(db, link)
+
+    response = client.get("/api/v1/client/order-summary", params={"token": link.token})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_completed"] is True
+    assert data["completed_at"] is not None
+    assert data["eta"] is None
+    assert data["eta_label"] == "Servicio finalizado"
+
+
+def test_summary_is_confirmed_is_false_without_client_confirmation(client, db, link):
+    link.client_confirmed_at = None
+    return_link(db, link)
+
+    response = client.get("/api/v1/client/order-summary", params={"token": link.token})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_confirmed"] is False
+
+
+def test_timeline_steps_does_not_mark_skipped_milestones_as_completed():
+    from app.services.client_service import compute_timeline_steps
+
+    now = datetime.now(timezone.utc)
+    # Simula la orden #OT-08492: pasó de CONFIRMADA directamente a EN_SITIO y luego a COMPLETADA
+    history = [
+        SimpleNamespace(new_status=OrderStatusEnum.CONFIRMADA, created_at=now),
+        SimpleNamespace(new_status=OrderStatusEnum.EN_SITIO, created_at=now),
+        SimpleNamespace(new_status=OrderStatusEnum.COMPLETADA, created_at=now),
+    ]
+    order = SimpleNamespace(
+        status=OrderStatusEnum.COMPLETADA,
+        status_history=history,
+        completed_at=now,
+    )
+
+    steps = compute_timeline_steps(order)
+    steps_by_key = {s.key: s for s in steps}
+
+    # Hitos que efectivamente ocurrieron
+    assert steps_by_key["confirmada"].completed is True
+    assert steps_by_key["en_sitio"].completed is True
+    assert steps_by_key["completada"].completed is True
+
+    # Hito EN_RUTA fue saltado en terreno -> NO debe figurar como completed
+    assert steps_by_key["en_ruta"].completed is False
+    assert steps_by_key["en_ruta"].timestamp is None
+    assert "no registrada" in steps_by_key["en_ruta"].description
+
+
 def test_predictable_identifier_does_not_fall_back_to_order_lookup(client, db, link):
     # La segunda consulta resolvería la OT en la implementación vulnerable.
     missing_link = MagicMock()
