@@ -45,4 +45,5 @@ export type PhotoEvidence = {
   storageUrl?: string; // Clave persistente en Neon Object Storage
   evidenceId?: string; // UUID devuelto por POST /api/v1/evidences
   error?: string;
+  base64?: string | null;
 };

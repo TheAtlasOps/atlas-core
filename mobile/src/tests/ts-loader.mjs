@@ -5,6 +5,12 @@ export async function resolve(specifier, context, nextResolve) {
       shortCircuit: true,
     };
   }
+  if (specifier === 'expo-file-system' || specifier === 'expo-file-system/legacy') {
+    return {
+      url: new URL('./mock-expo-file-system.mjs', import.meta.url).href,
+      shortCircuit: true,
+    };
+  }
 
   try {
     return await nextResolve(specifier, context);

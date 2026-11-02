@@ -100,6 +100,7 @@ export async function apiUpload<T>(
 
   let response: Response;
   try {
+    console.log(`[ATLAS HTTP Upload] Petición POST a ${path}`);
     response = await fetch(`${API_URL}${path}`, {
       method: 'POST',
       headers: {
@@ -111,10 +112,18 @@ export async function apiUpload<T>(
       signal: controller.signal,
     });
   } catch (e) {
-    if ((e as { name?: string })?.name === 'AbortError') {
-      throw new ApiError('El servidor tardó demasiado en responder. Intenta de nuevo.', 'timeout');
+    const err = e as { name?: string; message?: string };
+    console.error(`[ATLAS HTTP Upload Error] Falló petición a ${path}: tipo=${err?.name}, detalle=${err?.message}`);
+    if (err?.name === 'AbortError') {
+      throw new ApiError('El servidor tardó demasiado en responder (timeout). Intenta de nuevo.', 'timeout');
     }
-    throw new ApiError('No se pudo conectar con el servidor. Revisa tu conexión a internet.', 'network');
+    let userMsg = 'No se pudo conectar con el servidor. Revisa tu conexión a internet.';
+    if (err?.message?.includes('Unsupported FormDataPart')) {
+      userMsg = 'No se pudo conectar con el servidor: Error al procesar el archivo en el dispositivo.';
+    } else if (err?.message && !err.message.includes('Network request failed')) {
+      userMsg = `No se pudo conectar con el servidor (${err.message}).`;
+    }
+    throw new ApiError(userMsg, 'network');
   } finally {
     clearTimeout(timer);
   }
@@ -127,8 +136,10 @@ export async function apiUpload<T>(
   }
 
   if (!response.ok) {
+    console.error(`[ATLAS HTTP Upload Error] Servidor respondió HTTP ${response.status} en ${path}`);
     if (response.status === 401 && auth) onUnauthorized?.();
     throw new ApiError(errorMessageFrom(data, response.status), 'http', response.status);
   }
+  console.log(`[ATLAS HTTP Upload Éxito] Respuesta ${response.status} de ${path}`);
   return data as T;
 }
