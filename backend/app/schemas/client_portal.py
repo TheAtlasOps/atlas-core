@@ -30,7 +30,7 @@ class ClientOrderSummaryResponse(BaseModel):
     status: str
     status_key: str  # idle | confirmada | en_ruta | en_sitio | completada | cancelada
     service_type: str
-    scheduled_date: datetime
+    scheduled_date: Optional[datetime] = None
     eta: Optional[str] = None
     eta_label: str = "Llegada estimada"
     address: str

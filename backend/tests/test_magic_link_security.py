@@ -79,6 +79,46 @@ def test_valid_registered_link_preserves_summary_contract(client, db, link):
     db.commit.assert_not_awaited()
 
 
+def test_summary_accepts_null_scheduled_date(client, db, link):
+    link.work_order.scheduled_date = None
+    return_link(db, link)
+    response = client.get("/api/v1/client/order-summary", params={"token": link.token})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["order_id"] == str(link.work_order.id)
+    assert data["scheduled_date"] is None
+
+
+def test_client_order_summary_schema_validates_both_none_and_datetime():
+    from app.schemas.client_portal import ClientOrderSummaryResponse
+
+    base_payload = {
+        "order_id": uuid.uuid4(),
+        "order_number": "#OT-TEST-002",
+        "status": "Completada",
+        "status_key": "completada",
+        "service_type": "Mantenimiento",
+        "address": "Av. Principal 123",
+        "comuna": "Santiago",
+        "timeline_steps": [],
+        "is_confirmed": False,
+        "is_completed": True,
+    }
+
+    # Caso 1: scheduled_date es None explícito
+    obj_none = ClientOrderSummaryResponse(**base_payload, scheduled_date=None)
+    assert obj_none.scheduled_date is None
+
+    # Caso 2: scheduled_date es omitido (usa valor por defecto None)
+    obj_default = ClientOrderSummaryResponse(**base_payload)
+    assert obj_default.scheduled_date is None
+
+    # Caso 3: scheduled_date es una fecha/hora válida
+    now = datetime.now(timezone.utc)
+    obj_datetime = ClientOrderSummaryResponse(**base_payload, scheduled_date=now)
+    assert obj_datetime.scheduled_date == now
+
+
 def test_predictable_identifier_does_not_fall_back_to_order_lookup(client, db, link):
     # La segunda consulta resolvería la OT en la implementación vulnerable.
     missing_link = MagicMock()
