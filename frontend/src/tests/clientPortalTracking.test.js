@@ -104,7 +104,7 @@ test("Timeline steps preserva que hitos omitidos (EN_RUTA) no figuren como compl
 
   // Verificación estricta: EN_RUTA omitido no debe figurar completado ni con timestamp falso
   assert.equal(stepsByKey.en_ruta.completed, false);
-  assert.equal(stepsByKey.en_ruta.timestamp, "—");
+  assert.equal(stepsByKey.en_ruta.timestamp, null);
   assert.match(stepsByKey.en_ruta.description, /no registrada/i);
 });
 
@@ -131,4 +131,40 @@ test("getPortalAccessError clasifica 410 (expirado/revocado), 404 (inválido) y 
   const err500 = getPortalAccessError({ status: 500 });
   assert.equal(err500.kind, "unavailable");
   assert.match(err500.message, /no pudimos consultar/i);
+});
+
+// ─── 7. Orden auditada y firmada con metadatos reales ────────────────────────
+test("Orden auditada y firmada mapea correctamente is_audited, audited_at, audit_notes, signed_by_name y signed_at", () => {
+  const summaryApi = {
+    order_id: "10202a6a-80da-40b8-ad99-809238dc83aa",
+    order_number: "#OT-08492",
+    status: "Completada",
+    status_key: "completada",
+    is_signed: true,
+    signature_url: "https://storage.neon.tech/firma_08492.png",
+    signed_by_name: "Receptor Autorizado Entel",
+    signed_at: "2026-11-04T18:30:00.000Z",
+    is_audited: true,
+    audited_at: "2026-11-04T19:00:00.000Z",
+    audit_notes: "Cierre administrativo aprobado y conforme",
+    technician: {
+      name: "Juan Técnico",
+      phone: "No disponible",
+      avatar: "JT",
+      vehicle_plate: null,
+      credential_id: "16.111.222-3",
+    },
+  };
+
+  const order = mapApiSummaryToTrackingOrder(summaryApi);
+
+  assert.equal(order.is_audited, true);
+  assert.equal(order.audited_at, "2026-11-04T19:00:00.000Z");
+  assert.equal(order.audit_notes, "Cierre administrativo aprobado y conforme");
+  assert.equal(order.is_signed, true);
+  assert.equal(order.signature_url, "https://storage.neon.tech/firma_08492.png");
+  assert.equal(order.signed_by_name, "Receptor Autorizado Entel");
+  assert.equal(order.signed_at, "2026-11-04T18:30:00.000Z");
+  assert.equal(order.technician.vehicle_plate, "No disponible");
+  assert.equal(order.technician.credential_id, "16.111.222-3");
 });

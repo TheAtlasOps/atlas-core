@@ -299,7 +299,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-3.5">
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-slate-900 dark:text-white">Portal Magic Links & Notificaciones</span>
-                <span className="text-xs text-slate-500 dark:text-gray-400">Tokens Criptográficos 48h · Resend API</span>
+                <span className="text-xs text-slate-500 dark:text-gray-400">Tokens Criptográficos 48h · SendGrid API</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">

@@ -84,7 +84,10 @@ export default function CustomerTrackingView() {
         if (cancelled) return;
         setApiSummary(data);
         setVisitConfirmed(Boolean(data?.is_confirmed));
-        setIsSigned(Boolean(data?.signature_url));
+        setIsSigned(Boolean(data?.is_signed || data?.signature_url));
+        if (data?.signed_by_name) {
+          setSignedByName(data.signed_by_name);
+        }
       } catch (err) {
         if (cancelled) return;
         const accessError = getPortalAccessError(err);
@@ -314,25 +317,32 @@ export default function CustomerTrackingView() {
             </div>
 
             {/* Badge de Estado */}
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                isCompletedStatus
-                  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
-                  : "bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30"
-              }`}
-            >
-              <span className="relative flex h-2 w-2">
-                {!isCompletedStatus && (
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                )}
-                <span
-                  className={`relative inline-flex rounded-full h-2 w-2 ${
-                    isCompletedStatus ? "bg-emerald-500" : "bg-orange-500"
-                  }`}
-                ></span>
+            {order.is_audited ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                Servicio finalizado y auditado
               </span>
-              {order.statusLabel}
-            </span>
+            ) : (
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
+                  isCompletedStatus
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
+                    : "bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30"
+                }`}
+              >
+                <span className="relative flex h-2 w-2">
+                  {!isCompletedStatus && (
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  )}
+                  <span
+                    className={`relative inline-flex rounded-full h-2 w-2 ${
+                      isCompletedStatus ? "bg-emerald-500" : "bg-orange-500"
+                    }`}
+                  ></span>
+                </span>
+                {order.statusLabel}
+              </span>
+            )}
           </div>
 
           {/* Bloque ETA Destacado */}
@@ -416,8 +426,8 @@ export default function CustomerTrackingView() {
             />
 
             {timelineSteps.map((step, idx) => {
-              const isCompleted = step.completed || idx < currentStepIndex;
-              const isCurrent = step.current || idx === currentStepIndex;
+              const isCompleted = Boolean(step.completed);
+              const isCurrent = Boolean(step.current);
 
               return (
                 <div
@@ -449,10 +459,10 @@ export default function CustomerTrackingView() {
           {/* Línea de Tiempo Vertical Detallada */}
           <div className="space-y-4">
             {timelineSteps.map((step, idx) => {
-              const isCompleted = step.completed || idx < currentStepIndex;
-              const isCurrent = step.current || idx === currentStepIndex;
-              const isPending =
-                !isCompleted && !isCurrent && idx > currentStepIndex;
+              const isCompleted = Boolean(step.completed);
+              const isCurrent = Boolean(step.current);
+              const isSkipped = !isCompleted && !isCurrent && idx < currentStepIndex;
+              const isPending = !isCompleted && !isCurrent && idx > currentStepIndex;
               const StepIcon =
                 step.key === "confirmada" || step.key === "registrada"
                   ? FileText
@@ -468,6 +478,8 @@ export default function CustomerTrackingView() {
                   className={`flex items-start gap-3.5 p-3 rounded-xl transition-colors ${
                     isCurrent
                       ? "bg-orange-50/80 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-500/30"
+                      : isSkipped
+                      ? "bg-slate-50/60 dark:bg-white/[0.01] border border-dashed border-slate-200 dark:border-gray-800 opacity-75"
                       : "hover:bg-slate-50 dark:hover:bg-white/[0.02]"
                   }`}
                 >
@@ -491,7 +503,7 @@ export default function CustomerTrackingView() {
                     <div className="flex items-center justify-between gap-2">
                       <p
                         className={`text-sm font-semibold ${
-                          isPending
+                          isPending || isSkipped
                             ? "text-slate-400 dark:text-gray-500"
                             : "text-slate-900 dark:text-white"
                         }`}
@@ -507,13 +519,13 @@ export default function CustomerTrackingView() {
                             : "text-slate-400 dark:text-gray-500"
                         }`}
                       >
-                        {step.timestamp || step.time}
+                        {step.timestamp || (isSkipped ? "No registrada" : "—")}
                       </span>
                     </div>
 
                     <p
                       className={`text-xs mt-0.5 leading-relaxed ${
-                        isPending
+                        isPending || isSkipped
                           ? "text-slate-400 dark:text-gray-500"
                           : "text-slate-600 dark:text-gray-300"
                       }`}
@@ -543,9 +555,15 @@ export default function CustomerTrackingView() {
                 Datos del Técnico Asignado
               </h3>
             </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-              Verificado
-            </span>
+            {order.technician.verified ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                Verificado
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-gray-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-gray-400 border border-slate-200 dark:border-gray-700">
+                {order.technician.name && order.technician.name !== "Sin técnico asignado" ? "Asignado" : "No disponible"}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -589,25 +607,38 @@ export default function CustomerTrackingView() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-400">
                 Patente Vehicular
               </p>
-              <div className="mt-0.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-white dark:bg-gray-900 border border-slate-300 dark:border-gray-600 rounded shadow-2xs">
-                <span className="h-2 w-2 rounded-full bg-blue-600" title="Chile" />
-                <span className="font-mono font-bold text-xs text-slate-900 dark:text-white tracking-wider">
-                  {order.technician.vehicle_plate || order.technician.licensePlate}
-                </span>
-              </div>
+              {order.technician.vehicle_plate && order.technician.vehicle_plate !== "No disponible" && order.technician.vehicle_plate !== "Por asignar" ? (
+                <div className="mt-0.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-white dark:bg-gray-900 border border-slate-300 dark:border-gray-600 rounded shadow-2xs">
+                  <span className="h-2 w-2 rounded-full bg-blue-600" title="Chile" />
+                  <span className="font-mono font-bold text-xs text-slate-900 dark:text-white tracking-wider">
+                    {order.technician.vehicle_plate}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs font-semibold text-slate-500 dark:text-gray-400 mt-0.5">
+                  No disponible
+                </p>
+              )}
             </div>
           </div>
 
-          <div className="mt-3 p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-[11px] text-blue-900 dark:text-blue-200 leading-snug flex items-start gap-2">
-            <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-            <span>
-              Para validación en conserjería o recepción, el técnico portará su credencial física oficial con el número{" "}
-              <strong className="text-blue-950 dark:text-blue-100">
-                {order.technician.credentialId}
-              </strong>
-              .
-            </span>
-          </div>
+          {order.technician.credentialId && order.technician.credentialId !== "No disponible" ? (
+            <div className="mt-3 p-2.5 rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 text-[11px] text-blue-900 dark:text-blue-200 leading-snug flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <span>
+                Para validación en conserjería o recepción, el técnico portará su credencial física oficial con el número{" "}
+                <strong className="text-blue-950 dark:text-blue-100">
+                  {order.technician.credentialId}
+                </strong>
+                .
+              </span>
+            </div>
+          ) : (
+            <div className="mt-3 p-2.5 rounded-lg bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700 text-[11px] text-slate-500 dark:text-gray-400 leading-snug flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+              <span>Identificación física oficial en proceso de verificación por la mesa de coordinación.</span>
+            </div>
+          )}
 
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-gray-800 text-center">
             <button
@@ -630,10 +661,15 @@ export default function CustomerTrackingView() {
                 Confirmación de Visita y Firma Digital
               </h3>
             </div>
-            {isSigned ? (
+            {order.is_audited ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                <ShieldCheck className="h-3 w-3" />
+                Auditada
+              </span>
+            ) : isSigned || order.is_signed ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-3 w-3" />
-                Firmada
+                Recepción conforme firmada
               </span>
             ) : (["EN_SITIO", "COMPLETADA"].includes(String(order.raw_status || order.status_key || "").toUpperCase()) || order.is_completed) ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
@@ -649,7 +685,12 @@ export default function CustomerTrackingView() {
           </div>
 
           {/* Bloque A: Confirmar recepción de visita */}
-          {visitConfirmed ? (
+          {order.is_audited ? (
+            <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 px-3 py-2 text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+              <span>Servicio finalizado y con auditoría técnica aprobada. Registro cerrado.</span>
+            </div>
+          ) : visitConfirmed ? (
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
               <span>Visita técnica confirmada por el cliente en sistema ATLAS.</span>
@@ -687,20 +728,30 @@ export default function CustomerTrackingView() {
           {(() => {
             const raw = String(order.raw_status || order.status_key || "").toUpperCase();
             const canSign = ["EN_SITIO", "COMPLETADA"].includes(raw) || order.is_completed;
+            const signatureDisplayUrl = order.signature_url || apiSummary?.signature_url || signatureBase64;
+            const hasExistingSignature = Boolean(isSigned || order.is_signed || signatureDisplayUrl);
+            const signerNameDisplay = signedByName || order.signed_by_name || order.client;
 
-            if (isSigned) {
-              const signatureDisplayUrl = apiSummary?.signature_url || signatureBase64;
+            // CASO 1: Ya cuenta con firma válida registrada (evidencias o enlace anterior)
+            if (hasExistingSignature) {
               return (
                 <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/25 p-3.5 text-xs text-emerald-700 dark:text-emerald-300 space-y-2.5">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                    <span>
-                      Acta de conformidad firmada digitalmente por{" "}
-                      <strong>{signedByName || order.client}</strong>.
-                    </span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                      <span>
+                        Recepción conforme firmada digitalmente por{" "}
+                        <strong>{signerNameDisplay}</strong>.
+                      </span>
+                    </div>
+                    {order.signed_at && (
+                      <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400">
+                        {formatCompletedDateDisplay(order.signed_at)}
+                      </span>
+                    )}
                   </div>
                   {signatureDisplayUrl && (
-                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-emerald-200 dark:border-gray-800 max-w-xs flex items-center justify-center">
+                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-emerald-200 dark:border-gray-800 max-w-xs flex items-center justify-center shadow-2xs">
                       <img
                         src={signatureDisplayUrl}
                         alt="Rúbrica registrada del cliente"
@@ -708,10 +759,34 @@ export default function CustomerTrackingView() {
                       />
                     </div>
                   )}
+                  {order.is_audited ? (
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-1">
+                      Esta orden de trabajo cuenta con auditoría administrativa aprobada y cerrada. El acta y evidencias se encuentran en modo de solo lectura.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-1">
+                      Firma de conformidad respaldada en sistema ATLAS. No se admiten nuevas firmas ni modificaciones para esta orden.
+                    </p>
+                  )}
                 </div>
               );
             }
 
+            // CASO 2: La orden está auditada pero no tiene firma (bloquear formulario)
+            if (order.is_audited) {
+              return (
+                <div className="pt-3 border-t border-slate-100 dark:border-gray-800">
+                  <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 px-3.5 py-2.5 text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2.5">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                    <span>
+                      Servicio finalizado y auditado por coordinación. El registro se encuentra cerrado y no admite nuevas firmas.
+                    </span>
+                  </div>
+                </div>
+              );
+            }
+
+            // CASO 3: Aún no llega al estado para firmar
             if (!canSign) {
               return (
                 <div className="pt-3 border-t border-slate-100 dark:border-gray-800">
@@ -725,6 +800,7 @@ export default function CustomerTrackingView() {
               );
             }
 
+            // CASO 4: Habilitado para firmar por primera vez
             return (
               <form
                 onSubmit={handleSignConformity}

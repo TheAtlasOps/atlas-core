@@ -132,26 +132,20 @@ export function computeStepsFromStatusKey(statusKey, hasAssignedTech = false) {
     },
   ];
 
-  return definitions.map((def) => ({
-    key: def.key,
-    label: def.label,
-    title: def.label,
-    description: def.description,
-    timestamp:
-      currentRank >= def.rank
-        ? currentRank === def.rank && statusKey !== "completada"
-          ? "En curso"
-          : "Verificado"
-        : "Pendiente",
-    time:
-      currentRank >= def.rank
-        ? currentRank === def.rank && statusKey !== "completada"
-          ? "En curso"
-          : "Verificado"
-        : "Pendiente",
-    completed: currentRank >= def.rank && currentRank !== -1,
-    current: currentRank === def.rank,
-  }));
+  return definitions.map((def) => {
+    const isCompleted = currentRank > def.rank || (currentRank === def.rank && statusKey === "completada");
+    const isCurrent = currentRank === def.rank && statusKey !== "completada";
+    return {
+      key: def.key,
+      label: def.label,
+      title: def.label,
+      description: def.description,
+      timestamp: null,
+      time: null,
+      completed: isCompleted,
+      current: isCurrent,
+    };
+  });
 }
 
 export function mapApiSummaryToTrackingOrder(summary) {
@@ -179,18 +173,23 @@ export function mapApiSummaryToTrackingOrder(summary) {
           label: s.label || s.title || s.key,
           title: s.label || s.title || s.key,
           description: s.description || "",
-          timestamp: s.timestamp || s.time || "—",
-          time: s.timestamp || s.time || "—",
+          timestamp: s.timestamp || s.time || null,
+          time: s.timestamp || s.time || null,
           completed: Boolean(s.completed),
           current: Boolean(s.current),
         }))
       : computeStepsFromStatusKey(statusKey, hasAssignedTech);
-  const techPlate = tech?.vehicle_plate || "Por asignar";
+
+  const techPlate = tech?.vehicle_plate || null;
+  const techPhone = tech?.phone && tech.phone !== "No disponible" ? tech.phone : "";
+  const techCredId = tech?.credential_id || tech?.rut || (techPlate ? `TEC-ENT-${techPlate}` : null);
+  const isSigned = Boolean(summary.is_signed || summary.signature_url);
+  const isAudited = Boolean(summary.is_audited);
 
   const completedFormatted = formatCompletedDateDisplay(summary.completed_at);
   const etaLabel =
     statusKey === "completada"
-      ? "Servicio finalizado"
+      ? (isAudited ? "Servicio finalizado y auditado" : "Servicio finalizado")
       : statusKey === "en_ruta"
       ? "En trayecto a sitio"
       : summary.eta_label || "Horario programado";
@@ -223,25 +222,28 @@ export function mapApiSummaryToTrackingOrder(summary) {
       summary.business_name ||
       summary.contact_person ||
       "Cliente Entel Empresas",
-    phone: summary.contact_phone || "+56 9 8765 4321",
+    phone: summary.contact_phone || "",
     is_confirmed: Boolean(summary.is_confirmed),
     client_confirmed_at: summary.client_confirmed_at || null,
     is_completed: Boolean(summary.is_completed),
-    is_signed: Boolean(summary.signature_url),
+    is_signed: isSigned,
     signature_url: summary.signature_url || null,
+    signed_at: summary.signed_at || null,
+    signed_by_name: summary.signed_by_name || null,
+    is_audited: isAudited,
+    audited_at: summary.audited_at || null,
+    audit_notes: summary.audit_notes || null,
     technician: {
       name: techName,
-      phone: tech?.phone || "",
+      phone: techPhone,
       avatar: tech?.avatar || "TC",
-      credentialId:
-        techPlate && techPlate !== "Por asignar"
-          ? `TEC-ENT-${techPlate}`
-          : "TEC-ENT-ASIGNADO",
-      vehicle_plate: techPlate,
-      licensePlate: techPlate,
-      vehicleType: "Unidad Móvil Entel Empresas",
+      credentialId: techCredId || "No disponible",
+      credential_id: techCredId || "No disponible",
+      vehicle_plate: techPlate || "No disponible",
+      licensePlate: techPlate || "No disponible",
+      vehicleType: techPlate ? "Vehículo técnico asignado" : "No disponible",
       role: "Especialista Técnico en Terreno",
-      verified: Boolean(tech?.name),
+      verified: Boolean(hasAssignedTech && (techPlate || tech?.credential_id || tech?.rut)),
     },
     timeline_steps: timelineSteps,
     steps: timelineSteps,

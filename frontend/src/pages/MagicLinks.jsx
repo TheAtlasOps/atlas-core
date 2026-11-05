@@ -284,7 +284,7 @@ export default function MagicLinks() {
     setSendModalEmail(row.clientEmail || "");
   };
 
-  // ── Confirmar y despachar vía Resend a la dirección ingresada ──
+  // ── Confirmar y despachar vía SendGrid a la dirección ingresada ──
   const handleConfirmSendEmail = async (e) => {
     e.preventDefault();
     if (!sendModalRow?.workOrderId) {
@@ -316,7 +316,7 @@ export default function MagicLinks() {
         setToast({
           type: "success",
           title: "¡Correo enviado con éxito!",
-          message: `Magic Link entregado exitosamente a ${res.recipient} vía Resend.`,
+          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid.`,
         });
 
         setLinksList((prev) =>
@@ -391,7 +391,7 @@ export default function MagicLinks() {
         type: "success",
         title: "¡Magic Link generado con éxito!",
         message: emailSent
-          ? `Notificación de visita técnica despachada a ${targetEmail} vía Resend.`
+          ? `Notificación de visita técnica despachada a ${targetEmail} vía SendGrid.`
           : "El enlace interactivo de seguimiento ha sido activado para la orden de trabajo.",
       });
 
@@ -451,7 +451,7 @@ export default function MagicLinks() {
             Magic Links
           </h1>
           <p className="text-sm text-muted-foreground">
-            Generación y seguimiento de enlaces únicos por orden sin contraseña con entrega vía Resend.
+            Generación y seguimiento de enlaces únicos por orden sin contraseña con entrega vía SendGrid.
           </p>
         </div>
 
@@ -623,11 +623,11 @@ export default function MagicLinks() {
                         <div className="flex items-center justify-end gap-1.5">
                           {row.hasPersistedToken ? (
                             <>
-                              {/* Botón Enviar Correo vía Resend a dirección personalizada */}
+                              {/* Botón Enviar Correo vía SendGrid a dirección personalizada */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenSendModal(row)}
-                                title="Enviar Magic Link a un correo (Resend)"
+                                title="Enviar Magic Link a un correo (SendGrid)"
                                 className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
                               >
                                 <Mail className="h-4 w-4" />
@@ -774,7 +774,7 @@ export default function MagicLinks() {
                   />
                   <div>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      Despachar notificación por correo ahora (Resend)
+                      Despachar notificación por correo ahora (SendGrid)
                     </span>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400">
                       Envía la plantilla interactiva de visita técnica al correo del cliente.
