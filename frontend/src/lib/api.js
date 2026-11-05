@@ -80,6 +80,11 @@ export const api = {
       request(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ new_status: newStatus, comment }) }),
     assign: (id, technicianId, eta = null) =>
       request(`/orders/${id}/assign`, { method: "PATCH", body: JSON.stringify({ technician_id: technicianId, eta }) }),
+    approveAudit: (id, notes = "") =>
+      request(`/orders/${id}/audit-approve`, {
+        method: "POST",
+        body: JSON.stringify({ notes }),
+      }),
     getTechnicians: () => request("/orders/technicians"),
     createTechnician: (techData) =>
       request("/orders/technicians", { method: "POST", body: JSON.stringify(techData) }),

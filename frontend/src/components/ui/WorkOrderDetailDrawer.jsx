@@ -213,13 +213,17 @@ function WorkOrderDetailDrawerContent({
   if (!order) return null;
 
   const orderKey = order.order_number || order.orderId;
-  const isAudited = Boolean(auditedOrders[orderKey]);
   const auditData = getOrderAuditPackage(
     order,
     orderHardwareOverrides,
     apiOrderDetail,
-    { hardwareInventory, apiEvidences, isAudited }
+    {
+      hardwareInventory,
+      apiEvidences,
+      isAudited: Boolean(auditedOrders[orderKey] || order.is_audited || apiOrderDetail?.is_audited),
+    }
   );
+  const isAudited = Boolean(auditData.auditStatus?.isAudited);
 
   // Extracción segura de texto para evitar "[object Object]" en cabecera
   const clientDisplayName =
@@ -310,21 +314,20 @@ function WorkOrderDetailDrawerContent({
     if (!hasTech) {
       missing.push("Asignación de técnico responsable");
     }
-    const isPending = order.status === "IDLE" || order.rawStatus === "IDLE";
-    if (isPending) {
-      missing.push("Intervención operativa en terreno (la orden figura en estado Pendiente)");
+    const isCompleted = order.status === "COMPLETADA" || order.rawStatus === "COMPLETADA";
+    if (!isCompleted) {
+      missing.push("Orden en estado COMPLETADA (debe completarse previamente en terreno)");
     }
-    const hasEvidence = auditData.evidences.length > 0 || auditData.telemetry?.hasRealTelemetry;
-    if (!hasEvidence) {
-      missing.push("Evidencias técnicas o test de conectividad en terreno");
+    if (!auditData.hasPhotoAfter) {
+      missing.push("Evidencia fotográfica obligatoria de término (FOTO_DESPUES)");
     }
     if (!auditData.conformity?.isSigned) {
-      missing.push("Firma digital de conformidad del cliente receptor");
+      missing.push("Firma digital de conformidad del cliente (FIRMA_CLIENTE)");
     }
     return missing;
   })();
 
-  const canApprove = unfulfilledRequirements.length === 0 || isAudited;
+  const canApprove = unfulfilledRequirements.length === 0 && !isAudited;
 
   const handleApproveAudit = async () => {
     setApproveError(null);
@@ -338,18 +341,31 @@ function WorkOrderDetailDrawerContent({
     setIsApproving(true);
     try {
       if (order.id) {
-        await api.orders.updateStatus(
+        const approvedRes = await api.orders.approveAudit(
           order.id,
-          "COMPLETADA",
-          "Auditoría aprobada por coordinador"
+          "Auditoría técnica y de conformidad validada por coordinación"
         );
-        await refreshOrders();
+        if (approvedRes) {
+          setApiOrderDetail(approvedRes);
+        }
+        if (typeof refreshOrders === "function") {
+          await refreshOrders();
+        }
       }
       approveOrderAudit(order);
       setIsApproving(false);
-      onClose();
+      if (setToast) {
+        setToast({
+          title: "Auditoría Aprobada",
+          description: `Orden ${orderKey} auditada y cerrada exitosamente.`,
+          type: "success",
+        });
+      }
     } catch (err) {
-      setApproveError(err.message || "Error al registrar la aprobación de la auditoría en el backend.");
+      console.error("Error al aprobar auditoría:", err);
+      setApproveError(
+        err?.message || "Error al registrar la aprobación de la auditoría en el backend."
+      );
       setIsApproving(false);
     }
   };
@@ -463,6 +479,34 @@ function WorkOrderDetailDrawerContent({
 
         {/* ── Contenido desplazable del Drawer ── */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-kanban">
+          {/* Banner de Auditoría Aprobada y Cerrada */}
+          {isAudited && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 p-4 flex items-start gap-3">
+              <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="text-xs space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                    Auditoría aprobada y cerrada
+                  </span>
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                    Oficial
+                  </span>
+                </div>
+                <p className="text-emerald-700 dark:text-emerald-400 text-[11px]">
+                  Aprobada por <span className="font-semibold">{auditData.auditStatus.auditorName}</span>
+                  {auditData.auditStatus.auditedAtText && (
+                    <> el <span className="font-semibold">{auditData.auditStatus.auditedAtText}</span></>
+                  )}.
+                </p>
+                {auditData.auditStatus.auditNotes && (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-500 italic">
+                    &ldquo;{auditData.auditStatus.auditNotes}&rdquo;
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* SECCIÓN A: EVIDENCIA FOTOGRÁFICA */}
           {showSection("evidences") && (
             <section
@@ -1036,7 +1080,7 @@ function WorkOrderDetailDrawerContent({
             </div>
           )}
 
-          {!canApprove && (
+          {!canApprove && !isAudited && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 flex items-start gap-2.5 text-xs text-amber-700 dark:text-amber-400">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
               <div>
@@ -1059,20 +1103,31 @@ function WorkOrderDetailDrawerContent({
               Cerrar
             </button>
 
-            <button
-              type="button"
-              onClick={handleApproveAudit}
-              disabled={isApproving || !canApprove}
-              title={
-                !canApprove
-                  ? `Requisitos pendientes: ${unfulfilledRequirements.join("; ")}`
-                  : "Aprobar y cerrar auditoría"
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ShieldCheck className="h-4 w-4" />
-              {isApproving ? "Aprobando..." : "Aprobar y Cerrar Auditoría"}
-            </button>
+            {isAudited ? (
+              <button
+                type="button"
+                disabled
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 px-5 py-2.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 cursor-default"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Auditoría Aprobada
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleApproveAudit}
+                disabled={isApproving || !canApprove}
+                title={
+                  !canApprove
+                    ? `Requisitos pendientes: ${unfulfilledRequirements.join("; ")}`
+                    : "Aprobar y cerrar auditoría"
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 active:scale-98 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {isApproving ? "Aprobando..." : "Aprobar y Cerrar Auditoría"}
+              </button>
+            )}
           </div>
         </footer>
 

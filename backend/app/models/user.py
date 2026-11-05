@@ -47,6 +47,15 @@ class User(Base):
     created_orders: Mapped[List["WorkOrder"]] = relationship(
         "WorkOrder", back_populates="creator", foreign_keys="WorkOrder.created_by"
     )
+    audited_orders: Mapped[List["WorkOrder"]] = relationship(
+        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
+    )
+    audited_orders: Mapped[List["WorkOrder"]] = relationship(
+        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
+    )
+    audited_orders: Mapped[List["WorkOrder"]] = relationship(
+        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
+    )
     status_changes: Mapped[List["OrderStatusHistory"]] = relationship(
         "OrderStatusHistory", back_populates="changed_by_user"
     )

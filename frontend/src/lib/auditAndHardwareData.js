@@ -636,11 +636,11 @@ export function getOrderAuditPackage(
     {
       id: "chk-sign",
       label:
-        signatureEvidence || isAudited
+        signatureEvidence
           ? "Acta de conformidad firmada por el cliente receptor"
           : "Firma digital de conformidad del cliente receptor",
-      metric: signatureEvidence || isAudited ? "Firmada" : "Pendiente",
-      passed: Boolean(signatureEvidence || isAudited),
+      metric: signatureEvidence ? "Firmada" : "Pendiente",
+      passed: Boolean(signatureEvidence),
     },
   ];
 
@@ -648,7 +648,7 @@ export function getOrderAuditPackage(
   const signatureUrl =
     signatureEvidence?.storage_url || apiOrderDetail?.signature_url || null;
   const isSigned = Boolean(
-    signatureEvidence || apiOrderDetail?.signature_url || isAudited
+    signatureEvidence || apiOrderDetail?.signature_url
   );
   const sigDate = signatureEvidence?.captured_at
     ? new Date(signatureEvidence.captured_at)
@@ -664,9 +664,33 @@ export function getOrderAuditPackage(
           hour12: false,
         }) +
         " hrs"
-      : isAudited
-      ? "Aprobada en auditoría"
       : "Pendiente de firma";
+
+  const hasPhotoAfter = rawEvidenceItems.some(
+    (e) => String(e.evidence_type || "").toUpperCase() === "FOTO_DESPUES"
+  );
+
+  const rawAuditedAt = apiOrderDetail?.audited_at || order.audited_at || null;
+  let auditedAtText = null;
+  if (rawAuditedAt) {
+    const d = new Date(rawAuditedAt);
+    if (!Number.isNaN(d.getTime())) {
+      auditedAtText =
+        d.toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) +
+        " · " +
+        d.toLocaleTimeString("es-CL", {
+          timeZone: "America/Santiago",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }) +
+        " hrs";
+    }
+  }
+
+  const persistentIsAudited = Boolean(
+    order.is_audited || apiOrderDetail?.is_audited || isAudited
+  );
 
   return {
     orderId: orderKey,
@@ -674,6 +698,19 @@ export function getOrderAuditPackage(
     evidences: mappedEvidences,
     telemetry,
     checklist,
+    hasPhotoAfter,
+    hasSignature: isSigned,
+    auditStatus: {
+      isAudited: persistentIsAudited,
+      auditedAt: rawAuditedAt,
+      auditedAtText,
+      auditorName:
+        apiOrderDetail?.auditor?.full_name ||
+        order.auditor?.full_name ||
+        "Coordinación",
+      auditNotes:
+        apiOrderDetail?.audit_notes || order.audit_notes || null,
+    },
     hardware: {
       router: routerData,
       sim: simData,
@@ -691,10 +728,7 @@ export function getOrderAuditPackage(
           ? `Recepción conforme validada para ${clientBusinessName}.`
           : "El cliente aún no ha registrado su firma digital de conformidad."),
       signedAt: signedAtText,
-      tokenHash:
-        apiOrderDetail?.active_magic_link_token ||
-        order.active_magic_link_token ||
-        (isSigned ? `ACTA-${orderKey.replace("#", "")}` : "PENDIENTE"),
+      tokenHash: isSigned ? `ACTA-${orderKey.replace("#", "")}` : "PENDIENTE",
     },
   };
 }

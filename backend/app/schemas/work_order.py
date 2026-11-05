@@ -21,6 +21,24 @@ class ClientSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AuditorSummary(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
+    role: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditorSummary(BaseModel):
+    id: uuid.UUID
+    full_name: str
+    email: str
+    role: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TechnicianSummary(BaseModel):
     id: uuid.UUID
     full_name: str
@@ -140,6 +158,16 @@ class WorkOrderAssign(BaseModel):
     eta: Optional[datetime] = None
 
 
+class AuditApprovalRequest(BaseModel):
+    """Payload para aprobar administrativamente la auditoría de una orden."""
+    notes: Optional[str] = Field(None, max_length=1000, description="Observaciones o notas de auditoría")
+
+
+class AuditApprovalRequest(BaseModel):
+    """Payload para aprobar administrativamente la auditoría de una orden."""
+    notes: Optional[str] = Field(None, max_length=1000, description="Observaciones o notas de auditoría")
+
+
 # ─── Respuestas de Órdenes ──────────────────────────────────────────────────
 class WorkOrderResponse(WorkOrderBase):
     id: uuid.UUID
@@ -153,6 +181,20 @@ class WorkOrderResponse(WorkOrderBase):
     created_at: datetime
     updated_at: datetime
     
+    # Auditoría administrativa persistente
+    is_audited: bool = False
+    audited_at: Optional[datetime] = None
+    audited_by_user_id: Optional[uuid.UUID] = None
+    auditor: Optional[AuditorSummary] = None
+    audit_notes: Optional[str] = None
+
+    # Auditoría administrativa persistente
+    is_audited: bool = False
+    audited_at: Optional[datetime] = None
+    audited_by_user_id: Optional[uuid.UUID] = None
+    auditor: Optional[AuditorSummary] = None
+    audit_notes: Optional[str] = None
+
     # Entidades anidadas cargadas
     client: Optional[ClientSummary] = None
     technician_summary: Optional[TechnicianSummary] = None

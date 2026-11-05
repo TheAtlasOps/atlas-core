@@ -159,7 +159,7 @@ export default function MagicLinks() {
   const loadMagicLinks = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await api.orders.getAll({ size: 50 });
+      const res = await api.orders.getAll({ size: 50, include_magic_tokens: true });
       if (res?.items?.length) {
         setAllOrders(res.items);
 

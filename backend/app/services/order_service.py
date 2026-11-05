@@ -53,6 +53,7 @@ async def list_orders(
         selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
         selectinload(WorkOrder.items).selectinload(WorkOrderItem.sim_card),
         selectinload(WorkOrder.items).selectinload(WorkOrderItem.equipment),
+        selectinload(WorkOrder.auditor),
     )
 
     conditions = []
@@ -97,9 +98,11 @@ async def list_orders(
     return list(orders), total
 
 
-async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Optional[WorkOrder]:
+async def get_order_by_id(
+    db: AsyncSession, order_id: uuid.UUID, for_update: bool = False
+) -> Optional[WorkOrder]:
     """Obtiene la ficha técnica completa de una orden con todas sus relaciones."""
-    result = await db.execute(
+    query = (
         select(WorkOrder)
         .options(
             selectinload(WorkOrder.client),
@@ -109,9 +112,13 @@ async def get_order_by_id(db: AsyncSession, order_id: uuid.UUID) -> Optional[Wor
             selectinload(WorkOrder.items).selectinload(WorkOrderItem.sim_card),
             selectinload(WorkOrder.items).selectinload(WorkOrderItem.equipment),
             selectinload(WorkOrder.evidences),
+            selectinload(WorkOrder.auditor),
         )
         .where(WorkOrder.id == order_id)
     )
+    if for_update:
+        query = query.with_for_update()
+    result = await db.execute(query)
     return result.scalar_one_or_none()
 
 
@@ -257,6 +264,20 @@ async def update_order_status(
 
     old_status = order.status
     new_status = status_update.new_status
+
+    # Proteger contra modificaciones en órdenes ya auditadas y cerradas
+    if order.is_audited:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede modificar el estado de una orden que ya cuenta con auditoría aprobada y cerrada.",
+        )
+
+    # Validar permisos específicos de técnico en terreno
+    if current_user.role == UserRoleEnum.TECNICO and order.technician_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El técnico solo puede actualizar el estado de órdenes asignadas a su perfil.",
+        )
 
     if old_status == new_status:
         return order
@@ -686,3 +707,94 @@ async def get_recent_activity_log(
             )
         )
     return items
+
+async def approve_order_audit(
+    db: AsyncSession,
+    order_id: uuid.UUID,
+    notes: Optional[str],
+    current_user: User,
+) -> WorkOrder:
+    """
+    Aprueba administrativamente y cierra la auditoría de una orden de trabajo (P2 / P3).
+    Requisitos:
+    - Rol: COORDINADOR o ADMIN (exigido por dependencia del router).
+    - La orden debe existir (404).
+    - La orden no debe haber sido auditada previamente (409 Conflict).
+    - La orden debe estar en estado COMPLETADA (400 Bad Request).
+    - Evidencias obligatorias: FOTO_DESPUES y FIRMA_CLIENTE (400 Bad Request).
+    - Persiste is_audited=True, audited_at, audited_by_user_id, audit_notes.
+    - Registra evento trazable en order_status_history.
+    """
+    # 1. Bloqueo transaccional de fila en PostgreSQL (SELECT FOR UPDATE)
+    # Serializa solicitudes concurrentes y garantiza atomicidad estricta frente a dos coordinadores simultáneos
+    order = await get_order_by_id(db, order_id, for_update=True)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {order_id} no encontrada",
+        )
+
+    # 2. Proteger contra aprobaciones duplicadas y concurrencia (409 Conflict)
+    if order.is_audited:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La orden ya cuenta con una auditoría aprobada y cerrada previamente.",
+        )
+
+    # 3. Validar que la orden esté en estado COMPLETADA
+    if order.status != OrderStatusEnum.COMPLETADA:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La orden de trabajo debe estar en estado COMPLETADA para realizar el cierre de auditoría.",
+        )
+
+    # 4. Validar evidencias obligatorias (FOTO_DESPUES y FIRMA_CLIENTE)
+    evidences = order.evidences or []
+    has_photo_after = any(e.evidence_type == EvidenceTypeEnum.FOTO_DESPUES for e in evidences)
+    has_signature = any(e.evidence_type == EvidenceTypeEnum.FIRMA_CLIENTE for e in evidences)
+
+    missing_evidences = []
+    if not has_photo_after:
+        missing_evidences.append("evidencia fotográfica de término (FOTO_DESPUES)")
+    if not has_signature:
+        missing_evidences.append("firma digital de conformidad del cliente (FIRMA_CLIENTE)")
+
+    if missing_evidences:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede aprobar la auditoría: falta {' y '.join(missing_evidences)}.",
+        )
+
+    # 5. Persistir cierre de auditoría
+    now_utc = datetime.now(timezone.utc)
+    order.is_audited = True
+    order.audited_at = now_utc
+    order.audited_by_user_id = current_user.id
+    order.audit_notes = notes.strip() if notes and notes.strip() else None
+    order.updated_at = now_utc
+
+    # 6. Registrar evento en bitácora inmutable (order_status_history)
+    role_str = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    audit_comment = f"Auditoría administrativa aprobada y cerrada por {current_user.full_name} ({role_str})"
+    if order.audit_notes:
+        audit_comment += f": {order.audit_notes}"
+
+    history = OrderStatusHistory(
+        work_order_id=order.id,
+        old_status=order.status,
+        new_status=order.status,
+        changed_by_user_id=current_user.id,
+        lat=order.lat,
+        lng=order.lng,
+        comment=audit_comment,
+        created_at=now_utc,
+    )
+    db.add(history)
+
+    await db.commit()
+    await db.refresh(order)
+    return await get_order_by_id(db, order.id)
