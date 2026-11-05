@@ -20,13 +20,14 @@ import ThemeToggle from "../components/ui/ThemeToggle";
 import {
   mapApiSummaryToTrackingOrder,
   getPortalAccessError,
+  formatCompletedDateDisplay,
 } from "../lib/magicLinksData";
 import { api } from "../lib/api";
 import SignaturePad from "../components/ui/SignaturePad";
 
 
 
-export default function CustomerTrackingView() {
+export default function CustomerTrackingView({ initialSummary = null } = {}) {
   const { uuid } = useParams();
   const [searchParams] = useSearchParams();
   const token = useMemo(
@@ -34,10 +35,10 @@ export default function CustomerTrackingView() {
     [searchParams, uuid]
   );
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialSummary);
   const [fetchError, setFetchError] = useState(null);
   const [errorKind, setErrorKind] = useState(null); // "expired" | "invalid" | "unavailable"
-  const [apiSummary, setApiSummary] = useState(null);
+  const [apiSummary, setApiSummary] = useState(initialSummary);
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
@@ -58,6 +59,7 @@ export default function CustomerTrackingView() {
 
   // Consulta en vivo a la API de Neon PostgreSQL con validación estricta de token
   useEffect(() => {
+    if (initialSummary) return;
     let cancelled = false;
 
     async function fetchPortalSummary() {
@@ -102,7 +104,7 @@ export default function CustomerTrackingView() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, initialSummary]);
 
   const order = useMemo(
     () => mapApiSummaryToTrackingOrder(apiSummary),
