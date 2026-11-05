@@ -189,42 +189,11 @@ export function WorkOrderProvider({ children }) {
 
       setAuditedOrders((prev) => ({ ...prev, [orderKey]: true }));
 
-      setColumns((prev) => {
-        let movedTask = null;
-        const withoutTask = prev.map((col) => {
-          const found = col.tasks.find(
-            (t) => (t.order_number || t.orderId) === orderKey
-          );
-          if (found) {
-            movedTask = { ...found, status: "COMPLETADA" };
-          }
-          return {
-            ...col,
-            tasks: col.tasks.filter(
-              (t) => (t.order_number || t.orderId) !== orderKey
-            ),
-          };
-        });
-
-        if (!movedTask) return prev;
-        return withoutTask.map((col) =>
-          col.id === "completada"
-            ? { ...col, tasks: [movedTask, ...col.tasks] }
-            : col
-        );
-      });
-
-      setVisitsList((prev) =>
-        prev.map((v) =>
-          v.id === orderKey
-            ? {
-                ...v,
-                status: "Completada",
-                rawStatus: "COMPLETADA",
-                statusStyle:
-                  "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/25",
-              }
-            : v
+      setRawOrders((prev) =>
+        prev.map((o) =>
+          (o.order_number || o.id) === orderKey || o.id === order.id
+            ? { ...o, is_audited: true }
+            : o
         )
       );
 
@@ -234,8 +203,7 @@ export function WorkOrderProvider({ children }) {
           order.technician_summary?.full_name ||
           order.assigneeName ||
           "Coordinación",
-        action:
-          "Auditoría aprobada por coordinador (Estado actualizado a COMPLETADA)",
+        action: "Auditoría técnica aprobada y cerrada formalmente",
         status: "Completada",
         serviceType: order.tag || "Fibra",
         time: "Ahora",
@@ -244,7 +212,7 @@ export function WorkOrderProvider({ children }) {
 
       showNotification(
         `Auditoría ${orderKey} aprobada y cerrada`,
-        `Estado actualizado a COMPLETADA · Evidencias y firma validadas.`
+        `Cierre administrativo registrado y persistido en base de datos.`
       );
     },
     [showNotification]

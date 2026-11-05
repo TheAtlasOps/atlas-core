@@ -24,10 +24,13 @@ from app.schemas.work_order import (
     OrderStatusHistoryResponse,
     OrderActivityLogItem,
     WorkOrderItemResponse,
+    AuditorSummary,
+    AuditApprovalRequest,
 )
 from app.services.order_service import (
     list_orders,
     get_order_by_id,
+    approve_order_audit,
     create_order,
     update_order_status,
     assign_technician,
@@ -43,7 +46,7 @@ from app.services.order_service import (
 router = APIRouter()
 
 
-def build_order_response(order: WorkOrder) -> WorkOrderResponse:
+def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkOrderResponse:
     """Construye un DTO WorkOrderResponse a partir de la entidad ORM con relaciones cargadas."""
     # Mapeo de cliente
     client_summary = None
@@ -63,9 +66,23 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
             is_available=order.technician.is_available,
         )
 
-    # Buscar token de Magic Link activo si existe (regla: a lo sumo 1 activo y vigente)
+    # Mapeo de auditor
+    auditor_summary = None
+    if getattr(order, "auditor", None):
+        auditor_summary = AuditorSummary(
+            id=order.auditor.id,
+            full_name=order.auditor.full_name,
+            email=order.auditor.email,
+            role=(
+                order.auditor.role.value
+                if hasattr(order.auditor.role, "value")
+                else str(order.auditor.role)
+            ),
+        )
+
+    # Buscar token de Magic Link activo solo si se solicita expresamente (P1)
     active_token = None
-    if order.magic_links:
+    if include_token and order.magic_links:
         now_utc = datetime.now(timezone.utc)
         sorted_links = sorted(
             order.magic_links,
@@ -123,6 +140,11 @@ def build_order_response(order: WorkOrder) -> WorkOrderResponse:
         created_by=order.created_by,
         created_at=order.created_at,
         updated_at=order.updated_at,
+        is_audited=bool(getattr(order, "is_audited", False)),
+        audited_at=getattr(order, "audited_at", None),
+        audited_by_user_id=getattr(order, "audited_by_user_id", None),
+        auditor=auditor_summary,
+        audit_notes=getattr(order, "audit_notes", None),
         client=client_summary,
         technician_summary=tech_summary,
         active_magic_link_token=active_token,
@@ -158,6 +180,7 @@ async def get_orders(
     technician_id: Optional[uuid.UUID] = Query(None, description="Filtrar por técnico asignado"),
     client_id: Optional[uuid.UUID] = Query(None, description="Filtrar por cliente"),
     search: Optional[str] = Query(None, description="Búsqueda por #OT, título, tag o dirección"),
+    include_magic_tokens: bool = Query(False, description="Incluir tokens de Magic Link en texto plano (restringido a vistas autorizadas)"),
     page: int = Query(1, ge=1, description="Número de página"),
     size: int = Query(20, ge=1, le=100, description="Elementos por página"),
     db: AsyncSession = Depends(get_db),
@@ -181,7 +204,7 @@ async def get_orders(
         size=size,
     )
 
-    items = [build_order_response(o) for o in orders]
+    items = [build_order_response(o, include_token=include_magic_tokens) for o in orders]
     pages = (total + size - 1) // size if total > 0 else 1
 
     return WorkOrderListResponse(
@@ -290,6 +313,7 @@ async def get_activity_log(
 )
 async def get_order(
     order_id: uuid.UUID,
+    include_magic_token: bool = Query(False, description="Incluir token de Magic Link en texto plano"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -300,7 +324,7 @@ async def get_order(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Orden de trabajo con ID {order_id} no encontrada"
         )
-    return build_order_response(order)
+    return build_order_response(order, include_token=include_magic_token)
 
 
 @router.post(
@@ -330,7 +354,7 @@ async def update_status(
     order_id: uuid.UUID,
     status_update: WorkOrderStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_role([UserRoleEnum.ADMIN, UserRoleEnum.COORDINADOR, UserRoleEnum.TECNICO])),
 ):
     """Actualización del ciclo de vida de la orden."""
     updated = await update_order_status(db, order_id, status_update, current_user=current_user)
@@ -369,3 +393,25 @@ async def sync_batch(
     return await process_offline_sync_batch(
         db=db, batch_request=batch_request, technician_user=current_user
     )
+
+@router.post(
+    "/{order_id}/audit-approve",
+    response_model=WorkOrderResponse,
+    summary="Aprobar y cerrar auditoría administrativa",
+    description="Valida evidencias y firma digital, y persiste la aprobación y cierre formal de la orden de trabajo por parte de coordinación o administración (P2 / P3).",
+)
+async def audit_approve_order(
+    order_id: uuid.UUID,
+    payload: Optional[AuditApprovalRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Cierre administrativo persistente de auditoría."""
+    notes = payload.notes if payload else None
+    approved = await approve_order_audit(
+        db=db,
+        order_id=order_id,
+        notes=notes,
+        current_user=current_user,
+    )
+    return build_order_response(approved, include_token=False)

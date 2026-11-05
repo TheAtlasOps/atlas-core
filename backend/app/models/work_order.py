@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, List, Optional
 from decimal import Decimal
-from sqlalchemy import String, DateTime, Numeric, ForeignKey, Text
+from sqlalchemy import String, DateTime, Numeric, ForeignKey, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -59,6 +59,36 @@ class WorkOrder(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     tag: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    is_audited: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    audited_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    audited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    audit_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_audited: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    audited_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    audited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    audit_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_audited: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    audited_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    audited_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    audit_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -78,6 +108,15 @@ class WorkOrder(Base):
     )
     creator: Mapped[Optional["User"]] = relationship(
         "User", back_populates="created_orders", foreign_keys=[created_by]
+    )
+    auditor: Mapped[Optional["User"]] = relationship(
+        "User", back_populates="audited_orders", foreign_keys=[audited_by_user_id]
+    )
+    auditor: Mapped[Optional["User"]] = relationship(
+        "User", back_populates="audited_orders", foreign_keys=[audited_by_user_id]
+    )
+    auditor: Mapped[Optional["User"]] = relationship(
+        "User", back_populates="audited_orders", foreign_keys=[audited_by_user_id]
     )
     items: Mapped[List["WorkOrderItem"]] = relationship(
         "WorkOrderItem", back_populates="work_order", cascade="all, delete-orphan"
