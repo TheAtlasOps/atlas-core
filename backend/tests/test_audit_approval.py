@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
+from sqlalchemy.ext.asyncio import AsyncSession
 import pytest
 from app.core.security import create_access_token
 from app.models.enums import (
@@ -373,3 +374,95 @@ def test_status_update_technician_can_only_update_assigned_order(client, db, tec
     )
     assert res.status_code == 403
     assert "asignadas a su perfil" in res.json()["detail"]
+
+
+def test_audit_approve_locks_row_with_for_update(client, db, coordinator_user, coord_auth_headers):
+    """Verifica que el servicio ejecute SELECT ... FOR UPDATE en PostgreSQL para serializar la transacción."""
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = coordinator_user
+
+    mock_order = create_mock_order(status=OrderStatusEnum.COMPLETADA, is_audited=False)
+    order_res1 = MagicMock()
+    order_res1.scalar_one_or_none.return_value = mock_order
+
+    order_res2 = MagicMock()
+    mock_order.auditor = coordinator_user
+    order_res2.scalar_one_or_none.return_value = mock_order
+
+    db.execute.side_effect = [user_res, order_res1, order_res2]
+
+    res = client.post(
+        f"/api/v1/orders/{mock_order.id}/audit-approve",
+        headers=coord_auth_headers,
+        json={"notes": "Validación con bloqueo FOR UPDATE"},
+    )
+    assert res.status_code == 200
+
+    executed_queries = [call[0][0] for call in db.execute.call_args_list]
+    order_query = executed_queries[1]
+    assert hasattr(order_query, "_for_update_arg")
+    assert order_query._for_update_arg is not None
+
+
+@pytest.mark.anyio
+async def test_concurrent_approvals_second_coordinator_gets_409(coordinator_user, admin_user):
+    """
+    Garantiza que dos coordinadores que intentan aprobar simultáneamente la misma orden
+    quedan serializados por el bloqueo de fila: el primero tiene éxito y el segundo recibe HTTP 409.
+    """
+    from fastapi import HTTPException
+    from app.services.order_service import approve_order_audit
+
+    mock_order = create_mock_order(status=OrderStatusEnum.COMPLETADA, is_audited=False)
+    order_id = mock_order.id
+
+    # Sesión simulada de base de datos
+    session = MagicMock(spec=AsyncSession)
+    session.add = MagicMock()
+    session.commit = AsyncMock()
+    session.refresh = AsyncMock()
+
+    # Primera llamada (Coordinador 1): la orden aún no está auditada
+    res_coord1 = MagicMock()
+    res_coord1.scalar_one_or_none.return_value = mock_order
+
+    # Al recargar en Coordinador 1 tras commit
+    res_reload1 = MagicMock()
+    mock_order.auditor = coordinator_user
+    res_reload1.scalar_one_or_none.return_value = mock_order
+
+    session.execute = AsyncMock(side_effect=[res_coord1, res_reload1])
+
+    # Coordinador 1 aprueba exitosamente
+    approved1 = await approve_order_audit(
+        db=session,
+        order_id=order_id,
+        notes="Aprobado por Coordinador 1",
+        current_user=coordinator_user,
+    )
+    assert approved1.is_audited is True
+    assert approved1.audited_by_user_id == coordinator_user.id
+    assert session.commit.call_count == 1
+    assert session.add.call_count == 1  # 1 registro en order_status_history
+
+    # Segunda llamada simultánea (Coordinador 2):
+    # Tras liberarse el lock de fila de PostgreSQL, Coordinador 2 lee la fila actualizada (is_audited=True)
+    res_coord2 = MagicMock()
+    res_coord2.scalar_one_or_none.return_value = mock_order
+
+    session.execute = AsyncMock(side_effect=[res_coord2])
+
+    with pytest.raises(HTTPException) as exc_info:
+        await approve_order_audit(
+            db=session,
+            order_id=order_id,
+            notes="Intento simultáneo por Administrador 2",
+            current_user=admin_user,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "ya cuenta con una auditoría aprobada" in exc_info.value.detail
+
+    # Garantizar que no se generó un segundo commit ni registros duplicados
+    assert session.commit.call_count == 1
+    assert session.add.call_count == 1
