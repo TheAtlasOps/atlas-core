@@ -1,5 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 import {
   mapApiSummaryToTrackingOrder,
@@ -167,4 +173,81 @@ test("Orden auditada y firmada mapea correctamente is_audited, audited_at, audit
   assert.equal(order.signed_at, "2026-11-04T18:30:00.000Z");
   assert.equal(order.technician.vehicle_plate, "No disponible");
   assert.equal(order.technician.credential_id, "16.111.222-3");
+});
+
+// ─── 8. Regresión: Verificación estática de imports en CustomerTrackingView ──
+test("CustomerTrackingView importa explícitamente formatCompletedDateDisplay", () => {
+  const viewPath = path.resolve(__dirname, "../pages/CustomerTrackingView.jsx");
+  const source = fs.readFileSync(viewPath, "utf-8");
+
+  assert.match(
+    source,
+    /import\s*\{[^}]*formatCompletedDateDisplay[^}]*\}\s*from\s*["']\.\.\/lib\/magicLinksData["']/,
+    "CustomerTrackingView debe importar formatCompletedDateDisplay para evitar ReferenceError en runtime"
+  );
+});
+
+// ─── 9. Renderizado Real del Componente React en SSR sin ReferenceError ─────
+test("CustomerTrackingView renderiza órdenes completadas, firmadas y auditadas sin ReferenceError", async () => {
+  const { createServer } = await import("vite");
+  const server = await createServer({
+    root: path.resolve(__dirname, "../../"),
+    server: { middlewareMode: true, hmr: false },
+  });
+
+  try {
+    const React = (await import("react")).default;
+    const { renderToString } = await import("react-dom/server");
+    const { MemoryRouter } = await import("react-router-dom");
+    const { ThemeProvider } = await server.ssrLoadModule("/src/context/ThemeContext.jsx");
+    const { default: CustomerTrackingView } = await server.ssrLoadModule(
+      "/src/pages/CustomerTrackingView.jsx"
+    );
+
+    const mockSummary = {
+      order_id: "10202a6a-80da-40b8-ad99-809238dc83aa",
+      order_number: "#OT-08492",
+      title: "Instalación Router 5G - Prueba ATLAS",
+      status: "Completada",
+      status_key: "completada",
+      service_type: "DIAGNOSTICO_ROUTER",
+      scheduled_date: "2026-11-04T15:00:00.000Z",
+      completed_at: "2026-11-04T18:30:00.000Z",
+      is_signed: true,
+      signature_url: "https://storage.neon.tech/firma_08492.png",
+      signed_by_name: "Receptor Autorizado Entel",
+      signed_at: "2026-11-04T18:30:00.000Z",
+      is_audited: true,
+      audited_at: "2026-11-04T19:00:00.000Z",
+      audit_notes: "Cierre administrativo aprobado y conforme",
+      technician: {
+        name: "Juan Técnico",
+        phone: "No disponible",
+        avatar: "JT",
+        vehicle_plate: "HG-4421",
+        credential_id: "16.111.222-3",
+      },
+    };
+
+    // Renderizar orden completada, firmada y auditada
+    const html = renderToString(
+      React.createElement(
+        ThemeProvider,
+        null,
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/status/valid_token_test"] },
+          React.createElement(CustomerTrackingView, { initialSummary: mockSummary })
+        )
+      )
+    );
+
+    // Verificaciones de contenido generado
+    assert.ok(html.includes("Recepci\u00f3n conforme firmada"), "Debe mostrar el banner de firma");
+    assert.ok(html.includes("Receptor Autorizado Entel"), "Debe incluir el nombre del receptor");
+    assert.ok(html.includes("Servicio finalizado y auditado"), "Debe incluir el estado auditado");
+    assert.ok(html.includes("hrs"), "Debe incluir la fecha/hora formateada sin lanzar ReferenceError");
+  } finally {
+    await server.close();
+  }
 });
