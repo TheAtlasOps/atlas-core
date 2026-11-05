@@ -19,6 +19,8 @@ class ClientTechnicianBadge(BaseModel):
     phone: str
     avatar: str
     vehicle_plate: Optional[str] = None
+    credential_id: Optional[str] = None
+    rut: Optional[str] = None
 
 
 # ─── Resumen de la Orden para Portal Cliente (14-DocArq §3.2) ───────────────
@@ -43,6 +45,12 @@ class ClientOrderSummaryResponse(BaseModel):
     client_confirmed_at: Optional[datetime] = None
     is_confirmed: bool
     signature_url: Optional[str] = None
+    is_signed: bool = False
+    signed_at: Optional[datetime] = None
+    signed_by_name: Optional[str] = None
+    is_audited: bool = False
+    audited_at: Optional[datetime] = None
+    audit_notes: Optional[str] = None
     is_completed: bool
     is_expired: bool = False
 

@@ -30,6 +30,7 @@ def link():
     )
     return SimpleNamespace(
         id=uuid.uuid4(), token=generate_magic_link_token(), work_order=order,
+        work_order_id=order.id,
         is_active=True, expires_at=now + timedelta(hours=1),
         client_confirmed_at=None, signature_url=None,
     )
@@ -236,12 +237,27 @@ def test_magic_link_generator_uses_random_32_byte_tokens():
 
 
 @pytest.mark.asyncio
-async def test_issuing_replacement_revokes_previous_link_and_preserves_url(db, link):
+async def test_generate_magic_link_reuses_active_unexpired_link(db, link):
+    link.work_order.magic_links = [link]
     order_result = MagicMock()
     order_result.scalar_one_or_none.return_value = link.work_order
-    previous_result = MagicMock()
-    previous_result.scalars.return_value.all.return_value = [link]
-    db.execute.side_effect = [order_result, previous_result]
+    db.execute.return_value = order_result
+
+    response = await generate_magic_link_for_order(db, link.work_order.id)
+    assert link.is_active is True
+    assert response.is_active is True
+    assert response.token == link.token
+    assert response.work_order_id == link.work_order.id
+    assert response.portal_url == f"{settings.FRONTEND_PORTAL_URL}/{link.token}"
+
+
+@pytest.mark.asyncio
+async def test_issuing_replacement_revokes_expired_link_and_preserves_url(db, link):
+    link.expires_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    link.work_order.magic_links = [link]
+    order_result = MagicMock()
+    order_result.scalar_one_or_none.return_value = link.work_order
+    db.execute.return_value = order_result
 
     async def refresh_generated(generated):
         generated.id = uuid.uuid4()

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.core.config import settings
@@ -10,6 +11,7 @@ from app.core.security import verify_password, create_access_token, generate_mag
 from app.models.user import User
 from app.models.work_order import WorkOrder
 from app.models.magic_link import MagicLink
+from app.models.enums import EvidenceTypeEnum
 from app.schemas.auth import Token, MagicLinkResponse
 
 
@@ -51,10 +53,19 @@ async def generate_magic_link_for_order(
 ) -> MagicLinkResponse:
     """
     Emite un Magic Link criptográfico de alta entropía asociado a una OT (RNF-SEG-03 / RF-API-09).
-    Si ya existían tokens activos para esa OT, los desactiva antes de emitir uno nuevo.
+    - Si existe un enlace activo y vigente, lo reutiliza preservando trazabilidad y evitando deshabilitar accesos entregados.
+    - Preserva la firma digital existente en el nuevo enlace si la orden ya fue firmada.
+    - Permite enlaces de consulta para órdenes auditadas en modo de solo lectura.
     """
-    # 1. Verificar existencia de la orden
-    order_result = await db.execute(select(WorkOrder).where(WorkOrder.id == work_order_id))
+    # 1. Verificar existencia de la orden con sus evidencias y enlaces
+    order_result = await db.execute(
+        select(WorkOrder)
+        .options(
+            selectinload(WorkOrder.magic_links),
+            selectinload(WorkOrder.evidences),
+        )
+        .where(WorkOrder.id == work_order_id)
+    )
     order = order_result.scalar_one_or_none()
     if not order:
         raise HTTPException(
@@ -62,20 +73,55 @@ async def generate_magic_link_for_order(
             detail=f"No se encontró la orden de trabajo con ID {work_order_id}"
         )
 
-    # 2. Desactivar tokens previos para evitar colisiones
-    prev_links_result = await db.execute(
-        select(MagicLink).where(
-            MagicLink.work_order_id == work_order_id,
-            MagicLink.is_active == True
-        )
-    )
-    prev_links = prev_links_result.scalars().all()
-    for link in prev_links:
-        link.is_active = False
-
-    # 3. Generar token de 32 bytes base64url
-    raw_token = generate_magic_link_token()
     now_utc = datetime.now(timezone.utc)
+
+    # 2. Identificar si la orden ya tiene firma registrada (evidencias o enlaces previos)
+    existing_signature_key = None
+    if hasattr(order, "evidences") and order.evidences:
+        for ev in order.evidences:
+            if ev.evidence_type == EvidenceTypeEnum.FIRMA_CLIENTE and ev.storage_url and ev.storage_url.strip():
+                existing_signature_key = ev.storage_url.strip()
+                break
+
+    if not existing_signature_key and hasattr(order, "magic_links") and order.magic_links:
+        for ml in order.magic_links:
+            if ml.signature_url and ml.signature_url.strip():
+                existing_signature_key = ml.signature_url.strip()
+                break
+
+    # 3. Comprobar si existe un enlace vigente no expirado para reutilizar
+    active_link = None
+    if hasattr(order, "magic_links") and order.magic_links:
+        for ml in order.magic_links:
+            if ml.is_active and ml.expires_at > now_utc:
+                active_link = ml
+                break
+
+    if active_link:
+        # Si la orden ya tenía firma y el enlace activo no la tenía asignada, sincronizarla
+        if existing_signature_key and not active_link.signature_url:
+            active_link.signature_url = existing_signature_key
+            await db.commit()
+            await db.refresh(active_link)
+
+        portal_url = f"{settings.FRONTEND_PORTAL_URL}/{active_link.token}"
+        work_order_id_val = getattr(active_link, "work_order_id", None) or getattr(getattr(active_link, "work_order", None), "id", None) or work_order_id
+        return MagicLinkResponse(
+            id=active_link.id,
+            work_order_id=work_order_id_val,
+            token=active_link.token,
+            portal_url=portal_url,
+            expires_at=active_link.expires_at,
+            is_active=active_link.is_active
+        )
+
+    # 4. Desactivar tokens previos vencidos o inactivos para evitar colisiones
+    if hasattr(order, "magic_links") and order.magic_links:
+        for link in order.magic_links:
+            link.is_active = False
+
+    # 5. Generar token de 32 bytes base64url conservando la firma si ya existía
+    raw_token = generate_magic_link_token()
     expires_at = now_utc + timedelta(hours=expire_hours)
 
     new_magic_link = MagicLink(
@@ -83,6 +129,7 @@ async def generate_magic_link_for_order(
         token=raw_token,
         expires_at=expires_at,
         is_active=True,
+        signature_url=existing_signature_key,
         created_at=now_utc
     )
     db.add(new_magic_link)
