@@ -6,6 +6,7 @@ import { orderToVisit, ordersToVisits } from '../api/mappers';
 import { fetchMyOrders } from '../api/orders';
 import type { ApiOrder } from '../api/types';
 import type { Visit } from '../types';
+import { getActiveTrackingOrderId, stopTracking } from '../services/trackingService';
 
 // ─── Visitas del técnico, cargadas desde la API ───────────────────────────────
 export function useVisits() {
@@ -22,9 +23,19 @@ export function useVisits() {
     try {
       const orders = await fetchMyOrders();
       if (!mounted.current) return;
-      setVisits(ordersToVisits(orders));
+      const nextVisits = ordersToVisits(orders);
+      setVisits(nextVisits);
       setError(null);
       setOnline(true);
+
+      // Si la orden que se estaba rastreando cambió de estado o fue cancelada, detener GPS
+      const activeTrackingId = getActiveTrackingOrderId();
+      if (activeTrackingId) {
+        const tracked = nextVisits.find((v) => v.id === activeTrackingId);
+        if (!tracked || tracked.status !== 'en_ruta') {
+          void stopTracking();
+        }
+      }
     } catch (e) {
       if (!mounted.current) return;
       const err = e as ApiError;
@@ -58,6 +69,11 @@ export function useVisits() {
   /** Reemplaza una visita con la versión que devolvió el servidor tras un cambio de estado */
   const applyOrder = useCallback((order: ApiOrder) => {
     const next = orderToVisit(order);
+    if (!next || next.status !== 'en_ruta') {
+      if (getActiveTrackingOrderId() === order.id) {
+        void stopTracking();
+      }
+    }
     setVisits((prev) =>
       next ? prev.map((v) => (v.id === order.id ? next : v)) : prev.filter((v) => v.id !== order.id),
     );

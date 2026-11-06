@@ -49,8 +49,14 @@ try {
             await sendOrderLocation(orderId, lat, lng);
             lastSentCoords = { lat, lng, time: now };
             console.log(`[ATLAS GPS Background] Coordenadas emitidas (${lat}, ${lng}) para OT ${orderId}`);
-          } catch (err) {
+          } catch (err: any) {
             console.warn('[ATLAS GPS Background] Error al enviar coordenadas al backend:', err);
+            // Si la orden ya no está EN_RUTA (409 Conflict), fue cancelada o el técnico no está asignado (403/404),
+            // se detiene inmediatamente el seguimiento para proteger la batería y respetar privacidad.
+            if (err?.status === 409 || err?.status === 404 || err?.status === 403) {
+              console.log(`[ATLAS GPS Background] Orden ${orderId} fuera de EN_RUTA (HTTP ${err?.status}). Deteniendo seguimiento.`);
+              await stopTracking();
+            }
           }
         }
       }
@@ -168,8 +174,12 @@ export async function startTracking(orderId: string): Promise<boolean> {
           await sendOrderLocation(currentTrackingOrderId, lat, lng);
           lastSentCoords = { lat, lng, time: Date.now() };
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('[ATLAS GPS Polling] Error obteniendo coordenadas:', err);
+        if (err?.status === 409 || err?.status === 404 || err?.status === 403) {
+          console.log('[ATLAS GPS Polling] Orden fuera de EN_RUTA. Deteniendo seguimiento.');
+          void stopTracking();
+        }
       }
     }, 30000);
   }

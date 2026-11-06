@@ -546,24 +546,30 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
     active_orders = active_orders_res.scalars().all()
     active_by_tech = {o.technician_id: o for o in active_orders if o.technician_id}
 
-    return [
-        TechnicianSummary(
-            id=t.id,
-            full_name=t.user.full_name if t.user else "Técnico",
-            rut=t.rut,
-            initials=t.initials,
-            phone=t.user.phone if t.user else None,
-            vehicle_plate=t.vehicle_plate,
-            is_available=t.is_available,
-            current_lat=t.current_lat,
-            current_lng=t.current_lng,
-            last_location_at=t.last_location_at,
-            active_order_id=active_by_tech[t.id].id if t.id in active_by_tech else None,
-            active_order_number=active_by_tech[t.id].order_number if t.id in active_by_tech else None,
-            active_order_status=active_by_tech[t.id].status.value if t.id in active_by_tech else None,
+    items = []
+    for t in technicians:
+        active_order = active_by_tech.get(t.id)
+        # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
+        is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+
+        items.append(
+            TechnicianSummary(
+                id=t.id,
+                full_name=t.user.full_name if t.user else "Técnico",
+                rut=t.rut,
+                initials=t.initials,
+                phone=t.user.phone if t.user else None,
+                vehicle_plate=t.vehicle_plate,
+                is_available=t.is_available,
+                current_lat=t.current_lat if is_en_ruta else None,
+                current_lng=t.current_lng if is_en_ruta else None,
+                last_location_at=t.last_location_at if is_en_ruta else None,
+                active_order_id=active_order.id if active_order else None,
+                active_order_number=active_order.order_number if active_order else None,
+                active_order_status=active_order.status.value if active_order else None,
+            )
         )
-        for t in technicians
-    ]
+    return items
 
 
 async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocationSummary]:
@@ -584,15 +590,18 @@ async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocatio
     items = []
     for t in technicians:
         active_order = active_by_tech.get(t.id)
+        # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
+        is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+
         items.append(
             TechnicianLocationSummary(
                 technician_id=t.id,
                 full_name=t.user.full_name if t.user else "Técnico",
                 initials=t.initials,
                 vehicle_plate=t.vehicle_plate,
-                current_lat=t.current_lat,
-                current_lng=t.current_lng,
-                last_location_at=t.last_location_at,
+                current_lat=t.current_lat if is_en_ruta else None,
+                current_lng=t.current_lng if is_en_ruta else None,
+                last_location_at=t.last_location_at if is_en_ruta else None,
                 active_order_id=active_order.id if active_order else None,
                 active_order_number=active_order.order_number if active_order else None,
                 active_order_status=active_order.status.value if active_order else None,
@@ -654,6 +663,7 @@ async def update_technician_order_location(
     now_utc = datetime.now(timezone.utc)
     technician.current_lat = location_data.lat
     technician.current_lng = location_data.lng
+    technician.last_location_at = now_utc
     technician.updated_at = now_utc
 
     await db.commit()
@@ -664,7 +674,7 @@ async def update_technician_order_location(
         technician_id=technician.id,
         current_lat=technician.current_lat,
         current_lng=technician.current_lng,
-        last_location_at=technician.last_location_at or technician.updated_at,
+        last_location_at=technician.last_location_at,
         status=order.status.value,
     )
 

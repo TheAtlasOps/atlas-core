@@ -55,6 +55,22 @@ class User(Base):
     )
 
 
+# Registro en memoria de timestamps de telemetría GPS real recibida desde terreno
+_technician_gps_receptions: dict[uuid.UUID, datetime] = {}
+
+
+def record_technician_gps_reception(technician_id: uuid.UUID, received_at: datetime) -> None:
+    _technician_gps_receptions[technician_id] = received_at
+
+
+def get_technician_gps_reception(technician_id: uuid.UUID) -> Optional[datetime]:
+    return _technician_gps_receptions.get(technician_id)
+
+
+def clear_technician_gps_receptions() -> None:
+    _technician_gps_receptions.clear()
+
+
 class Technician(Base):
     __tablename__ = "technicians"
 
@@ -79,8 +95,22 @@ class Technician(Base):
 
     @property
     def last_location_at(self) -> Optional[datetime]:
-        """Timestamp de última señal GPS registrada en terreno."""
-        return self.updated_at if (self.current_lat is not None and self.current_lng is not None) else None
+        """
+        Timestamp de la última señal GPS real recibida desde la app móvil.
+        NUNCA utiliza updated_at como sustituto de telemetría reciente.
+        Retorna None si no se han recibido coordenadas GPS reales.
+        """
+        db_val = getattr(self, "_last_location_at_db", None)
+        if db_val is not None:
+            return db_val
+        return _technician_gps_receptions.get(self.id)
+
+    @last_location_at.setter
+    def last_location_at(self, value: Optional[datetime]) -> None:
+        if value is not None:
+            _technician_gps_receptions[self.id] = value
+        else:
+            _technician_gps_receptions.pop(self.id, None)
 
     # Relaciones
     user: Mapped["User"] = relationship("User", back_populates="technician_profile")

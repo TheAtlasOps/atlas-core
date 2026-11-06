@@ -252,12 +252,13 @@ def _build_summary_response(
     if order.status == OrderStatusEnum.EN_RUTA and order_tech:
         tech_lat = getattr(order_tech, "current_lat", None)
         tech_lng = getattr(order_tech, "current_lng", None)
+        real_last_gps = getattr(order_tech, "last_location_at", None)
         if tech_lat is not None and tech_lng is not None:
             technician_loc = ClientTechnicianLocation(
                 lat=tech_lat,
                 lng=tech_lng,
-                last_updated_at=getattr(order_tech, "last_location_at", None) or getattr(order_tech, "updated_at", None),
-                is_live=True,
+                last_updated_at=real_last_gps,
+                is_live=real_last_gps is not None,
             )
 
     return ClientOrderSummaryResponse(
@@ -307,13 +308,14 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
     if order.status == OrderStatusEnum.EN_RUTA and order.technician:
         t = order.technician
         if t.current_lat is not None and t.current_lng is not None:
+            real_last_gps = getattr(t, "last_location_at", None)
             return ClientTrackingLocationResponse(
                 order_id=order.id,
                 order_status=order.status.value,
                 lat=t.current_lat,
                 lng=t.current_lng,
-                last_updated_at=getattr(t, "last_location_at", None) or t.updated_at,
-                is_live=True,
+                last_updated_at=real_last_gps,
+                is_live=real_last_gps is not None,
                 message="Técnico en ruta hacia tu dirección",
             )
         return ClientTrackingLocationResponse(

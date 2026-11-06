@@ -216,9 +216,20 @@ def test_record_location_order_not_found(client, db):
 
 # ─── 3. Endpoint GET /api/v1/orders/technicians/locations ───────────────────
 
-def test_get_technicians_locations(client, db):
-    from datetime import timedelta
+def test_technician_last_location_at_not_default_to_updated_at():
+    """Valida que last_location_at sea None si no hubo ping GPS real, sin usar updated_at."""
     u, t = make_technician()
+    t.updated_at = datetime.now(timezone.utc)
+    assert t.last_location_at is None
+
+    real_time = datetime(2026, 11, 6, 20, 0, 0, tzinfo=timezone.utc)
+    t.last_location_at = real_time
+    assert t.last_location_at == real_time
+
+
+def test_get_technicians_locations(client, db):
+    u, t = make_technician()
+    t.last_location_at = datetime.now(timezone.utc)
     coord_u = User(
         id=uuid.uuid4(),
         email="coord@atlasfsm.cl",
@@ -234,10 +245,11 @@ def test_get_technicians_locations(client, db):
     tech_res = MagicMock()
     tech_res.scalars.return_value.all.return_value = [t]
 
-    orders_res = MagicMock()
-    orders_res.scalars.return_value.all.return_value = []
+    # Caso 1: Sin orden EN_RUTA -> Ubicación oculta (privacidad estricta)
+    orders_res_empty = MagicMock()
+    orders_res_empty.scalars.return_value.all.return_value = []
 
-    db.execute.side_effect = [user_res, tech_res, orders_res]
+    db.execute.side_effect = [user_res, tech_res, orders_res_empty]
 
     token = create_access_token(subject=str(coord_u.id), role=coord_u.role.value)
     headers = {"Authorization": f"Bearer {token}"}
@@ -247,7 +259,22 @@ def test_get_technicians_locations(client, db):
     data = res.json()
     assert len(data) == 1
     assert data[0]["technician_id"] == str(t.id)
-    assert float(data[0]["current_lat"]) == pytest.approx(-33.4489, abs=1e-4)
+    assert data[0]["current_lat"] is None
+    assert data[0]["current_lng"] is None
+    assert data[0]["last_location_at"] is None
+
+    # Caso 2: Con orden EN_RUTA autorizada -> Coordenadas expuestas
+    order_en_ruta = make_order(technician_id=t.id, status=OrderStatusEnum.EN_RUTA)
+    orders_res_en_ruta = MagicMock()
+    orders_res_en_ruta.scalars.return_value.all.return_value = [order_en_ruta]
+
+    db.execute.side_effect = [user_res, tech_res, orders_res_en_ruta]
+    res_en_ruta = client.get("/api/v1/orders/technicians/locations", headers=headers)
+    assert res_en_ruta.status_code == 200
+    data_en_ruta = res_en_ruta.json()
+    assert float(data_en_ruta[0]["current_lat"]) == pytest.approx(-33.4489, abs=1e-4)
+    assert float(data_en_ruta[0]["current_lng"]) == pytest.approx(-70.6693, abs=1e-4)
+    assert data_en_ruta[0]["last_location_at"] is not None
 
 
 # ─── 4. Portal Cliente: Telemetría y Privacidad Estricta ─────────────────────
@@ -255,6 +282,7 @@ def test_get_technicians_locations(client, db):
 def test_client_portal_summary_gps_exposure_only_in_en_ruta(client, db):
     from datetime import timedelta
     u, t = make_technician()
+    t.last_location_at = datetime.now(timezone.utc)
     order = make_order(technician_id=u.id, status=OrderStatusEnum.EN_RUTA)
     order.technician = t
 
@@ -295,6 +323,7 @@ def test_client_portal_summary_gps_exposure_only_in_en_ruta(client, db):
 def test_client_portal_live_tracking_endpoint(client, db):
     from datetime import timedelta
     u, t = make_technician()
+    t.last_location_at = datetime.now(timezone.utc)
     order = make_order(technician_id=u.id, status=OrderStatusEnum.EN_RUTA)
     order.technician = t
 
