@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,23 @@ class ClientTechnicianBadge(BaseModel):
     rut: Optional[str] = None
 
 
+class ClientTechnicianLocation(BaseModel):
+    lat: Decimal
+    lng: Decimal
+    last_updated_at: Optional[datetime] = None
+    is_live: bool = True
+
+
+class ClientTrackingLocationResponse(BaseModel):
+    order_id: uuid.UUID
+    order_status: str
+    lat: Optional[Decimal] = None
+    lng: Optional[Decimal] = None
+    last_updated_at: Optional[datetime] = None
+    is_live: bool = False
+    message: Optional[str] = None
+
+
 # ─── Resumen de la Orden para Portal Cliente (14-DocArq §3.2) ───────────────
 class ClientOrderSummaryResponse(BaseModel):
     order_id: uuid.UUID
@@ -38,9 +56,12 @@ class ClientOrderSummaryResponse(BaseModel):
     eta_label: str = "Llegada estimada"
     address: str
     comuna: str
+    lat: Optional[Decimal] = None
+    lng: Optional[Decimal] = None
     contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
     technician: Optional[ClientTechnicianBadge] = None
+    technician_location: Optional[ClientTechnicianLocation] = None
     timeline_steps: List[TimelineStepItem]
     client_confirmed_at: Optional[datetime] = None
     is_confirmed: bool

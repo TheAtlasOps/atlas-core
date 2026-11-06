@@ -23,7 +23,9 @@ type DetailProps = {
   busy: boolean;
   onBack: () => void;
   checked: Record<number, boolean>; doneCount: number; allDone: boolean;
-  onToggle: (id: number) => void; onConfirmAccess: () => void;
+  onToggle: (id: number) => void;
+  onConfirmAccess: () => void;
+  onStartRoute: () => void;
   evidence: PhotoEvidence[];
   onAddEvidence: (uri: string, type: 'FOTO_ANTES' | 'FOTO_DESPUES', base64?: string | null) => void;
   onRemoveEvidence: (id: string) => void;
@@ -180,11 +182,11 @@ export function DetailScreen(p: DetailProps) {
               <DataRow label="ICCID SIM"      value={p.visit.equipo.iccid} mono />
               <DataRow label="Última falla"   value={p.visit.equipo.falla} last />
             </Card>
-            {p.visit.status !== 'completada' && (
+            {p.visit.status === 'programada' && (
               <TouchableOpacity
-                onPress={p.onConfirmAccess}
+                onPress={p.onStartRoute}
                 disabled={p.busy}
-                className={`bg-brand rounded-xl p-[13px] items-center ${p.busy ? 'opacity-60' : ''}`}
+                className={`bg-brand rounded-xl p-[13px] items-center flex-row justify-center gap-2 ${p.busy ? 'opacity-60' : ''}`}
                 style={{
                   shadowColor: '#F97316', shadowOpacity: 0.35, shadowRadius: 12,
                   shadowOffset: { width: 0, height: 4 }, elevation: 6,
@@ -193,8 +195,50 @@ export function DetailScreen(p: DetailProps) {
                 {p.busy ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text className="text-white text-sm font-bold">Confirmar ingreso y comenzar</Text>
+                  <>
+                    <Feather name="navigation" size={16} color="#fff" />
+                    <Text className="text-white text-sm font-bold">Iniciar ruta (En camino)</Text>
+                  </>
                 )}
+              </TouchableOpacity>
+            )}
+
+            {p.visit.status === 'en_ruta' && (
+              <View className="gap-2.5">
+                <View className="flex-row items-center justify-center gap-2 bg-brand/10 border border-brand/30 rounded-xl py-2 px-3">
+                  <View className="w-2 h-2 rounded-full bg-brand" />
+                  <Text className="text-brand text-xs font-semibold">
+                    GPS en segundo plano activo · Transmitiendo ubicación
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={p.onConfirmAccess}
+                  disabled={p.busy}
+                  className={`bg-emerald-600 rounded-xl p-[13px] items-center flex-row justify-center gap-2 ${p.busy ? 'opacity-60' : ''}`}
+                  style={{
+                    shadowColor: '#059669', shadowOpacity: 0.35, shadowRadius: 12,
+                    shadowOffset: { width: 0, height: 4 }, elevation: 6,
+                  }}
+                >
+                  {p.busy ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="map-pin" size={16} color="#fff" />
+                      <Text className="text-white text-sm font-bold">Confirmar llegada al sitio</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {p.visit.status === 'en_curso' && (
+              <TouchableOpacity
+                onPress={() => p.setTab('checklist')}
+                className="bg-surface border border-border rounded-xl p-[13px] items-center flex-row justify-center gap-2"
+              >
+                <Feather name="check-square" size={16} color={colors.text1} />
+                <Text className="text-text1 text-sm font-semibold">Continuar con checklist técnico</Text>
               </TouchableOpacity>
             )}
           </View>

@@ -211,6 +211,16 @@ export function mapApiSummaryToTrackingOrder(summary) {
       summary.title || summary.service_type || "Servicio Técnico Atlas Entel",
     address: summary.address || "Dirección del Cliente",
     comuna: summary.comuna || "",
+    lat: summary.lat !== null && summary.lat !== undefined ? parseFloat(summary.lat) : null,
+    lng: summary.lng !== null && summary.lng !== undefined ? parseFloat(summary.lng) : null,
+    technician_location: summary.technician_location
+      ? {
+          lat: parseFloat(summary.technician_location.lat),
+          lng: parseFloat(summary.technician_location.lng),
+          last_updated_at: summary.technician_location.last_updated_at,
+          is_live: Boolean(summary.technician_location.is_live),
+        }
+      : null,
     scheduled_date: formatScheduledDateDisplay(summary.scheduled_date),
     completed_at: completedFormatted,
     raw_completed_at: summary.completed_at || null,

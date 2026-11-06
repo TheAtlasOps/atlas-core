@@ -4,6 +4,7 @@ import { login } from '../api/auth';
 import { ApiError, setAuthToken, setUnauthorizedHandler } from '../api/client';
 import { getStored, removeStored, setStored } from '../api/storage';
 import type { SessionUser } from '../api/types';
+import { stopTracking } from '../services/trackingService';
 
 // ─── Sesión del técnico ───────────────────────────────────────────────────────
 const TOKEN_KEY = 'atlas.token';
@@ -43,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const clearSession = useCallback(async () => {
+    void stopTracking();
     setAuthToken(null);
     setUser(null);
     setStatus('signedOut');

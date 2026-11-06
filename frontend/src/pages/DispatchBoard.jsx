@@ -117,12 +117,67 @@ function makeIcon(hex) {
   });
 }
 
+function getSignalFreshness(lastLocationAt) {
+  if (!lastLocationAt) return { label: "Sin señal registrada", isRecent: false, isStale: false };
+  const diffMinutes = Math.floor((Date.now() - new Date(lastLocationAt).getTime()) / 60000);
+  if (diffMinutes < 5) {
+    return {
+      label: diffMinutes <= 0 ? "En vivo (ahora)" : `En vivo (hace ${diffMinutes} min)`,
+      isRecent: true,
+      isStale: false,
+    };
+  } else if (diffMinutes < 30) {
+    return {
+      label: `Señal hace ${diffMinutes} min`,
+      isRecent: false,
+      isStale: true,
+    };
+  } else {
+    return {
+      label: `Sin señal reciente (${diffMinutes} min)`,
+      isRecent: false,
+      isStale: false,
+    };
+  }
+}
+
+function makeTechnicianIcon({ isRecent, isStale, initials = "TC" }) {
+  const ringColor = isRecent ? "#10b981" : isStale ? "#f59e0b" : "#64748b";
+  const glow = isRecent ? `box-shadow: 0 0 8px ${ringColor};` : "";
+  return L.divIcon({
+    className: "",
+    html: `
+      <div style="
+        position: relative;
+        width: 28px; height: 28px;
+        border-radius: 9999px;
+        background: #0f172a;
+        border: 2px solid ${ringColor};
+        ${glow}
+        display: flex; align-items: center; justify-content: center;
+        color: #ffffff; font-weight: 700; font-size: 11px; font-family: monospace;
+      ">
+        <span>${initials}</span>
+        <span style="
+          position: absolute; bottom: -2px; right: -2px;
+          width: 8px; height: 8px; border-radius: 9999px;
+          background: ${ringColor};
+          border: 1.5px solid #0f172a;
+        "></span>
+      </div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -16],
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
+function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [], onSelectOrderId }) {
   const { isDark } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
+  const allMapPoints = useMemo(() => [...markers, ...technicianMarkers], [markers, technicianMarkers]);
 
   return (
     <>
@@ -131,10 +186,10 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
           <div className="flex items-center gap-2">
             <div>
               <h2 className="text-sm font-semibold text-foreground">
-                Zonas activas
+                Zonas activas y GPS
               </h2>
               <p className="text-xs text-muted-foreground">
-                Distribución geográfica de órdenes ({markers.length} georreferenciadas)
+                Distribución en tiempo real ({markers.length} órdenes · {technicianMarkers.length} técnicos con GPS)
               </p>
             </div>
             <span
@@ -160,12 +215,12 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
         ) : (
           <>
             <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
-              {markers.length === 0 && (
+              {allMapPoints.length === 0 && (
                 <div className="absolute inset-x-4 top-4 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
                   <span>
                     {error
                       ? "No se pudieron sincronizar las ubicaciones geográficas"
-                      : "No hay órdenes con ubicación geográfica registrada en este momento"}
+                      : "No hay órdenes ni técnicos con ubicación registrada en este momento"}
                   </span>
                 </div>
               )}
@@ -186,8 +241,9 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={markers} />
+                <MapAutoBounds markers={allMapPoints} />
 
+                {/* Marcadores de Órdenes */}
                 {markers.map((m) => {
                   const hex = getMarkerHexByStatus(m.status, m.hex);
                   return (
@@ -218,14 +274,57 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
                     </Marker>
                   );
                 })}
+
+                {/* Marcadores de Técnicos con GPS */}
+                {technicianMarkers.map((t) => {
+                  const freshness = getSignalFreshness(t.lastLocationAt);
+                  const techIcon = makeTechnicianIcon({
+                    isRecent: freshness.isRecent,
+                    isStale: freshness.isStale,
+                    initials: t.initials || "TC",
+                  });
+                  return (
+                    <Marker key={t.id} position={[t.lat, t.lng]} icon={techIcon}>
+                      <Popup>
+                        <div style={{ fontSize: "12px", lineHeight: "1.5", minWidth: "160px" }}>
+                          <div className="font-bold text-slate-900 flex items-center justify-between">
+                            <span>🚐 {t.name}</span>
+                            {t.vehiclePlate && (
+                              <span className="text-[10px] font-mono bg-slate-100 text-slate-700 px-1 py-0.5 rounded ml-1">
+                                {t.vehiclePlate}
+                              </span>
+                            )}
+                          </div>
+                          {t.orderNumber ? (
+                            <span className="block text-slate-600 text-[11px] mt-0.5">
+                              OT en curso: <strong className="text-orange-600">{t.orderNumber}</strong>
+                            </span>
+                          ) : (
+                            <span className="block text-slate-500 text-[11px] mt-0.5">Sin OT activa</span>
+                          )}
+                          <span className="block text-[11px] font-semibold text-slate-700 mt-1">
+                            Estado: {t.status || "En terreno"}
+                          </span>
+                          <span
+                            className="block text-[10px] font-medium mt-1"
+                            style={{ color: freshness.isRecent ? "#059669" : freshness.isStale ? "#d97706" : "#64748b" }}
+                          >
+                            ● {freshness.label}
+                          </span>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
               </MapContainer>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <LegendDot color="bg-primary" label="En camino / En sitio" />
-              <LegendDot color="bg-emerald-400" label="Completada" />
-              <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
-              <LegendDot color="bg-rose-400" label="Cancelada" />
+              <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
+              <LegendDot color="bg-amber-500" label="Técnico señal >5m" />
+              <LegendDot color="bg-primary" label="OT En camino" />
+              <LegendDot color="bg-emerald-400" label="OT Completada" />
+              <LegendDot color="bg-blue-400" label="OT Confirmada" />
             </div>
           </>
         )}
@@ -239,10 +338,10 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div>
                 <h3 className="text-base font-semibold text-foreground">
-                  Distribución geográfica de órdenes de trabajo en terreno
+                  Distribución geográfica de órdenes y técnicos en terreno
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {markers.length} órdenes georreferenciadas en Región Metropolitana
+                  {markers.length} órdenes y {technicianMarkers.length} técnicos con señal GPS
                 </p>
               </div>
               <button
@@ -257,9 +356,9 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
 
             {/* Mapa interactivo expandido */}
             <div className="relative flex-1 w-full z-0 isolate">
-              {markers.length === 0 && (
+              {allMapPoints.length === 0 && (
                 <div className="absolute inset-x-6 top-6 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-4 py-2.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
-                  <span>No hay órdenes con ubicación geográfica registrada en este momento</span>
+                  <span>No hay órdenes ni técnicos con ubicación registrada en este momento</span>
                 </div>
               )}
               <MapContainer
@@ -274,7 +373,7 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={markers} />
+                <MapAutoBounds markers={allMapPoints} />
                 <MapResizeHandler />
 
                 {markers.map((m) => {
@@ -307,16 +406,49 @@ function ActiveZonesCard({ isLoading, error, markers = [], onSelectOrderId }) {
                     </Marker>
                   );
                 })}
+
+                {technicianMarkers.map((t) => {
+                  const freshness = getSignalFreshness(t.lastLocationAt);
+                  const techIcon = makeTechnicianIcon({
+                    isRecent: freshness.isRecent,
+                    isStale: freshness.isStale,
+                    initials: t.initials || "TC",
+                  });
+                  return (
+                    <Marker key={t.id} position={[t.lat, t.lng]} icon={techIcon}>
+                      <Popup>
+                        <div style={{ fontSize: "12px", minWidth: "180px" }}>
+                          <p className="font-bold text-slate-900 text-sm">🚐 {t.name}</p>
+                          {t.vehiclePlate && (
+                            <p className="text-[11px] font-mono text-slate-600">Patente: {t.vehiclePlate}</p>
+                          )}
+                          {t.orderNumber && (
+                            <p className="text-orange-600 font-semibold text-xs mt-1">OT activa: {t.orderNumber}</p>
+                          )}
+                          <p className="text-slate-500 text-[11px] mt-0.5">Estado: {t.status || "En terreno"}</p>
+                          <p
+                            className="mt-1 text-[10px] font-semibold"
+                            style={{ color: freshness.isRecent ? "#059669" : freshness.isStale ? "#d97706" : "#64748b" }}
+                          >
+                            ● {freshness.label}
+                          </p>
+                        </div>
+                      </Popup>
+                    </Marker>
+                  );
+                })}
               </MapContainer>
             </div>
 
             {/* Pie con leyenda */}
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">
               <div className="flex flex-wrap gap-4">
-                <LegendDot color="bg-primary" label="En camino / En sitio" />
-                <LegendDot color="bg-emerald-400" label="Completada" />
-                <LegendDot color="bg-blue-400" label="Confirmada / Pendiente" />
-                <LegendDot color="bg-rose-400" label="Cancelada" />
+                <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
+                <LegendDot color="bg-amber-500" label="Técnico GPS (>5m)" />
+                <LegendDot color="bg-primary" label="OT En camino" />
+                <LegendDot color="bg-emerald-400" label="OT Completada" />
+                <LegendDot color="bg-blue-400" label="OT Confirmada" />
+                <LegendDot color="bg-rose-400" label="OT Cancelada" />
               </div>
               <button
                 type="button"
@@ -945,6 +1077,7 @@ export default function DispatchBoard() {
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
   const [mapMarkers, setMapMarkers] = useState([]);
+  const [technicianMarkers, setTechnicianMarkers] = useState([]);
   const [activityLog, setActivityLog] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -982,6 +1115,34 @@ export default function DispatchBoard() {
         Array.isArray(techsData.value)
       ) {
         setTechniciansList(techsData.value);
+        const tMarkers = techsData.value
+          .filter((t) => {
+            const lat = parseFloat(t.current_lat);
+            const lng = parseFloat(t.current_lng);
+            return (
+              !isNaN(lat) &&
+              !isNaN(lng) &&
+              t.current_lat !== null &&
+              t.current_lng !== null &&
+              lat >= -90 &&
+              lat <= 90 &&
+              lng >= -180 &&
+              lng <= 180
+            );
+          })
+          .map((t) => ({
+            id: `tech-${t.id}`,
+            technicianId: t.id,
+            name: t.full_name || "Técnico en terreno",
+            initials: t.initials || "TC",
+            vehiclePlate: t.vehicle_plate,
+            orderNumber: t.active_order_number,
+            status: t.active_order_status || (t.is_available ? "Disponible" : "En terreno"),
+            lat: parseFloat(t.current_lat),
+            lng: parseFloat(t.current_lng),
+            lastLocationAt: t.last_location_at,
+          }));
+        setTechnicianMarkers(tMarkers);
       }
 
       if (
@@ -1051,6 +1212,49 @@ export default function DispatchBoard() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  // Polling silencioso en segundo plano para actualizar telemetría GPS cada 30s sin recargar la pantalla
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const data = await api.orders.getTechnicians();
+        if (Array.isArray(data)) {
+          setTechniciansList(data);
+          const tMarkers = data
+            .filter((t) => {
+              const lat = parseFloat(t.current_lat);
+              const lng = parseFloat(t.current_lng);
+              return (
+                !isNaN(lat) &&
+                !isNaN(lng) &&
+                t.current_lat !== null &&
+                t.current_lng !== null &&
+                lat >= -90 &&
+                lat <= 90 &&
+                lng >= -180 &&
+                lng <= 180
+              );
+            })
+            .map((t) => ({
+              id: `tech-${t.id}`,
+              technicianId: t.id,
+              name: t.full_name || "Técnico en terreno",
+              initials: t.initials || "TC",
+              vehiclePlate: t.vehicle_plate,
+              orderNumber: t.active_order_number,
+              status: t.active_order_status || (t.is_available ? "Disponible" : "En terreno"),
+              lat: parseFloat(t.current_lat),
+              lng: parseFloat(t.current_lng),
+              lastLocationAt: t.last_location_at,
+            }));
+          setTechnicianMarkers(tMarkers);
+        }
+      } catch {
+        // Continuar silenciosamente sin interrumpir la interacción del usuario
+      }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   const activeFilterCount = (statusFilter ? 1 : 0) + (serviceFilter ? 1 : 0);
   const hasActiveFilters = Boolean(search.trim()) || activeFilterCount > 0;
@@ -1542,6 +1746,7 @@ export default function DispatchBoard() {
                 isLoading={isLoading}
                 error={apiError}
                 markers={mapMarkers}
+                technicianMarkers={technicianMarkers}
                 onSelectOrderId={handleSelectOrderId}
               />
               <DonutChartCard

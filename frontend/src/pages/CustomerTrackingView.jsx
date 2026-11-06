@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
   Building2,
   FileSignature,
   CalendarCheck,
+  Navigation,
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
@@ -25,7 +26,7 @@ import {
 import { api } from "../lib/api";
 import SignaturePad from "../components/ui/SignaturePad";
 
-
+const LiveTrackingMap = lazy(() => import("../components/ui/LiveTrackingMap"));
 
 export default function CustomerTrackingView({ initialSummary = null } = {}) {
   const { uuid } = useParams();
@@ -125,6 +126,60 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
     );
     return idx >= 0 ? idx : 0;
   }, [timelineSteps, order]);
+
+  // Seguimiento GPS en vivo (exclusivo para EN_RUTA con refresco cada 30s)
+  const [liveTechLocation, setLiveTechLocation] = useState(null);
+
+  useEffect(() => {
+    if (apiSummary?.technician_location) {
+      setLiveTechLocation(apiSummary.technician_location);
+    }
+  }, [apiSummary?.technician_location]);
+
+  const isEnRuta = (order?.status_key || order?.statusKey) === "en_ruta";
+
+  useEffect(() => {
+    if (!token || !isEnRuta) return;
+    let cancelled = false;
+
+    async function pollTracking() {
+      try {
+        const tracking = await api.clientPortal.getTracking(token);
+        if (cancelled || !tracking) return;
+        if (tracking.status && tracking.status !== "en_ruta") {
+          const freshSummary = await api.clientPortal.getSummary(token);
+          if (!cancelled && freshSummary) {
+            setApiSummary(freshSummary);
+          }
+        } else if (tracking.technician_location) {
+          setLiveTechLocation(tracking.technician_location);
+        }
+      } catch {
+        // Polling silencioso en segundo plano
+      }
+    }
+
+    const intervalId = setInterval(pollTracking, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [token, isEnRuta]);
+
+  const clientPos = useMemo(() => {
+    if (order?.lat != null && order?.lng != null && !isNaN(order.lat) && !isNaN(order.lng)) {
+      return [order.lat, order.lng];
+    }
+    return null;
+  }, [order?.lat, order?.lng]);
+
+  const techPos = useMemo(() => {
+    const loc = liveTechLocation || order?.technician_location;
+    if (loc?.lat != null && loc?.lng != null && !isNaN(loc.lat) && !isNaN(loc.lng)) {
+      return [parseFloat(loc.lat), parseFloat(loc.lng)];
+    }
+    return null;
+  }, [liveTechLocation, order?.technician_location]);
 
   const handleConfirmVisit = async (e) => {
     e.preventDefault();
@@ -401,6 +456,53 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
             )}
           </div>
         </section>
+
+        {/* ── MAPA EN VIVO LEAFLET (EXCLUSIVO CUANDO EL TÉCNICO ESTÁ EN RUTA) ── */}
+        {isEnRuta && (clientPos || techPos) && (
+          <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-4 shadow-sm overflow-hidden transition-colors">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
+                  Ubicación en vivo del especialista
+                </h3>
+              </div>
+              <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
+                {techPos ? "GPS activo" : "Buscando señal"}
+              </span>
+            </div>
+
+            <Suspense
+              fallback={
+                <div className="h-64 sm:h-72 w-full rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse flex items-center justify-center text-xs text-slate-400">
+                  Cargando mapa interactivo...
+                </div>
+              }
+            >
+              <LiveTrackingMap
+                clientPos={clientPos}
+                techPos={techPos}
+                address={order.address}
+                technicianName={order.technician?.name}
+              />
+            </Suspense>
+
+            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
+              <div className="flex items-center gap-1.5">
+                <Navigation className="h-3.5 w-3.5 text-orange-500" />
+                <span>Actualización automática de trayecto cada 30s</span>
+              </div>
+              {order.technician?.name && (
+                <span className="font-medium text-slate-700 dark:text-gray-300">
+                  {order.technician.name}
+                </span>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* ── 2. STEPPER / LÍNEA DE TIEMPO DE 4 ESTADOS (confirmada, en_ruta, en_sitio, completada) ── */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-5 shadow-sm transition-colors">

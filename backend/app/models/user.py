@@ -50,12 +50,6 @@ class User(Base):
     audited_orders: Mapped[List["WorkOrder"]] = relationship(
         "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
     )
-    audited_orders: Mapped[List["WorkOrder"]] = relationship(
-        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
-    )
-    audited_orders: Mapped[List["WorkOrder"]] = relationship(
-        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
-    )
     status_changes: Mapped[List["OrderStatusHistory"]] = relationship(
         "OrderStatusHistory", back_populates="changed_by_user"
     )
@@ -82,6 +76,11 @@ class Technician(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+    @property
+    def last_location_at(self) -> Optional[datetime]:
+        """Timestamp de última señal GPS registrada en terreno."""
+        return self.updated_at if (self.current_lat is not None and self.current_lng is not None) else None
 
     # Relaciones
     user: Mapped["User"] = relationship("User", back_populates="technician_profile")

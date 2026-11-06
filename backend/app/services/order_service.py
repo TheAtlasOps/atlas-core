@@ -19,6 +19,9 @@ from app.schemas.work_order import (
     WorkOrderCreate,
     WorkOrderStatusUpdate,
     WorkOrderAssign,
+    WorkOrderLocationUpdate,
+    WorkOrderLocationResponse,
+    TechnicianLocationSummary,
     SyncBatchRequest,
     SyncBatchResponse,
     DispatchKPIsResponse,
@@ -529,11 +532,20 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
 
 
 async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
-    """Retorna el listado de técnicos activos consultando la base de datos."""
+    """Retorna el listado de técnicos activos consultando la base de datos con su estado operativo y ubicación."""
     result = await db.execute(
         select(Technician).options(selectinload(Technician.user))
     )
     technicians = result.scalars().all()
+
+    active_orders_res = await db.execute(
+        select(WorkOrder).where(
+            WorkOrder.status.in_([OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO])
+        )
+    )
+    active_orders = active_orders_res.scalars().all()
+    active_by_tech = {o.technician_id: o for o in active_orders if o.technician_id}
+
     return [
         TechnicianSummary(
             id=t.id,
@@ -543,9 +555,118 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
             phone=t.user.phone if t.user else None,
             vehicle_plate=t.vehicle_plate,
             is_available=t.is_available,
+            current_lat=t.current_lat,
+            current_lng=t.current_lng,
+            last_location_at=t.last_location_at,
+            active_order_id=active_by_tech[t.id].id if t.id in active_by_tech else None,
+            active_order_number=active_by_tech[t.id].order_number if t.id in active_by_tech else None,
+            active_order_status=active_by_tech[t.id].status.value if t.id in active_by_tech else None,
         )
         for t in technicians
     ]
+
+
+async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocationSummary]:
+    """Retorna telemetría consolidada de técnicos para representación cartográfica en tiempo real."""
+    result = await db.execute(
+        select(Technician).options(selectinload(Technician.user))
+    )
+    technicians = result.scalars().all()
+
+    active_orders_res = await db.execute(
+        select(WorkOrder).where(
+            WorkOrder.status.in_([OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO])
+        )
+    )
+    active_orders = active_orders_res.scalars().all()
+    active_by_tech = {o.technician_id: o for o in active_orders if o.technician_id}
+
+    items = []
+    for t in technicians:
+        active_order = active_by_tech.get(t.id)
+        items.append(
+            TechnicianLocationSummary(
+                technician_id=t.id,
+                full_name=t.user.full_name if t.user else "Técnico",
+                initials=t.initials,
+                vehicle_plate=t.vehicle_plate,
+                current_lat=t.current_lat,
+                current_lng=t.current_lng,
+                last_location_at=t.last_location_at,
+                active_order_id=active_order.id if active_order else None,
+                active_order_number=active_order.order_number if active_order else None,
+                active_order_status=active_order.status.value if active_order else None,
+                is_available=t.is_available,
+            )
+        )
+    return items
+
+
+async def update_technician_order_location(
+    db: AsyncSession,
+    order_id: uuid.UUID,
+    location_data: WorkOrderLocationUpdate,
+    current_user: User,
+) -> WorkOrderLocationResponse:
+    """
+    Registra coordenadas GPS en tiempo real enviadas por la app móvil del técnico asignado.
+    Restringido estrictamente a órdenes en estado EN_RUTA para salvaguardar privacidad.
+    """
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {order_id} no encontrada"
+        )
+
+    # Validar asignación del técnico
+    if current_user.role == UserRoleEnum.TECNICO:
+        if order.technician_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="El técnico autenticado no está asignado a esta orden de trabajo."
+            )
+    elif current_user.role not in [UserRoleEnum.ADMIN, UserRoleEnum.COORDINADOR]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Rol de usuario no autorizado para reportar telemetría."
+        )
+
+    # Validar que la orden se encuentre en trayecto (EN_RUTA)
+    if order.status != OrderStatusEnum.EN_RUTA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Solo se admiten actualizaciones de ubicación mientras la orden está en estado EN_RUTA. Estado actual: {order.status.value}"
+        )
+
+    target_tech_id = order.technician_id or current_user.id
+    technician = order.technician
+    if not technician:
+        tech_res = await db.execute(select(Technician).where(Technician.id == target_tech_id))
+        technician = tech_res.scalar_one_or_none()
+
+    if not technician:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Perfil del técnico asignado no encontrado."
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    technician.current_lat = location_data.lat
+    technician.current_lng = location_data.lng
+    technician.updated_at = now_utc
+
+    await db.commit()
+
+    return WorkOrderLocationResponse(
+        success=True,
+        order_id=order.id,
+        technician_id=technician.id,
+        current_lat=technician.current_lat,
+        current_lng=technician.current_lng,
+        last_location_at=technician.last_location_at or technician.updated_at,
+        status=order.status.value,
+    )
 
 
 async def list_clients(db: AsyncSession) -> List[ClientSummary]:

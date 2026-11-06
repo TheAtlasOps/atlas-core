@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.schemas.client_portal import (
     ClientOrderSummaryResponse,
+    ClientTrackingLocationResponse,
     ConfirmVisitRequest,
     ConfirmVisitResponse,
     SignConformityRequest,
@@ -11,6 +12,7 @@ from app.schemas.client_portal import (
 )
 from app.services.client_service import (
     get_client_order_summary,
+    get_client_live_tracking,
     confirm_client_visit,
     submit_client_signature,
 )
@@ -60,3 +62,17 @@ async def sign_service(
 ):
     """Recepción y resguardo de firma digital."""
     return await submit_client_signature(db=db, token=token, sign_data=sign_data)
+
+
+@router.get(
+    "/tracking",
+    response_model=ClientTrackingLocationResponse,
+    summary="Telemetría en tiempo real del técnico asignado",
+    description="Consulta ligera y segura por Magic Link para refrescar la posición del móvil cada 30-60 segundos exclusivamente durante estado EN_RUTA (RF-CLI-05).",
+)
+async def get_tracking(
+    token: str = Query(..., description="Token del Magic Link"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Consulta de telemetría GPS con bloqueo estricto de privacidad."""
+    return await get_client_live_tracking(db=db, token=token)
