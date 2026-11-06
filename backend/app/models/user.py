@@ -55,22 +55,6 @@ class User(Base):
     )
 
 
-# Registro en memoria de timestamps de telemetría GPS real recibida desde terreno
-_technician_gps_receptions: dict[uuid.UUID, datetime] = {}
-
-
-def record_technician_gps_reception(technician_id: uuid.UUID, received_at: datetime) -> None:
-    _technician_gps_receptions[technician_id] = received_at
-
-
-def get_technician_gps_reception(technician_id: uuid.UUID) -> Optional[datetime]:
-    return _technician_gps_receptions.get(technician_id)
-
-
-def clear_technician_gps_receptions() -> None:
-    _technician_gps_receptions.clear()
-
-
 class Technician(Base):
     __tablename__ = "technicians"
 
@@ -83,6 +67,9 @@ class Technician(Base):
     vehicle_plate: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     current_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     current_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    last_location_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
@@ -92,25 +79,6 @@ class Technician(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-    @property
-    def last_location_at(self) -> Optional[datetime]:
-        """
-        Timestamp de la última señal GPS real recibida desde la app móvil.
-        NUNCA utiliza updated_at como sustituto de telemetría reciente.
-        Retorna None si no se han recibido coordenadas GPS reales.
-        """
-        db_val = getattr(self, "_last_location_at_db", None)
-        if db_val is not None:
-            return db_val
-        return _technician_gps_receptions.get(self.id)
-
-    @last_location_at.setter
-    def last_location_at(self, value: Optional[datetime]) -> None:
-        if value is not None:
-            _technician_gps_receptions[self.id] = value
-        else:
-            _technician_gps_receptions.pop(self.id, None)
 
     # Relaciones
     user: Mapped["User"] = relationship("User", back_populates="technician_profile")

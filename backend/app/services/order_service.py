@@ -551,6 +551,7 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
         active_order = active_by_tech.get(t.id)
         # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
         is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+        has_fresh_location = is_en_ruta and t.last_location_at is not None
 
         items.append(
             TechnicianSummary(
@@ -561,9 +562,9 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
                 phone=t.user.phone if t.user else None,
                 vehicle_plate=t.vehicle_plate,
                 is_available=t.is_available,
-                current_lat=t.current_lat if is_en_ruta else None,
-                current_lng=t.current_lng if is_en_ruta else None,
-                last_location_at=t.last_location_at if is_en_ruta else None,
+                current_lat=t.current_lat if has_fresh_location else None,
+                current_lng=t.current_lng if has_fresh_location else None,
+                last_location_at=t.last_location_at if has_fresh_location else None,
                 active_order_id=active_order.id if active_order else None,
                 active_order_number=active_order.order_number if active_order else None,
                 active_order_status=active_order.status.value if active_order else None,
@@ -592,6 +593,7 @@ async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocatio
         active_order = active_by_tech.get(t.id)
         # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
         is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+        has_fresh_location = is_en_ruta and t.last_location_at is not None
 
         items.append(
             TechnicianLocationSummary(
@@ -599,9 +601,9 @@ async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocatio
                 full_name=t.user.full_name if t.user else "Técnico",
                 initials=t.initials,
                 vehicle_plate=t.vehicle_plate,
-                current_lat=t.current_lat if is_en_ruta else None,
-                current_lng=t.current_lng if is_en_ruta else None,
-                last_location_at=t.last_location_at if is_en_ruta else None,
+                current_lat=t.current_lat if has_fresh_location else None,
+                current_lng=t.current_lng if has_fresh_location else None,
+                last_location_at=t.last_location_at if has_fresh_location else None,
                 active_order_id=active_order.id if active_order else None,
                 active_order_number=active_order.order_number if active_order else None,
                 active_order_status=active_order.status.value if active_order else None,

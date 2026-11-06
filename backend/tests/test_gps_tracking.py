@@ -220,11 +220,82 @@ def test_technician_last_location_at_not_default_to_updated_at():
     """Valida que last_location_at sea None si no hubo ping GPS real, sin usar updated_at."""
     u, t = make_technician()
     t.updated_at = datetime.now(timezone.utc)
+    t.last_location_at = None
     assert t.last_location_at is None
 
     real_time = datetime(2026, 11, 6, 20, 0, 0, tzinfo=timezone.utc)
     t.last_location_at = real_time
     assert t.last_location_at == real_time
+
+
+def test_technician_gps_persistence_across_independent_db_sessions():
+    """Demuestra persistencia física real de lat, lng y last_location_at a través de sesiones DB independientes."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from app.core.database import Base
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    uid = uuid.uuid4()
+    now_gps = datetime(2026, 11, 6, 20, 15, 30, tzinfo=timezone.utc)
+    coords_lat = Decimal("-33.4489123")
+    coords_lng = Decimal("-70.6693456")
+
+    # Sesión 1: Crea el técnico sin coordenadas
+    with Session(engine) as s1:
+        u = User(
+            id=uid,
+            email="tech_pers@atlasfsm.cl",
+            password_hash="fake_hash",
+            full_name="Tech Persistente",
+            role=UserRoleEnum.TECNICO,
+            is_active=True,
+        )
+        t = Technician(
+            id=uid,
+            rut="18.222.333-4",
+            initials="TP",
+            vehicle_plate="GPS-99",
+            current_lat=None,
+            current_lng=None,
+            last_location_at=None,
+        )
+        u.technician_profile = t
+        s1.add(u)
+        s1.add(t)
+        s1.commit()
+
+    # Sesión 2: Modifica datos no GPS -> last_location_at sigue siendo None
+    with Session(engine) as s2:
+        t_loaded = s2.scalar(select(Technician).where(Technician.id == uid))
+        assert t_loaded.last_location_at is None
+        t_loaded.vehicle_plate = "GPS-100"
+        s2.commit()
+
+    # Sesión 3: Registra conjuntamente lat, lng y last_location_at simulando el endpoint GPS
+    with Session(engine) as s3:
+        t_gps = s3.scalar(select(Technician).where(Technician.id == uid))
+        assert t_gps.last_location_at is None
+        t_gps.current_lat = coords_lat
+        t_gps.current_lng = coords_lng
+        t_gps.last_location_at = now_gps
+        s3.commit()
+
+    # Sesión 4: Sesión completamente independiente y aislada verifica la persistencia real
+    with Session(engine) as s4:
+        persisted = s4.scalar(select(Technician).where(Technician.id == uid))
+        assert persisted is not None
+        assert str(persisted.id) == str(uid)
+        assert persisted.current_lat == coords_lat
+        assert persisted.current_lng == coords_lng
+        assert persisted.last_location_at is not None
+        persisted_time = (
+            persisted.last_location_at.replace(tzinfo=timezone.utc)
+            if persisted.last_location_at.tzinfo is None
+            else persisted.last_location_at
+        )
+        assert persisted_time == now_gps
 
 
 def test_get_technicians_locations(client, db):
@@ -356,3 +427,33 @@ def test_client_portal_live_tracking_endpoint(client, db):
     assert data_sitio["is_live"] is False
     assert data_sitio["lat"] is None
     assert data_sitio["lng"] is None
+
+
+def test_client_portal_hides_stale_coordinates_after_threshold(client, db):
+    """Valida que coordenadas GPS con antigüedad mayor al umbral (30 min) no se muestren como señal en vivo."""
+    from datetime import timedelta
+    u, t = make_technician()
+    # GPS recibido hace 45 minutos (antiguo / obsoleto)
+    t.last_location_at = datetime.now(timezone.utc) - timedelta(minutes=45)
+    order = make_order(technician_id=u.id, status=OrderStatusEnum.EN_RUTA)
+    order.technician = t
+
+    magic_link = MagicLink(
+        id=uuid.uuid4(),
+        work_order_id=order.id,
+        work_order=order,
+        token="test_stale_token",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    ml_res = MagicMock()
+    ml_res.scalar_one_or_none.return_value = magic_link
+    db.execute.return_value = ml_res
+
+    res = client.get("/api/v1/client/tracking?token=test_stale_token")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["is_live"] is False
+    assert "en espera de actualización" in data["message"]
