@@ -18,6 +18,8 @@ from app.models.enums import OrderStatusEnum, EvidenceTypeEnum
 from app.schemas.client_portal import (
     TimelineStepItem,
     ClientTechnicianBadge,
+    ClientTechnicianLocation,
+    ClientTrackingLocationResponse,
     ClientOrderSummaryResponse,
     ConfirmVisitRequest,
     ConfirmVisitResponse,
@@ -238,6 +240,30 @@ def _build_summary_response(
     audited_at = getattr(order, "audited_at", None)
     audit_notes = getattr(order, "audit_notes", None)
 
+    # ── Coordenadas de orden y ubicación en vivo del técnico (RF-CLI-05) ──
+    client_lat = getattr(order.client, "lat", None) if getattr(order, "client", None) else None
+    client_lng = getattr(order.client, "lng", None) if getattr(order, "client", None) else None
+    order_lat = getattr(order, "lat", None) if getattr(order, "lat", None) is not None else client_lat
+    order_lng = getattr(order, "lng", None) if getattr(order, "lng", None) is not None else client_lng
+
+    technician_loc = None
+    # Privacidad estricta: ÚNICAMENTE exponer ubicación si la orden está EN_RUTA
+    order_tech = getattr(order, "technician", None)
+    if order.status == OrderStatusEnum.EN_RUTA and order_tech:
+        tech_lat = getattr(order_tech, "current_lat", None)
+        tech_lng = getattr(order_tech, "current_lng", None)
+        real_last_gps = getattr(order_tech, "last_location_at", None)
+        # No mostrar coordenadas antiguas sin timestamp real de recepción
+        if tech_lat is not None and tech_lng is not None and real_last_gps is not None:
+            now_utc = datetime.now(timezone.utc)
+            is_recent = 0 <= (now_utc - real_last_gps).total_seconds() <= 1800
+            technician_loc = ClientTechnicianLocation(
+                lat=tech_lat,
+                lng=tech_lng,
+                last_updated_at=real_last_gps,
+                is_live=is_recent,
+            )
+
     return ClientOrderSummaryResponse(
         order_id=order.id,
         order_number=order.order_number,
@@ -252,9 +278,12 @@ def _build_summary_response(
         eta_label=eta_label,
         address=address,
         comuna=comuna,
+        lat=order_lat,
+        lng=order_lng,
         contact_person=contact_person,
         contact_phone=contact_phone,
         technician=tech_badge,
+        technician_location=technician_loc,
         timeline_steps=timeline,
         client_confirmed_at=confirmed_at,
         is_confirmed=is_confirmed,
@@ -267,6 +296,51 @@ def _build_summary_response(
         audit_notes=audit_notes,
         is_completed=order.status == OrderStatusEnum.COMPLETADA,
         is_expired=False,
+    )
+
+
+async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTrackingLocationResponse:
+    """
+    Consulta ultraligera y segura por Magic Link para seguimiento cartográfico en vivo (RF-CLI-05).
+    Retorna coordenadas solo si la orden se encuentra actualmente en estado EN_RUTA.
+    Si la orden avanzó a EN_SITIO o posterior, o fue cancelada, oculta las coordenadas del técnico.
+    """
+    magic_link = await validate_magic_link_token(db, token)
+    order = magic_link.work_order
+
+    if order.status == OrderStatusEnum.EN_RUTA and order.technician:
+        t = order.technician
+        real_last_gps = getattr(t, "last_location_at", None)
+        if t.current_lat is not None and t.current_lng is not None and real_last_gps is not None:
+            now_utc = datetime.now(timezone.utc)
+            is_recent = 0 <= (now_utc - real_last_gps).total_seconds() <= 1800
+            return ClientTrackingLocationResponse(
+                order_id=order.id,
+                order_status=order.status.value,
+                lat=t.current_lat,
+                lng=t.current_lng,
+                last_updated_at=real_last_gps,
+                is_live=is_recent,
+                message="Técnico en ruta hacia tu dirección" if is_recent else "Técnico en camino. Señal GPS en espera de actualización.",
+            )
+        return ClientTrackingLocationResponse(
+            order_id=order.id,
+            order_status=order.status.value,
+            lat=None,
+            lng=None,
+            last_updated_at=None,
+            is_live=False,
+            message="Técnico en camino. Esperando señal de geolocalización.",
+        )
+
+    return ClientTrackingLocationResponse(
+        order_id=order.id,
+        order_status=order.status.value,
+        lat=None,
+        lng=None,
+        last_updated_at=None,
+        is_live=False,
+        message="Seguimiento GPS no disponible para el estado actual de la visita.",
     )
 
 

@@ -26,3 +26,18 @@ export function updateOrderStatus(
     body: { new_status: newStatus, ...(comment ? { comment } : {}) },
   });
 }
+
+/** Reporta coordenadas GPS en tiempo real para una orden activa en estado EN_RUTA */
+export function sendOrderLocation(
+  orderId: string,
+  lat: number,
+  lng: number,
+): Promise<{ success: boolean; current_lat: number; current_lng: number }> {
+  return apiRequest<{ success: boolean; current_lat: number; current_lng: number }>(
+    `/orders/${orderId}/location`,
+    {
+      method: 'POST',
+      body: { lat, lng },
+    },
+  );
+}

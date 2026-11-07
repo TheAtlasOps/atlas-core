@@ -47,8 +47,44 @@ class TechnicianSummary(BaseModel):
     phone: Optional[str] = None
     vehicle_plate: Optional[str] = None
     is_available: bool = True
+    current_lat: Optional[Decimal] = None
+    current_lng: Optional[Decimal] = None
+    last_location_at: Optional[datetime] = None
+    active_order_id: Optional[uuid.UUID] = None
+    active_order_number: Optional[str] = None
+    active_order_status: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WorkOrderLocationUpdate(BaseModel):
+    lat: Decimal = Field(..., ge=-90.0, le=90.0, description="Latitud WGS84 (-90.0 a 90.0)")
+    lng: Decimal = Field(..., ge=-180.0, le=180.0, description="Longitud WGS84 (-180.0 a 180.0)")
+    recorded_at: Optional[datetime] = Field(None, description="Timestamp de captura en dispositivo móvil")
+
+
+class WorkOrderLocationResponse(BaseModel):
+    success: bool = True
+    order_id: uuid.UUID
+    technician_id: uuid.UUID
+    current_lat: Decimal
+    current_lng: Decimal
+    last_location_at: datetime
+    status: str
+
+
+class TechnicianLocationSummary(BaseModel):
+    technician_id: uuid.UUID
+    full_name: str
+    initials: Optional[str] = None
+    vehicle_plate: Optional[str] = None
+    current_lat: Optional[Decimal] = None
+    current_lng: Optional[Decimal] = None
+    last_location_at: Optional[datetime] = None
+    active_order_id: Optional[uuid.UUID] = None
+    active_order_number: Optional[str] = None
+    active_order_status: Optional[str] = None
+    is_available: bool = True
 
 
 class TechnicianCreate(BaseModel):

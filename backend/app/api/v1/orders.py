@@ -13,6 +13,9 @@ from app.schemas.work_order import (
     WorkOrderCreate,
     WorkOrderStatusUpdate,
     WorkOrderAssign,
+    WorkOrderLocationUpdate,
+    WorkOrderLocationResponse,
+    TechnicianLocationSummary,
     WorkOrderResponse,
     WorkOrderListResponse,
     DispatchKPIsResponse,
@@ -33,6 +36,8 @@ from app.services.order_service import (
     approve_order_audit,
     create_order,
     update_order_status,
+    update_technician_order_location,
+    list_technicians_locations,
     assign_technician,
     process_offline_sync_batch,
     get_dispatch_kpis,
@@ -64,6 +69,9 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
             phone=order.technician.user.phone,
             vehicle_plate=order.technician.vehicle_plate,
             is_available=order.technician.is_available,
+            current_lat=order.technician.current_lat,
+            current_lng=order.technician.current_lng,
+            last_location_at=order.technician.last_location_at,
         )
 
     # Mapeo de auditor
@@ -244,6 +252,20 @@ async def get_technicians(
     return await list_technicians(db)
 
 
+@router.get(
+    "/technicians/locations",
+    response_model=List[TechnicianLocationSummary],
+    summary="Telemetría cartográfica de técnicos en terreno",
+    description="Retorna ubicaciones GPS activas, órdenes vinculadas y estados operativos de técnicos para el tablero de despacho.",
+)
+async def get_technicians_locations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Telemetría para renderizado en mapa Leaflet del Backoffice."""
+    return await list_technicians_locations(db)
+
+
 @router.post(
     "/technicians",
     response_model=TechnicianSummary,
@@ -415,3 +437,24 @@ async def audit_approve_order(
         current_user=current_user,
     )
     return build_order_response(approved, include_token=False)
+
+
+@router.post(
+    "/{order_id}/location",
+    response_model=WorkOrderLocationResponse,
+    summary="Registrar telemetría GPS del técnico en ruta",
+    description="Permite a la app móvil del técnico reportar coordenadas periódicas mientras la orden esté en EN_RUTA (RF-APP-05 / RF-CLI-05).",
+)
+async def record_order_location(
+    order_id: uuid.UUID,
+    location_data: WorkOrderLocationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Actualización de posición GPS durante el desplazamiento en terreno."""
+    return await update_technician_order_location(
+        db=db,
+        order_id=order_id,
+        location_data=location_data,
+        current_user=current_user,
+    )

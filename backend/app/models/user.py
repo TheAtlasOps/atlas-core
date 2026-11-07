@@ -50,12 +50,6 @@ class User(Base):
     audited_orders: Mapped[List["WorkOrder"]] = relationship(
         "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
     )
-    audited_orders: Mapped[List["WorkOrder"]] = relationship(
-        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
-    )
-    audited_orders: Mapped[List["WorkOrder"]] = relationship(
-        "WorkOrder", back_populates="auditor", foreign_keys="WorkOrder.audited_by_user_id"
-    )
     status_changes: Mapped[List["OrderStatusHistory"]] = relationship(
         "OrderStatusHistory", back_populates="changed_by_user"
     )
@@ -73,6 +67,9 @@ class Technician(Base):
     vehicle_plate: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     current_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     current_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    last_location_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

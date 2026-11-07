@@ -86,6 +86,12 @@ export const api = {
         body: JSON.stringify({ notes }),
       }),
     getTechnicians: () => request("/orders/technicians"),
+    getTechnicianLocations: () => request("/orders/technicians/locations"),
+    updateLocation: (orderId, lat, lng) =>
+      request(`/orders/${orderId}/location`, {
+        method: "POST",
+        body: JSON.stringify({ lat, lng }),
+      }),
     createTechnician: (techData) =>
       request("/orders/technicians", { method: "POST", body: JSON.stringify(techData) }),
     toggleTechnicianAvailability: (id) =>
@@ -137,5 +143,7 @@ export const api = {
           signed_by_name: signedByName,
         }),
       }),
+    getTracking: (magicLinkToken) =>
+      request(`/client/tracking?token=${encodeURIComponent(magicLinkToken)}`),
   },
 };

@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { useVisits } from './src/hooks/useVisits';
 import { updateOrderStatus } from './src/api/orders';
+import { startTracking, stopTracking } from './src/services/trackingService';
 import {
   uploadEvidenceFile,
   createEvidenceRecord,
@@ -114,7 +115,22 @@ function AtlasTecnicoApp() {
     });
   }
 
-  // "Confirmar ingreso y comenzar": marca la orden como EN_SITIO en el servidor
+  // "Iniciar ruta": marca la orden como EN_RUTA e inicia seguimiento GPS
+  async function startRoute() {
+    if (!visit || busy) return;
+    setBusy(true);
+    try {
+      const updated = await updateOrderStatus(visit.id, 'EN_RUTA', 'Técnico inició desplazamiento en ruta');
+      applyOrder(updated);
+      await startTracking(visit.id);
+    } catch (e) {
+      Alert.alert('No se pudo iniciar ruta', (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // "Confirmar ingreso y comenzar": marca la orden como EN_SITIO en el servidor y detiene el GPS
   async function confirmAccess() {
     if (!visit || busy) return;
     setBusy(true);
@@ -122,6 +138,7 @@ function AtlasTecnicoApp() {
       if (visit.status === 'programada' || visit.status === 'en_ruta') {
         const updated = await updateOrderStatus(visit.id, 'EN_SITIO', 'Técnico confirmó ingreso al sitio (app móvil)');
         applyOrder(updated);
+        void stopTracking();
       }
       setCheckedMap((prev) => {
         const current: Record<number, boolean> = prev[key] ?? {};
@@ -314,6 +331,7 @@ function AtlasTecnicoApp() {
       // Validación 5: marcar orden como COMPLETADA
       const updated = await updateOrderStatus(visit.id, 'COMPLETADA', buildClosingComment());
       applyOrder(updated);
+      void stopTracking();
       setView('success');
     } catch (e) {
       Alert.alert(
@@ -356,6 +374,7 @@ function AtlasTecnicoApp() {
           allDone={allDone}
           onToggle={toggleItem}
           onConfirmAccess={confirmAccess}
+          onStartRoute={startRoute}
           evidence={evidence}
           onAddEvidence={addEvidence}
           onRemoveEvidence={removeEvidence}
