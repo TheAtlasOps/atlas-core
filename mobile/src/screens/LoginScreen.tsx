@@ -8,8 +8,12 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 
+interface LoginScreenProps {
+  onForgotPassword?: () => void;
+}
+
 // ─── Pantalla de inicio de sesión ─────────────────────────────────────────────
-export function LoginScreen() {
+export function LoginScreen({ onForgotPassword }: LoginScreenProps = {}) {
   const { colors } = useTheme();
   const { signIn, notice } = useAuth();
   const [email, setEmail] = useState('');
@@ -134,6 +138,21 @@ export function LoginScreen() {
           <Text className="text-[10px] text-text3 text-center mt-3">
             Conectando con el servidor… la primera vez puede tardar hasta un minuto.
           </Text>
+        ) : null}
+
+        {onForgotPassword ? (
+          <TouchableOpacity
+            onPress={onForgotPassword}
+            disabled={loading}
+            accessibilityRole="button"
+            accessibilityLabel="¿Olvidaste tu contraseña?"
+            className="mt-5 py-2 items-center"
+            activeOpacity={0.7}
+          >
+            <Text className="text-xs font-semibold text-brand">
+              ¿Olvidaste tu contraseña?
+            </Text>
+          </TouchableOpacity>
         ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
