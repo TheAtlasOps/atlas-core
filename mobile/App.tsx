@@ -21,6 +21,7 @@ import { AgendaScreen } from './src/screens/AgendaScreen';
 import { DetailScreen } from './src/screens/DetailScreen';
 import { SuccessScreen } from './src/screens/SuccessScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
+import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
 import type { Estado, TabId, ViewName, PhotoEvidence } from './src/types';
 
 // ─── App del técnico (sesión iniciada) ────────────────────────────────────────
@@ -405,6 +406,7 @@ function AtlasTecnicoApp() {
 function Root() {
   const { isDark, colors } = useTheme();
   const { status } = useAuth();
+  const [authView, setAuthView] = useState<'login' | 'forgot_password'>('login');
 
   return (
     <SafeAreaProvider>
@@ -415,7 +417,13 @@ function Root() {
             <ActivityIndicator color={colors.brand} />
           </View>
         )}
-        {status === 'signedOut' && <LoginScreen />}
+        {status === 'signedOut' && (
+          authView === 'login' ? (
+            <LoginScreen onForgotPassword={() => setAuthView('forgot_password')} />
+          ) : (
+            <ForgotPasswordScreen onBack={() => setAuthView('login')} />
+          )
+        )}
         {status === 'signedIn' && <AtlasTecnicoApp />}
       </SafeAreaView>
     </SafeAreaProvider>
