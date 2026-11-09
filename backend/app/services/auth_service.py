@@ -49,11 +49,12 @@ def create_user_token_response(user: User) -> Token:
 
 
 async def generate_magic_link_for_order(
-    db: AsyncSession, work_order_id: uuid.UUID, expire_hours: int = 48
+    db: AsyncSession, work_order_id: uuid.UUID, expire_hours: int = 48, force_new: bool = False
 ) -> MagicLinkResponse:
     """
     Emite un Magic Link criptográfico de alta entropía asociado a una OT (RNF-SEG-03 / RF-API-09).
-    - Si existe un enlace activo y vigente, lo reutiliza preservando trazabilidad y evitando deshabilitar accesos entregados.
+    - Si existe un enlace activo y vigente y force_new es False, lo reutiliza preservando trazabilidad.
+    - Si force_new es True o no hay enlace vigente, desactiva enlaces previos y genera uno nuevo.
     - Preserva la firma digital existente en el nuevo enlace si la orden ya fue firmada.
     - Permite enlaces de consulta para órdenes auditadas en modo de solo lectura.
     """
@@ -89,9 +90,9 @@ async def generate_magic_link_for_order(
                 existing_signature_key = ml.signature_url.strip()
                 break
 
-    # 3. Comprobar si existe un enlace vigente no expirado para reutilizar
+    # 3. Comprobar si existe un enlace vigente no expirado para reutilizar (solo si not force_new)
     active_link = None
-    if hasattr(order, "magic_links") and order.magic_links:
+    if not force_new and hasattr(order, "magic_links") and order.magic_links:
         for ml in order.magic_links:
             if ml.is_active and ml.expires_at > now_utc:
                 active_link = ml
@@ -115,7 +116,7 @@ async def generate_magic_link_for_order(
             is_active=active_link.is_active
         )
 
-    # 4. Desactivar tokens previos vencidos o inactivos para evitar colisiones
+    # 4. Desactivar tokens previos (vencidos, inactivos o reemplazados por force_new) para evitar colisiones
     if hasattr(order, "magic_links") and order.magic_links:
         for link in order.magic_links:
             link.is_active = False
@@ -146,3 +147,38 @@ async def generate_magic_link_for_order(
         expires_at=new_magic_link.expires_at,
         is_active=new_magic_link.is_active
     )
+
+
+async def revoke_magic_link_for_order(
+    db: AsyncSession, work_order_id: uuid.UUID
+) -> dict:
+    """
+    Revoca de inmediato todos los Magic Links activos asociados a una orden de trabajo (RNF-SEG-03 / RF-CLI-09).
+    Establece is_active = False para que cualquier consulta posterior responda HTTP 410 (Gone).
+    """
+    order_result = await db.execute(
+        select(WorkOrder)
+        .options(selectinload(WorkOrder.magic_links))
+        .where(WorkOrder.id == work_order_id)
+    )
+    order = order_result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró la orden de trabajo con ID {work_order_id}"
+        )
+
+    revoked_count = 0
+    if hasattr(order, "magic_links") and order.magic_links:
+        for ml in order.magic_links:
+            if ml.is_active:
+                ml.is_active = False
+                revoked_count += 1
+        if revoked_count > 0:
+            await db.commit()
+
+    return {
+        "success": True,
+        "message": f"Se revocaron {revoked_count} enlace(s) de seguimiento para la orden.",
+        "revoked_count": revoked_count,
+    }

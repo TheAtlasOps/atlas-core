@@ -32,6 +32,7 @@ class MagicLinkGenerateRequest(BaseModel):
     """Solicitud de emisión de Magic Link para cliente."""
     work_order_id: uuid.UUID
     expire_hours: Optional[int] = 48
+    force_new: Optional[bool] = False
 
 
 class MagicLinkResponse(BaseModel):

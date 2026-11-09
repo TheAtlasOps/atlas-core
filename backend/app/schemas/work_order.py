@@ -204,6 +204,19 @@ class AuditApprovalRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000, description="Observaciones o notas de auditoría")
 
 
+class MagicLinkDetailSummary(BaseModel):
+    id: Optional[uuid.UUID] = None
+    token: Optional[str] = None
+    portal_url: Optional[str] = None
+    is_active: bool = False
+    expires_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    link_status: str = "SIN_ENLACE"  # VIGENTE | VENCIDO | REVOCADO | SIN_ENLACE
+    portal_mode: str = "Resumen final"  # Seguimiento activo | Atención en sitio | Resumen final
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ─── Respuestas de Órdenes ──────────────────────────────────────────────────
 class WorkOrderResponse(WorkOrderBase):
     id: uuid.UUID
@@ -224,17 +237,11 @@ class WorkOrderResponse(WorkOrderBase):
     auditor: Optional[AuditorSummary] = None
     audit_notes: Optional[str] = None
 
-    # Auditoría administrativa persistente
-    is_audited: bool = False
-    audited_at: Optional[datetime] = None
-    audited_by_user_id: Optional[uuid.UUID] = None
-    auditor: Optional[AuditorSummary] = None
-    audit_notes: Optional[str] = None
-
     # Entidades anidadas cargadas
     client: Optional[ClientSummary] = None
     technician_summary: Optional[TechnicianSummary] = None
     active_magic_link_token: Optional[str] = None
+    magic_link_detail: Optional[MagicLinkDetailSummary] = None
     status_history: List[OrderStatusHistoryResponse] = []
     items: List[WorkOrderItemResponse] = []
 

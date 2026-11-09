@@ -47,10 +47,18 @@ export const api = {
     confirmPasswordReset: (token, password, confirmation) => request("/auth/password-reset/confirm", {
       method: "POST", body: JSON.stringify({ token, password, password_confirmation: confirmation }),
     }),
-    generateMagicLink: (workOrderId, expireHours = 48) =>
+    generateMagicLink: (workOrderId, expireHours = 48, forceNew = false) =>
       request("/auth/magic-link/generate", {
         method: "POST",
-        body: JSON.stringify({ work_order_id: workOrderId, expire_hours: expireHours }),
+        body: JSON.stringify({
+          work_order_id: workOrderId,
+          expire_hours: expireHours,
+          force_new: forceNew,
+        }),
+      }),
+    revokeMagicLink: (workOrderId) =>
+      request(`/auth/magic-link/${workOrderId}/revoke`, {
+        method: "POST",
       }),
   },
   notifications: {

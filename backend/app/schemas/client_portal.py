@@ -12,6 +12,7 @@ class TimelineStepItem(BaseModel):
     completed: bool
     current: bool
     timestamp: Optional[str] = None
+    raw_timestamp: Optional[datetime] = None
     description: Optional[str] = None
 
 

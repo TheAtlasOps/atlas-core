@@ -22,6 +22,8 @@ import {
   mapApiSummaryToTrackingOrder,
   getPortalAccessError,
   formatCompletedDateDisplay,
+  formatAddressDisplay,
+  formatChileanTime,
 } from "../lib/magicLinksData";
 import { api } from "../lib/api";
 import SignaturePad from "../components/ui/SignaturePad";
@@ -136,35 +138,78 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
     }
   }, [apiSummary?.technician_location]);
 
-  const isEnRuta = (order?.status_key || order?.statusKey) === "en_ruta";
+  const statusKey = (order?.status_key || order?.statusKey || "").toLowerCase();
+  const isTerminal = statusKey === "completada" || statusKey === "cancelada";
+  const isEnRuta = statusKey === "en_ruta";
 
+  // Polling activo mientras la orden NO sea terminal (CONFIRMADA, IDLE, EN_RUTA, EN_SITIO)
+  // Refresco cada 30 segundos; se detiene definitivamente al pasar a COMPLETADA o CANCELADA.
   useEffect(() => {
-    if (!token || !isEnRuta) return;
-    let cancelled = false;
+    if (!token || isTerminal) {
+      if (isTerminal) {
+        setLiveTechLocation(null);
+      }
+      return;
+    }
 
-    async function pollTracking() {
+    let cancelled = false;
+    let inFlight = false;
+
+    async function pollStatus() {
+      if (inFlight || cancelled) return;
+      inFlight = true;
+
       try {
-        const tracking = await api.clientPortal.getTracking(token);
-        if (cancelled || !tracking) return;
-        if (tracking.status && tracking.status !== "en_ruta") {
+        if (isEnRuta) {
+          // Consulta ultraligera de seguimiento cartográfico
+          const tracking = await api.clientPortal.getTracking(token);
+          if (cancelled) return;
+
+          const trackingStatus = (tracking?.order_status || tracking?.status || "").toLowerCase();
+          if (trackingStatus && trackingStatus !== "en_ruta") {
+            const freshSummary = await api.clientPortal.getSummary(token);
+            if (!cancelled && freshSummary) {
+              setApiSummary(freshSummary);
+              if (["completada", "cancelada"].includes((freshSummary.status_key || "").toLowerCase())) {
+                setLiveTechLocation(null);
+              }
+            }
+          } else if (tracking?.lat != null && tracking?.lng != null) {
+            setLiveTechLocation({
+              lat: parseFloat(tracking.lat),
+              lng: parseFloat(tracking.lng),
+              last_updated_at: tracking.last_updated_at,
+              is_live: Boolean(tracking.is_live),
+            });
+          }
+        } else {
+          // Para órdenes confirmadas o en sitio, refrescar resumen periódicamente
           const freshSummary = await api.clientPortal.getSummary(token);
           if (!cancelled && freshSummary) {
             setApiSummary(freshSummary);
+            if (["completada", "cancelada"].includes((freshSummary.status_key || "").toLowerCase())) {
+              setLiveTechLocation(null);
+            }
           }
-        } else if (tracking.technician_location) {
-          setLiveTechLocation(tracking.technician_location);
         }
-      } catch {
-        // Polling silencioso en segundo plano
+      } catch (err) {
+        if (cancelled) return;
+        if (err?.status === 410 || err?.status === 404) {
+          const accessError = getPortalAccessError(err);
+          setErrorKind(accessError.kind);
+          setFetchError(accessError.message);
+        }
+      } finally {
+        inFlight = false;
       }
     }
 
-    const intervalId = setInterval(pollTracking, 30000);
+    const intervalId = setInterval(pollStatus, 30000);
     return () => {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [token, isEnRuta]);
+  }, [token, isTerminal, isEnRuta]);
 
   const clientPos = useMemo(() => {
     if (order?.lat != null && order?.lng != null && !isNaN(order.lat) && !isNaN(order.lng)) {
@@ -328,6 +373,8 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
 
   const isCompletedStatus =
     order.status_key === "completada" || order.statusKey === "finalizado";
+  const isCancelledStatus =
+    order.status_key === "cancelada" || order.statusKey === "cancelado";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#121212] text-slate-900 dark:text-white flex flex-col font-sans selection:bg-orange-100 selection:text-orange-900 transition-colors duration-200">
@@ -382,18 +429,20 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
             ) : (
               <span
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                  isCompletedStatus
+                  isCancelledStatus
+                    ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
+                    : isCompletedStatus
                     ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800"
                     : "bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-500/30"
                 }`}
               >
                 <span className="relative flex h-2 w-2">
-                  {!isCompletedStatus && (
+                  {!isCompletedStatus && !isCancelledStatus && (
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                   )}
                   <span
                     className={`relative inline-flex rounded-full h-2 w-2 ${
-                      isCompletedStatus ? "bg-emerald-500" : "bg-orange-500"
+                      isCancelledStatus ? "bg-rose-500" : isCompletedStatus ? "bg-emerald-500" : "bg-orange-500"
                     }`}
                   ></span>
                 </span>
@@ -403,19 +452,29 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
           </div>
 
           {/* Bloque ETA Destacado */}
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-4 text-white shadow-sm flex items-center justify-between gap-4">
+          <div
+            className={`rounded-xl p-4 text-white shadow-sm flex items-center justify-between gap-4 ${
+              isCancelledStatus
+                ? "bg-gradient-to-br from-rose-600 to-rose-700"
+                : "bg-gradient-to-br from-orange-500 to-orange-600"
+            }`}
+          >
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 rounded-lg bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
                 <Clock className="h-6 w-6 text-white" />
               </div>
               <div>
                 <p className="text-xs text-orange-100 font-medium">
-                  {isCompletedStatus
+                  {isCancelledStatus
+                    ? "Estado del requerimiento"
+                    : isCompletedStatus
                     ? "Hora de término registrada"
                     : "Hora estimada de atención"}
                 </p>
                 <p className="text-2xl font-bold tracking-tight">
-                  {isCompletedStatus
+                  {isCancelledStatus
+                    ? "Visita Cancelada"
+                    : isCompletedStatus
                     ? order.completed_at || "Finalizada"
                     : order.eta || "Por confirmar"}
                 </p>
@@ -442,8 +501,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
             <div className="flex items-start gap-2.5">
               <MapPin className="h-4 w-4 text-slate-400 dark:text-gray-500 shrink-0 mt-0.5" />
               <span>
-                {order.address}
-                {order.comuna ? ` (${order.comuna})` : ""}
+                {order.displayAddress || formatAddressDisplay(order.address, order.comuna)}
               </span>
             </div>
             {order.scheduled_date && (
@@ -623,7 +681,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                             : "text-slate-400 dark:text-gray-500"
                         }`}
                       >
-                        {step.timestamp || (isSkipped ? "No registrada" : "—")}
+                        {step.timestamp ? formatChileanTime(step.timestamp) : (isSkipped ? "No registrada" : "—")}
                       </span>
                     </div>
 

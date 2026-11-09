@@ -10,6 +10,8 @@ const __dirname = path.dirname(__filename);
 import {
   mapApiSummaryToTrackingOrder,
   formatCompletedDateDisplay,
+  formatAddressDisplay,
+  formatChileanTime,
   getPortalAccessError,
 } from "../lib/magicLinksData.js";
 
@@ -250,4 +252,65 @@ test("CustomerTrackingView renderiza órdenes completadas, firmadas y auditadas 
   } finally {
     await server.close();
   }
+});
+
+// ─── 10. Horarios y Zona Horaria Chilena (America/Santiago UTC-3) ─────────────
+test("formatChileanTime convierte timestamps ISO UTC a hora de Chile (UTC-3)", () => {
+  // 20:17 UTC -> 17:17 Chile (UTC-3)
+  const timeChile = formatChileanTime("2026-11-09T20:17:00.000Z");
+  assert.equal(timeChile, "17:17");
+
+  // Preserva cadenas que ya tienen formato HH:mm
+  assert.equal(formatChileanTime("17:17"), "17:17");
+  assert.equal(formatChileanTime(null), "—");
+});
+
+// ─── 11. Deduplicación de Direcciones y Comunas ──────────────────────────────
+test("formatAddressDisplay deduplica comunas y segmentos repetidos", () => {
+  // Caso de prueba reportado: 'Providencia, Providencia (Providencia)'
+  const cleaned1 = formatAddressDisplay("Av. Providencia 1234, Providencia, Providencia", "Providencia");
+  assert.equal(cleaned1, "Av. Providencia 1234, Providencia");
+  assert.equal(cleaned1.includes("(Providencia)"), false);
+
+  // Dirección normal sin la comuna incluida en el texto principal
+  const cleaned2 = formatAddressDisplay("Av. Apoquindo 4500", "Las Condes");
+  assert.equal(cleaned2, "Av. Apoquindo 4500 (Las Condes)");
+
+  // Dirección que ya termina con la comuna
+  const cleaned3 = formatAddressDisplay("General Bustamante 26, Providencia", "Providencia");
+  assert.equal(cleaned3, "General Bustamante 26, Providencia");
+});
+
+// ─── 12. Mapeo de Estados Terminales y Modos de Portal ────────────────────────
+test("mapApiSummaryToTrackingOrder clasifica correctamente estados terminales y modos", () => {
+  const completedSummary = {
+    order_id: "test-uuid-1",
+    order_number: "#OT-08494",
+    status: "Completada",
+    status_key: "completada",
+    address: "Av. Providencia 1234, Providencia",
+    comuna: "Providencia",
+    timeline_steps: [
+      { key: "confirmada", label: "Confirmada", completed: true, current: false, raw_timestamp: "2026-11-09T18:00:00.000Z" },
+      { key: "completada", label: "Completada", completed: true, current: true, raw_timestamp: "2026-11-09T20:17:00.000Z" },
+    ],
+  };
+
+  const mappedCompleted = mapApiSummaryToTrackingOrder(completedSummary);
+  assert.equal(mappedCompleted.isTerminal, true);
+  assert.equal(mappedCompleted.portalMode, "resumen");
+  assert.equal(mappedCompleted.timeline_steps[1].timestamp, "17:17");
+
+  const cancelledSummary = {
+    order_id: "test-uuid-2",
+    order_number: "#OT-08495",
+    status: "Cancelada",
+    status_key: "cancelada",
+    address: "Av. Las Condes 1000",
+    comuna: "Las Condes",
+  };
+
+  const mappedCancelled = mapApiSummaryToTrackingOrder(cancelledSummary);
+  assert.equal(mappedCancelled.isTerminal, true);
+  assert.equal(mappedCancelled.portalMode, "resumen");
 });

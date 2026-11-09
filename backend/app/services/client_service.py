@@ -3,8 +3,15 @@ import uuid
 import base64
 import inspect
 import logging
-from datetime import datetime, timezone
+import zoneinfo
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional
+
+try:
+    import zoneinfo
+    CHILE_TZ = zoneinfo.ZoneInfo("America/Santiago")
+except Exception:
+    CHILE_TZ = timezone(timedelta(hours=-3))
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -93,15 +100,33 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
 
     # Extraer marcas de tiempo de eventos reales del historial
     timestamps = {}
+    raw_timestamps = {}
     if getattr(order, "status_history", None):
         for entry in order.status_history:
             if entry.new_status and entry.new_status not in timestamps and entry.created_at:
-                timestamps[entry.new_status] = entry.created_at.strftime("%H:%M")
+                created_dt = entry.created_at
+                created_chile = (
+                    created_dt.astimezone(CHILE_TZ)
+                    if created_dt.tzinfo
+                    else created_dt.replace(tzinfo=timezone.utc).astimezone(CHILE_TZ)
+                )
+                timestamps[entry.new_status] = created_chile.strftime("%H:%M")
+                raw_timestamps[entry.new_status] = (
+                    created_dt if created_dt.tzinfo else created_dt.replace(tzinfo=timezone.utc)
+                )
 
     # Si la orden está completada y no hay timestamp registrado en history, usar completed_at real
     completed_at_val = getattr(order, "completed_at", None)
     if order.status == OrderStatusEnum.COMPLETADA and completed_at_val and OrderStatusEnum.COMPLETADA not in timestamps:
-        timestamps[OrderStatusEnum.COMPLETADA] = completed_at_val.strftime("%H:%M")
+        comp_chile = (
+            completed_at_val.astimezone(CHILE_TZ)
+            if completed_at_val.tzinfo
+            else completed_at_val.replace(tzinfo=timezone.utc).astimezone(CHILE_TZ)
+        )
+        timestamps[OrderStatusEnum.COMPLETADA] = comp_chile.strftime("%H:%M")
+        raw_timestamps[OrderStatusEnum.COMPLETADA] = (
+            completed_at_val if completed_at_val.tzinfo else completed_at_val.replace(tzinfo=timezone.utc)
+        )
 
     steps_definitions = [
         ("confirmada", "Visita confirmada", 1, OrderStatusEnum.CONFIRMADA, "Cita agendada y aprobada"),
@@ -115,6 +140,7 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
         is_current = (current_rank == rank)
         has_timestamp = enum_val in timestamps
         ts = timestamps.get(enum_val)
+        raw_ts = raw_timestamps.get(enum_val)
 
         if is_current:
             is_completed = (order.status == OrderStatusEnum.COMPLETADA)
@@ -134,6 +160,7 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
                 completed=is_completed,
                 current=is_current,
                 timestamp=ts,
+                raw_timestamp=raw_ts,
                 description=step_desc,
             )
         )
@@ -172,11 +199,26 @@ def _build_summary_response(
     if order.status == OrderStatusEnum.COMPLETADA:
         eta_str = None
         eta_label = "Servicio finalizado"
+    elif order.status == OrderStatusEnum.CANCELADA:
+        eta_str = None
+        eta_label = "Servicio cancelado"
     elif order.eta:
-        eta_str = order.eta.strftime("%H:%M")
+        eta_dt = order.eta
+        eta_chile = (
+            eta_dt.astimezone(CHILE_TZ)
+            if eta_dt.tzinfo
+            else eta_dt.replace(tzinfo=timezone.utc).astimezone(CHILE_TZ)
+        )
+        eta_str = eta_chile.strftime("%H:%M")
         eta_label = "Llegada estimada"
     elif order.scheduled_date:
-        eta_str = order.scheduled_date.strftime("%H:%M")
+        sched_dt = order.scheduled_date
+        sched_chile = (
+            sched_dt.astimezone(CHILE_TZ)
+            if sched_dt.tzinfo
+            else sched_dt.replace(tzinfo=timezone.utc).astimezone(CHILE_TZ)
+        )
+        eta_str = sched_chile.strftime("%H:%M")
         eta_label = "Llegada estimada"
     else:
         eta_str = None
