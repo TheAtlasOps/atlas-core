@@ -6,7 +6,7 @@ import { orderToVisit, ordersToVisits } from '../api/mappers';
 import { fetchMyOrders } from '../api/orders';
 import type { ApiOrder } from '../api/types';
 import type { Visit } from '../types';
-import { getActiveTrackingOrderId, stopTracking } from '../services/trackingService';
+import { getActiveTrackingOrderId, startTracking, stopTracking } from '../services/trackingService';
 
 // ─── Visitas del técnico, cargadas desde la API ───────────────────────────────
 export function useVisits() {
@@ -28,13 +28,21 @@ export function useVisits() {
       setError(null);
       setOnline(true);
 
-      // Si la orden que se estaba rastreando cambió de estado o fue cancelada, detener GPS
+      // Reconciliación del seguimiento GPS en segundo plano:
+      const enRutaVisit = nextVisits.find((v) => v.status === 'en_ruta');
       const activeTrackingId = getActiveTrackingOrderId();
-      if (activeTrackingId) {
-        const tracked = nextVisits.find((v) => v.id === activeTrackingId);
-        if (!tracked || tracked.status !== 'en_ruta') {
-          void stopTracking();
+
+      if (enRutaVisit) {
+        // Hay una orden asignada en estado 'en_ruta'.
+        // Si el seguimiento no está activo o está activo para una orden distinta, reanudar
+        if (activeTrackingId !== enRutaVisit.id) {
+          console.log(`[ATLAS Reconciliación] Reanudando seguimiento GPS para orden en ruta ${enRutaVisit.id}`);
+          void startTracking(enRutaVisit.id);
         }
+      } else if (activeTrackingId) {
+        // Ya no hay ninguna orden en ruta asignada al técnico (completada, cancelada o reasignada)
+        console.log('[ATLAS Reconciliación] No hay órdenes en ruta. Deteniendo seguimiento GPS.');
+        void stopTracking();
       }
     } catch (e) {
       if (!mounted.current) return;

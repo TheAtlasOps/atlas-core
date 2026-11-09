@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from 'react';
 import { Alert, Linking, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -7,9 +8,63 @@ import { sendOrderLocation } from '../api/orders';
 export const ATLAS_LOCATION_TASK = 'ATLAS_BACKGROUND_GPS_TASK';
 const STORAGE_KEY_ACTIVE_ORDER = 'atlas_active_tracking_order_id';
 
+export interface GpsTrackingStatus {
+  isTracking: boolean;
+  orderId: string | null;
+  state: 'idle' | 'starting' | 'active' | 'error';
+  lastSentAt: number | null;
+  lastLat: number | null;
+  lastLng: number | null;
+  errorMessage: string | null;
+}
+
 let currentTrackingOrderId: string | null = null;
 let foregroundIntervalId: ReturnType<typeof setInterval> | null = null;
 let lastSentCoords: { lat: number; lng: number; time: number } | null = null;
+
+let trackingStatus: GpsTrackingStatus = {
+  isTracking: false,
+  orderId: null,
+  state: 'idle',
+  lastSentAt: null,
+  lastLat: null,
+  lastLng: null,
+  errorMessage: null,
+};
+
+type TrackingStatusListener = (status: GpsTrackingStatus) => void;
+const listeners = new Set<TrackingStatusListener>();
+
+export function getTrackingStatus(): GpsTrackingStatus {
+  return trackingStatus;
+}
+
+export function updateTrackingStatus(partial: Partial<GpsTrackingStatus>): void {
+  trackingStatus = { ...trackingStatus, ...partial };
+  for (const listener of listeners) {
+    try {
+      listener(trackingStatus);
+    } catch {
+      // Ignorar errores de listeners individuales
+    }
+  }
+}
+
+export function subscribeTrackingStatus(listener: TrackingStatusListener): () => void {
+  listeners.add(listener);
+  listener(trackingStatus);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function useGpsTrackingStatus(): GpsTrackingStatus {
+  const [status, setStatus] = useState<GpsTrackingStatus>(getTrackingStatus);
+  useEffect(() => {
+    return subscribeTrackingStatus(setStatus);
+  }, []);
+  return status;
+}
 
 // ─── Tarea en Segundo Plano (Ejecutada por el OS con pantalla bloqueada) ─────
 try {
@@ -17,6 +72,10 @@ try {
     TaskManager.defineTask(ATLAS_LOCATION_TASK, async ({ data, error }) => {
       if (error) {
         console.warn('[ATLAS GPS Background Task] Error:', error.message);
+        updateTrackingStatus({
+          state: 'error',
+          errorMessage: 'Error en sensor GPS: ' + error.message,
+        });
         return;
       }
 
@@ -28,6 +87,7 @@ try {
         let orderId = currentTrackingOrderId;
         if (!orderId) {
           orderId = await AsyncStorage.getItem(STORAGE_KEY_ACTIVE_ORDER);
+          if (orderId) currentTrackingOrderId = orderId;
         }
 
         if (orderId) {
@@ -48,14 +108,39 @@ try {
           try {
             await sendOrderLocation(orderId, lat, lng);
             lastSentCoords = { lat, lng, time: now };
-            console.log(`[ATLAS GPS Background] Coordenadas emitidas (${lat}, ${lng}) para OT ${orderId}`);
+            updateTrackingStatus({
+              isTracking: true,
+              orderId,
+              state: 'active',
+              lastSentAt: now,
+              lastLat: lat,
+              lastLng: lng,
+              errorMessage: null,
+            });
+            console.log(
+              `[ATLAS GPS Background] Coordenadas emitidas (${lat.toFixed(4)}, ${lng.toFixed(4)}) para OT ${orderId}`
+            );
           } catch (err: any) {
-            console.warn('[ATLAS GPS Background] Error al enviar coordenadas al backend:', err);
-            // Si la orden ya no está EN_RUTA (409 Conflict), fue cancelada o el técnico no está asignado (403/404),
-            // se detiene inmediatamente el seguimiento para proteger la batería y respetar privacidad.
-            if (err?.status === 409 || err?.status === 404 || err?.status === 403) {
-              console.log(`[ATLAS GPS Background] Orden ${orderId} fuera de EN_RUTA (HTTP ${err?.status}). Deteniendo seguimiento.`);
-              await stopTracking();
+            console.warn('[ATLAS GPS Background] Error al enviar coordenadas al backend:', err?.message || err);
+            // Si la orden ya no está EN_RUTA (409 Conflict), fue cancelada o el técnico no está asignado (403/404)
+            // o sesión no válida (401), se detiene el seguimiento para proteger la batería y respetar privacidad.
+            if (err?.status === 401 || err?.status === 403 || err?.status === 404 || err?.status === 409) {
+              const reason =
+                err?.status === 401
+                  ? 'Sesión no válida o expirada'
+                  : err?.status === 403
+                  ? 'Técnico no autorizado para esta orden'
+                  : err?.status === 409
+                  ? 'La orden ya no se encuentra en ruta'
+                  : 'Orden no encontrada';
+              console.log(`[ATLAS GPS Background] Deteniendo seguimiento para orden ${orderId}: ${reason} (HTTP ${err?.status})`);
+              await stopTracking(reason);
+            } else {
+              // Error transitorio de red o timeout
+              updateTrackingStatus({
+                state: 'error',
+                errorMessage: 'Sin conexión con el servidor. Reintentando...',
+              });
             }
           }
         }
@@ -113,54 +198,108 @@ export async function requestLocationPermissions(): Promise<boolean> {
 // ─── Inicio del Seguimiento (EN_RUTA) ────────────────────────────────────────
 
 export async function startTracking(orderId: string): Promise<boolean> {
+  if (!orderId) return false;
+
+  updateTrackingStatus({
+    orderId,
+    state: 'starting',
+    errorMessage: null,
+  });
+
   const hasPermission = await requestLocationPermissions();
-  if (!hasPermission) return false;
+  if (!hasPermission) {
+    updateTrackingStatus({
+      state: 'error',
+      errorMessage: 'Permisos de ubicación no concedidos',
+    });
+    return false;
+  }
 
   currentTrackingOrderId = orderId;
   await AsyncStorage.setItem(STORAGE_KEY_ACTIVE_ORDER, orderId);
 
   // 1. Envío inicial inmediato de coordenadas actuales
+  let initialLocationSent = false;
   try {
     const current = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
     });
     if (current) {
       await sendOrderLocation(orderId, current.coords.latitude, current.coords.longitude);
+      const now = Date.now();
       lastSentCoords = {
         lat: current.coords.latitude,
         lng: current.coords.longitude,
-        time: Date.now(),
+        time: now,
       };
+      initialLocationSent = true;
+      updateTrackingStatus({
+        isTracking: true,
+        orderId,
+        state: 'active',
+        lastSentAt: now,
+        lastLat: current.coords.latitude,
+        lastLng: current.coords.longitude,
+        errorMessage: null,
+      });
       console.log(`[ATLAS GPS] Posición inicial enviada para orden ${orderId}`);
     }
-  } catch (err) {
-    console.warn('[ATLAS GPS] No se pudo obtener ubicación inicial:', err);
+  } catch (err: any) {
+    console.warn('[ATLAS GPS] No se pudo obtener ubicación inicial:', err?.message || err);
+    if (err?.status === 401 || err?.status === 403 || err?.status === 409) {
+      const reason =
+        err?.status === 401
+          ? 'Sesión no válida o expirada'
+          : err?.status === 403
+          ? 'Técnico no autorizado para esta orden'
+          : 'La orden ya no se encuentra en ruta';
+      await stopTracking(reason);
+      return false;
+    }
+    updateTrackingStatus({
+      state: 'error',
+      errorMessage: 'No se pudo obtener señal GPS inicial. Reintentando...',
+    });
   }
 
   // 2. Iniciar servicio en segundo plano con notificación persistente (Android Foreground Service)
   let backgroundStarted = false;
   try {
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(ATLAS_LOCATION_TASK);
-    if (isRegistered) {
-      await Location.startLocationUpdatesAsync(ATLAS_LOCATION_TASK, {
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 30000, // Cada 30 segundos
-        distanceInterval: 15, // O cada 15 metros
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'Atlas Técnico en ruta',
-          notificationBody: 'Compartiendo ubicación en tiempo real con central y cliente.',
-          notificationColor: '#F97316',
-        },
-      });
+    if (!TaskManager.isTaskDefined(ATLAS_LOCATION_TASK)) {
+      console.warn('[ATLAS GPS] La tarea ATLAS_LOCATION_TASK no está definida en TaskManager.');
+    } else {
+      const isStarted = await Location.hasStartedLocationUpdatesAsync(ATLAS_LOCATION_TASK);
+      if (!isStarted) {
+        await Location.startLocationUpdatesAsync(ATLAS_LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 30000, // Cada 30 segundos
+          distanceInterval: 15, // O cada 15 metros
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'Atlas Técnico en ruta',
+            notificationBody: 'Compartiendo ubicación en tiempo real con central y cliente.',
+            notificationColor: '#F97316',
+          },
+        });
+        console.log('[ATLAS GPS] Servicio background de ubicación iniciado exitosamente.');
+      } else {
+        console.log('[ATLAS GPS] Servicio background de ubicación ya se encontraba activo.');
+      }
       backgroundStarted = true;
-      console.log('[ATLAS GPS] Servicio background de ubicación iniciado exitosamente.');
     }
   } catch (bgErr) {
-    console.log('[ATLAS GPS] Fallback a seguimiento en primer plano (Expo Go / sin background daemon):', bgErr);
+    console.warn('[ATLAS GPS] Fallback a seguimiento en primer plano (sin background daemon):', bgErr);
   }
 
-  // 3. Fallback de intervalo en primer plano si background no está disponible o para Expo Go
+  if (backgroundStarted || initialLocationSent) {
+    updateTrackingStatus({
+      isTracking: true,
+      orderId,
+      state: 'active',
+    });
+  }
+
+  // 3. Fallback de intervalo en primer plano si background no está disponible o mientras la app esté visible
   if (!foregroundIntervalId) {
     foregroundIntervalId = setInterval(async () => {
       if (!currentTrackingOrderId) return;
@@ -171,14 +310,48 @@ export async function startTracking(orderId: string): Promise<boolean> {
         if (loc && currentTrackingOrderId) {
           const lat = loc.coords.latitude;
           const lng = loc.coords.longitude;
+          const now = Date.now();
+
+          // Evitar ráfagas duplicadas (mínimo 15 segundos entre reportes)
+          if (
+            lastSentCoords &&
+            now - lastSentCoords.time < 15000 &&
+            Math.abs(lastSentCoords.lat - lat) < 0.00005 &&
+            Math.abs(lastSentCoords.lng - lng) < 0.00005
+          ) {
+            return;
+          }
+
           await sendOrderLocation(currentTrackingOrderId, lat, lng);
-          lastSentCoords = { lat, lng, time: Date.now() };
+          lastSentCoords = { lat, lng, time: now };
+          updateTrackingStatus({
+            isTracking: true,
+            orderId: currentTrackingOrderId,
+            state: 'active',
+            lastSentAt: now,
+            lastLat: lat,
+            lastLng: lng,
+            errorMessage: null,
+          });
         }
       } catch (err: any) {
-        console.warn('[ATLAS GPS Polling] Error obteniendo coordenadas:', err);
-        if (err?.status === 409 || err?.status === 404 || err?.status === 403) {
-          console.log('[ATLAS GPS Polling] Orden fuera de EN_RUTA. Deteniendo seguimiento.');
-          void stopTracking();
+        console.warn('[ATLAS GPS Polling] Error obteniendo coordenadas:', err?.message || err);
+        if (err?.status === 401 || err?.status === 403 || err?.status === 404 || err?.status === 409) {
+          const reason =
+            err?.status === 401
+              ? 'Sesión no válida o expirada'
+              : err?.status === 403
+              ? 'Técnico no autorizado para esta orden'
+              : err?.status === 409
+              ? 'La orden ya no se encuentra en ruta'
+              : 'Orden no encontrada';
+          console.log(`[ATLAS GPS Polling] Deteniendo seguimiento para orden ${currentTrackingOrderId}: ${reason}`);
+          void stopTracking(reason);
+        } else {
+          updateTrackingStatus({
+            state: 'error',
+            errorMessage: 'Problema temporal transmitiendo GPS. Reintentando...',
+          });
         }
       }
     }, 30000);
@@ -189,7 +362,7 @@ export async function startTracking(orderId: string): Promise<boolean> {
 
 // ─── Detención del Seguimiento (EN_SITIO / COMPLETADA / LOGOUT) ───────────────
 
-export async function stopTracking(): Promise<void> {
+export async function stopTracking(errorReason?: string): Promise<void> {
   currentTrackingOrderId = null;
   lastSentCoords = null;
   await AsyncStorage.removeItem(STORAGE_KEY_ACTIVE_ORDER);
@@ -202,16 +375,41 @@ export async function stopTracking(): Promise<void> {
 
   // Detener tarea en segundo plano
   try {
-    const isStarted = await Location.hasStartedLocationUpdatesAsync(ATLAS_LOCATION_TASK);
-    if (isStarted) {
-      await Location.stopLocationUpdatesAsync(ATLAS_LOCATION_TASK);
-      console.log('[ATLAS GPS] Servicio background detenido.');
+    if (TaskManager.isTaskDefined(ATLAS_LOCATION_TASK)) {
+      const isStarted = await Location.hasStartedLocationUpdatesAsync(ATLAS_LOCATION_TASK);
+      if (isStarted) {
+        await Location.stopLocationUpdatesAsync(ATLAS_LOCATION_TASK);
+        console.log('[ATLAS GPS] Servicio background detenido.');
+      }
     }
   } catch (err) {
-    console.log('[ATLAS GPS] Error al detener tarea background:', err);
+    console.warn('[ATLAS GPS] Error al detener tarea background:', err);
   }
+
+  updateTrackingStatus({
+    isTracking: false,
+    orderId: null,
+    state: errorReason ? 'error' : 'idle',
+    errorMessage: errorReason || null,
+  });
 }
 
 export function getActiveTrackingOrderId(): string | null {
   return currentTrackingOrderId;
+}
+
+export async function isTrackingActive(orderId?: string): Promise<boolean> {
+  if (orderId && currentTrackingOrderId !== orderId) {
+    const saved = await AsyncStorage.getItem(STORAGE_KEY_ACTIVE_ORDER);
+    if (saved !== orderId) return false;
+  }
+  if (currentTrackingOrderId) return true;
+  try {
+    if (TaskManager.isTaskDefined(ATLAS_LOCATION_TASK)) {
+      return await Location.hasStartedLocationUpdatesAsync(ATLAS_LOCATION_TASK);
+    }
+  } catch {
+    // ignorar
+  }
+  return false;
 }

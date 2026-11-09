@@ -11,7 +11,8 @@ import { ConnPill, StatusBadge, SectionLabel, DataRow, Card } from '../component
 import { PhotoViewer } from '../components/PhotoViewer';
 import { useTheme } from '../theme/ThemeContext';
 import { CHECKLIST_ITEMS, TABS, MAX_PHOTOS } from '../data/mockData';
-import { dbmQuality } from '../utils/helpers';
+import { dbmQuality, formatTimeAgo } from '../utils/helpers';
+import { useGpsTrackingStatus } from '../services/trackingService';
 import type { Visit, TabId, Estado, PhotoEvidence } from '../types';
 
 // ─── Pantalla Detalle ─────────────────────────────────────────────────────────
@@ -38,6 +39,81 @@ type DetailProps = {
   iccidVerified: boolean; onIccidVerify: () => void;
   onFinalize: () => void;
 };
+
+function GpsTrackingBadge() {
+  const tracking = useGpsTrackingStatus();
+  const [now, setNow] = useState(Date.now());
+
+  React.useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (tracking.state === 'starting') {
+    return (
+      <View className="flex-col gap-1 bg-amber-500/10 border border-amber-500/30 rounded-xl py-2 px-3">
+        <View className="flex-row items-center gap-2">
+          <ActivityIndicator size="small" color="#F59E0B" />
+          <Text className="text-amber-500 text-xs font-bold">
+            Iniciando GPS en segundo plano...
+          </Text>
+        </View>
+        <Text className="text-amber-600/80 text-[11px]">
+          Conectando con satélites y habilitando servicio continuo en Android.
+        </Text>
+      </View>
+    );
+  }
+
+  if (tracking.state === 'error') {
+    return (
+      <View className="flex-col gap-1 bg-rose-500/10 border border-rose-500/30 rounded-xl py-2 px-3">
+        <View className="flex-row items-center gap-2">
+          <View className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+          <Text className="text-rose-500 text-xs font-bold">
+            {tracking.errorMessage || 'Problema de transmisión GPS'}
+          </Text>
+        </View>
+        <Text className="text-rose-600/80 text-[11px]">
+          Reintentando enviar coordenadas automáticamente.
+        </Text>
+      </View>
+    );
+  }
+
+  if (tracking.state === 'active') {
+    const timeAgo = tracking.lastSentAt ? formatTimeAgo(tracking.lastSentAt, now) : 'hace un momento';
+    return (
+      <View className="flex-col gap-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl py-2 px-3">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <View className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <Text className="text-emerald-600 text-xs font-bold">
+              GPS en segundo plano activo
+            </Text>
+          </View>
+          <Text className="text-emerald-700 text-[11px] font-semibold">
+            {timeAgo}
+          </Text>
+        </View>
+        <Text className="text-emerald-700/80 text-[11px]">
+          Transmitiendo ubicación en vivo · Pantalla bloqueada admitida
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-col gap-1 bg-brand/10 border border-brand/30 rounded-xl py-2 px-3">
+      <View className="flex-row items-center gap-2">
+        <View className="w-2 h-2 rounded-full bg-brand" />
+        <Text className="text-brand text-xs font-semibold">
+          Preparando seguimiento GPS para la ruta...
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export function DetailScreen(p: DetailProps) {
   const { colors } = useTheme();
@@ -205,12 +281,7 @@ export function DetailScreen(p: DetailProps) {
 
             {p.visit.status === 'en_ruta' && (
               <View className="gap-2.5">
-                <View className="flex-row items-center justify-center gap-2 bg-brand/10 border border-brand/30 rounded-xl py-2 px-3">
-                  <View className="w-2 h-2 rounded-full bg-brand" />
-                  <Text className="text-brand text-xs font-semibold">
-                    GPS en segundo plano activo · Transmitiendo ubicación
-                  </Text>
-                </View>
+                <GpsTrackingBadge />
                 <TouchableOpacity
                   onPress={p.onConfirmAccess}
                   disabled={p.busy}

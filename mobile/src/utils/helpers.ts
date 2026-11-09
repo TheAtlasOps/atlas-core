@@ -16,3 +16,20 @@ export function isValidEmail(email: string): boolean {
   if (!email || typeof email !== 'string') return false;
   return /^[^\s@]+@[^\s@]+\.[a-zA-Z0-9-]{2,}$/.test(email.trim());
 }
+
+/**
+ * Formatea un timestamp en milisegundos a una etiqueta relativa en español.
+ * Ejemplos: "hace un momento", "hace 15s", "hace 2 min", "hace 1 h".
+ */
+export function formatTimeAgo(timestampMs: number, nowMs: number = Date.now()): string {
+  if (!timestampMs || timestampMs <= 0) return 'hace un momento';
+  const diffSec = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
+  if (diffSec < 10) return 'hace un momento';
+  if (diffSec < 60) return `hace ${diffSec}s`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin === 1) return 'hace 1 min';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours === 1) return 'hace 1 h';
+  return `hace ${diffHours} h`;
+}
