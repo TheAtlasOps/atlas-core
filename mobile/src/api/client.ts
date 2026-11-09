@@ -62,6 +62,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
   }
 
+  // Prevenir envío anónimo a endpoints autenticados que dispararía un 401 falso y cierre de sesión involuntario
+  if (auth && !authToken) {
+    throw new ApiError('No hay sesión activa o almacenamiento protegido no disponible temporalmente.', 'network', 0);
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -94,7 +99,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!response.ok) {
-    if (response.status === 401 && auth) onUnauthorized?.();
+    // Solo disparar onUnauthorized si se envió una credencial y el servidor la rechazó explícitamente (401 token vencido/revocado)
+    if (response.status === 401 && auth && authToken) onUnauthorized?.();
     throw new ApiError(errorMessageFrom(data, response.status), 'http', response.status);
   }
   return data as T;
@@ -107,6 +113,21 @@ export async function apiUpload<T>(
   options: { auth?: boolean } = {}
 ): Promise<T> {
   const { auth = true } = options;
+
+  if (auth && !authToken) {
+    try {
+      const persisted = await getStored('atlas.token');
+      if (persisted) {
+        authToken = persisted;
+      }
+    } catch {
+      // Ignorar fallo de almacenamiento
+    }
+  }
+
+  if (auth && !authToken) {
+    throw new ApiError('No hay sesión activa o almacenamiento protegido no disponible temporalmente.', 'network', 0);
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -150,7 +171,7 @@ export async function apiUpload<T>(
 
   if (!response.ok) {
     console.error(`[ATLAS HTTP Upload Error] Servidor respondió HTTP ${response.status} en ${path}`);
-    if (response.status === 401 && auth) onUnauthorized?.();
+    if (response.status === 401 && auth && authToken) onUnauthorized?.();
     throw new ApiError(errorMessageFrom(data, response.status), 'http', response.status);
   }
   console.log(`[ATLAS HTTP Upload Éxito] Respuesta ${response.status} de ${path}`);

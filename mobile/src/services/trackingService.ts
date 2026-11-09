@@ -136,10 +136,10 @@ try {
               console.log(`[ATLAS GPS Background] Deteniendo seguimiento para orden ${orderId}: ${reason} (HTTP ${err?.status})`);
               await stopTracking(reason);
             } else {
-              // Error transitorio de red o timeout
+              // Error transitorio de red, timeout o lectura de almacenamiento: conservar el servicio activo para el próximo tick
               updateTrackingStatus({
                 state: 'error',
-                errorMessage: 'Sin conexión con el servidor. Reintentando...',
+                errorMessage: 'Problema temporal transmitiendo GPS. Reintentando...',
               });
             }
           }
@@ -242,10 +242,10 @@ export async function startTracking(orderId: string): Promise<boolean> {
         lastLng: current.coords.longitude,
         errorMessage: null,
       });
-      console.log(`[ATLAS GPS] Posición inicial enviada para orden ${orderId}`);
+      console.log(`[ATLAS GPS Foreground] Posición inicial enviada para orden ${orderId}`);
     }
   } catch (err: any) {
-    console.warn('[ATLAS GPS] No se pudo obtener ubicación inicial:', err?.message || err);
+    console.warn('[ATLAS GPS Foreground] No se pudo obtener ubicación inicial:', err?.message || err);
     if (err?.status === 401 || err?.status === 403 || err?.status === 409) {
       const reason =
         err?.status === 401
@@ -262,7 +262,7 @@ export async function startTracking(orderId: string): Promise<boolean> {
     });
   }
 
-  // 2. Iniciar servicio en segundo plano con notificación persistente (Android Foreground Service)
+  // 2. Iniciar servicio nativo en segundo plano con notificación persistente (Android Foreground Service)
   let backgroundStarted = false;
   try {
     if (!TaskManager.isTaskDefined(ATLAS_LOCATION_TASK)) {
@@ -271,14 +271,17 @@ export async function startTracking(orderId: string): Promise<boolean> {
       const isStarted = await Location.hasStartedLocationUpdatesAsync(ATLAS_LOCATION_TASK);
       if (!isStarted) {
         await Location.startLocationUpdatesAsync(ATLAS_LOCATION_TASK, {
-          accuracy: Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.High,
           timeInterval: 30000, // Cada 30 segundos
-          distanceInterval: 15, // O cada 15 metros
+          distanceInterval: 0, // 0 metros: permite emitir actualizaciones por tiempo incluso si el vehículo está detenido
+          deferredUpdatesInterval: 30000,
+          deferredUpdatesDistance: 0,
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: 'Atlas Técnico en ruta',
             notificationBody: 'Compartiendo ubicación en tiempo real con central y cliente.',
             notificationColor: '#F97316',
+            killServiceOnDestroy: false,
           },
         });
         console.log('[ATLAS GPS] Servicio background de ubicación iniciado exitosamente.');
@@ -299,8 +302,8 @@ export async function startTracking(orderId: string): Promise<boolean> {
     });
   }
 
-  // 3. Fallback de intervalo en primer plano si background no está disponible o mientras la app esté visible
-  if (!foregroundIntervalId) {
+  // 3. Fallback de intervalo en primer plano ÚNICAMENTE si el servicio background nativo no está disponible
+  if (!backgroundStarted && !foregroundIntervalId) {
     foregroundIntervalId = setInterval(async () => {
       if (!currentTrackingOrderId) return;
       try {
@@ -333,9 +336,10 @@ export async function startTracking(orderId: string): Promise<boolean> {
             lastLng: lng,
             errorMessage: null,
           });
+          console.log(`[ATLAS GPS Fallback] Coordenadas emitidas (${lat.toFixed(4)}, ${lng.toFixed(4)}) para OT ${currentTrackingOrderId}`);
         }
       } catch (err: any) {
-        console.warn('[ATLAS GPS Polling] Error obteniendo coordenadas:', err?.message || err);
+        console.warn('[ATLAS GPS Fallback] Error obteniendo coordenadas:', err?.message || err);
         if (err?.status === 401 || err?.status === 403 || err?.status === 404 || err?.status === 409) {
           const reason =
             err?.status === 401
@@ -345,7 +349,7 @@ export async function startTracking(orderId: string): Promise<boolean> {
               : err?.status === 409
               ? 'La orden ya no se encuentra en ruta'
               : 'Orden no encontrada';
-          console.log(`[ATLAS GPS Polling] Deteniendo seguimiento para orden ${currentTrackingOrderId}: ${reason}`);
+          console.log(`[ATLAS GPS Fallback] Deteniendo seguimiento para orden ${currentTrackingOrderId}: ${reason}`);
           void stopTracking(reason);
         } else {
           updateTrackingStatus({
