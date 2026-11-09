@@ -1,4 +1,5 @@
 import { API_URL, REQUEST_TIMEOUT_MS } from '../config';
+import { getStored } from './storage';
 
 // ─── Cliente HTTP ─────────────────────────────────────────────────────────────
 export type ApiErrorKind = 'network' | 'timeout' | 'http';
@@ -48,6 +49,18 @@ function errorMessageFrom(data: unknown, status: number): string {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true } = options;
+
+  // Restaurar token persistido si el proceso o tarea en segundo plano no lo tiene en memoria
+  if (auth && !authToken) {
+    try {
+      const persisted = await getStored('atlas.token');
+      if (persisted) {
+        authToken = persisted;
+      }
+    } catch {
+      // Ignorar fallo de almacenamiento
+    }
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
