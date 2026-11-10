@@ -51,13 +51,34 @@ const STATUS_KEY_LABELS = {
   cancelada: "Servicio Cancelado",
 };
 
+export function parseDateSafe(rawDate) {
+  if (!rawDate) return null;
+  if (rawDate instanceof Date) {
+    return Number.isNaN(rawDate.getTime()) ? null : rawDate;
+  }
+  if (typeof rawDate === "string") {
+    const trimmed = rawDate.trim();
+    if (!trimmed) return null;
+    // Si viene en formato ISO sin indicador de zona horaria (sin 'Z' ni offset +/-HH:mm),
+    // asumimos UTC ya que la base de datos almacena marcas de tiempo en UTC
+    const hasTz = trimmed.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+    const normalized = hasTz ? trimmed : `${trimmed}Z`;
+    const d = new Date(normalized);
+    if (!Number.isNaN(d.getTime())) return d;
+    const fallback = new Date(trimmed);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+  const d = new Date(rawDate);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function formatChileanTime(rawDateOrTime) {
   if (!rawDateOrTime) return "—";
   if (typeof rawDateOrTime === "string" && /^\d{2}:\d{2}$/.test(rawDateOrTime.trim())) {
     return rawDateOrTime.trim();
   }
-  const parsed = new Date(rawDateOrTime);
-  if (Number.isNaN(parsed.getTime())) return String(rawDateOrTime);
+  const parsed = parseDateSafe(rawDateOrTime);
+  if (!parsed) return String(rawDateOrTime);
   try {
     return parsed.toLocaleTimeString("es-CL", {
       timeZone: "America/Santiago",
@@ -112,8 +133,8 @@ export function formatAddressDisplay(rawAddress, rawComuna) {
 
 function formatScheduledDateDisplay(rawDate) {
   if (!rawDate) return "Horario por confirmar";
-  const parsed = new Date(rawDate);
-  if (Number.isNaN(parsed.getTime())) return String(rawDate);
+  const parsed = parseDateSafe(rawDate);
+  if (!parsed) return String(rawDate);
   try {
     return parsed.toLocaleDateString("es-CL", {
       timeZone: "America/Santiago",
@@ -130,8 +151,8 @@ function formatScheduledDateDisplay(rawDate) {
 
 export function formatCompletedDateDisplay(rawDate) {
   if (!rawDate) return "";
-  const parsed = new Date(rawDate);
-  if (Number.isNaN(parsed.getTime())) return String(rawDate);
+  const parsed = parseDateSafe(rawDate);
+  if (!parsed) return String(rawDate);
   try {
     const timeStr = parsed.toLocaleTimeString("es-CL", {
       timeZone: "America/Santiago",

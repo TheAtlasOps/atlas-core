@@ -1014,11 +1014,11 @@ function WorkOrderDetailDrawerContent({
                       Firma Electrónica Simple · {auditData.conformity.signedAt}
                     </span>
                     {auditData.conformity.signatureUrl ? (
-                      <div className="my-2 p-2 bg-white dark:bg-[#1a1a1a] rounded-md border border-slate-200 dark:border-gray-800 flex items-center justify-center max-w-sm">
+                      <div className="my-2 p-2 bg-white rounded-md border border-slate-200 dark:border-gray-800 flex items-center justify-center max-w-sm shadow-xs">
                         <img
                           src={auditData.conformity.signatureUrl}
                           alt="Firma digitalizada del cliente receptor"
-                          className="max-h-24 max-w-full object-contain dark:invert"
+                          className="max-h-24 max-w-full object-contain"
                         />
                       </div>
                     ) : (

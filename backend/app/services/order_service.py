@@ -56,6 +56,7 @@ async def list_orders(
         selectinload(WorkOrder.status_history).selectinload(OrderStatusHistory.changed_by_user),
         selectinload(WorkOrder.items).selectinload(WorkOrderItem.sim_card),
         selectinload(WorkOrder.items).selectinload(WorkOrderItem.equipment),
+        selectinload(WorkOrder.evidences),
         selectinload(WorkOrder.auditor),
     )
 

@@ -265,7 +265,13 @@ def _build_summary_response(
                     order_signed_at = h.created_at
                 break
 
+    if order_signed_at and order_signed_at.tzinfo is None:
+        order_signed_at = order_signed_at.replace(tzinfo=timezone.utc)
+
     confirmed_at = magic_link.client_confirmed_at if magic_link else None
+    if confirmed_at and confirmed_at.tzinfo is None:
+        confirmed_at = confirmed_at.replace(tzinfo=timezone.utc)
+
     signature_url = (
         generate_presigned_download_url(order_signature_key)
         if order_signature_key
@@ -276,6 +282,8 @@ def _build_summary_response(
 
     is_audited = bool(getattr(order, "is_audited", False))
     audited_at = getattr(order, "audited_at", None)
+    if audited_at and audited_at.tzinfo is None:
+        audited_at = audited_at.replace(tzinfo=timezone.utc)
     audit_notes = getattr(order, "audit_notes", None)
 
     # ── Coordenadas de orden y ubicación en vivo del técnico (RF-CLI-05) ──
