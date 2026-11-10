@@ -263,7 +263,17 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
       setSignedByName(signer);
       setIsSigned(true);
       if (res?.signature_url) {
-        setApiSummary((prev) => (prev ? { ...prev, signature_url: res.signature_url } : prev));
+        setApiSummary((prev) =>
+          prev
+            ? {
+                ...prev,
+                signature_url: res.signature_url,
+                is_signed: true,
+                signed_by_name: signer,
+                signed_at: res.signed_at || new Date().toISOString(),
+              }
+            : prev
+        );
       }
     } catch (err) {
       setSignError(err?.message || "No fue posible registrar la firma digital. Intente nuevamente.");
@@ -828,7 +838,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                 <ShieldCheck className="h-3 w-3" />
                 Auditada
               </span>
-            ) : isSigned || order.is_signed ? (
+            ) : isSigned || order.is_signed || Boolean(order.signature_url || apiSummary?.signature_url) ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-3 w-3" />
                 Recepción conforme firmada
@@ -890,8 +900,9 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
           {(() => {
             const raw = String(order.raw_status || order.status_key || "").toUpperCase();
             const canSign = ["EN_SITIO", "COMPLETADA"].includes(raw) || order.is_completed;
-            const signatureDisplayUrl = order.signature_url || apiSummary?.signature_url || signatureBase64;
-            const hasExistingSignature = Boolean(isSigned || order.is_signed || signatureDisplayUrl);
+            const persistedSignatureUrl = order.signature_url || apiSummary?.signature_url;
+            const hasExistingSignature = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+            const signatureDisplayUrl = persistedSignatureUrl || (isSigned ? signatureBase64 : null);
             const signerNameDisplay = signedByName || order.signed_by_name || order.client;
 
             // CASO 1: Ya cuenta con firma válida registrada (evidencias o enlace anterior)
@@ -913,11 +924,11 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                     )}
                   </div>
                   {signatureDisplayUrl && (
-                    <div className="bg-white dark:bg-[#141414] rounded-lg p-2 border border-emerald-200 dark:border-gray-800 max-w-xs flex items-center justify-center shadow-2xs">
+                    <div className="bg-white rounded-lg p-2.5 border border-slate-200 dark:border-gray-700 max-w-xs flex items-center justify-center shadow-xs">
                       <img
                         src={signatureDisplayUrl}
                         alt="Rúbrica registrada del cliente"
-                        className="max-h-20 w-auto object-contain dark:invert"
+                        className="max-h-20 w-auto object-contain"
                       />
                     </div>
                   )}
