@@ -155,7 +155,7 @@ export function ActiveZonesCard({
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-3 h-full">
+      <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-3.5">
         {/* Encabezado con contadores y botón expandir */}
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-0.5">
@@ -260,12 +260,12 @@ export function ActiveZonesCard({
 
         {/* Mapa Leaflet interactivo */}
         {isLoading ? (
-          <div className="relative flex min-h-[280px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+          <div className="relative flex h-[250px] w-full items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
             <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
           </div>
         ) : (
           <>
-            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[280px] h-[280px] w-full">
+            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate h-[250px] w-full">
               {allMapPoints.length === 0 && (
                 <div className="absolute inset-x-4 top-4 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
                   <span>
@@ -757,7 +757,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
       <div>
         <h2 className="text-sm font-semibold text-foreground">
           Estado de visitas
@@ -769,8 +769,8 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
 
       {isLoading ? (
         <>
-          <div className="flex items-center justify-center py-2">
-            <div className="w-40 h-40 rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
+          <div className="flex items-center justify-center py-1">
+            <div className="w-[150px] h-[150px] rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
           </div>
           <div className="flex flex-col gap-2.5">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -788,7 +788,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
           </div>
         </>
       ) : error && total === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center py-6">
+        <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
           <p className="text-xs font-semibold text-rose-500">
             No se pudo obtener la distribución de estados
           </p>
@@ -796,11 +796,11 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-center py-2">
-            <div className="relative">
+          <div className="flex items-center justify-center py-1">
+            <div className="relative flex items-center justify-center">
               <svg
-                width="140"
-                height="140"
+                width="150"
+                height="150"
                 viewBox="0 0 100 100"
                 className="-rotate-90"
                 aria-label="Gráfico donut de estado de visitas"
@@ -811,7 +811,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
                   r="40"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="12"
+                  strokeWidth="11"
                   className="text-slate-900/10 dark:text-white/5"
                 />
                 {segments.map((seg) => (
@@ -822,18 +822,26 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
                     r="40"
                     fill="none"
                     stroke={seg.strokeColor}
-                    strokeWidth="12"
+                    strokeWidth="11"
                     strokeDasharray={`${seg.dash} ${CIRCUMFERENCE - seg.dash}`}
                     strokeDashoffset={seg.offset}
                     strokeLinecap="butt"
                   />
                 ))}
               </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
-                <span className="text-2xl font-bold text-foreground">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none p-2">
+                <span
+                  className={`font-bold tracking-tight text-foreground leading-none ${
+                    total >= 1000
+                      ? "text-xl"
+                      : total >= 100
+                      ? "text-2xl"
+                      : "text-3xl"
+                  }`}
+                >
                   {total}
                 </span>
-                <span className="text-xs font-medium text-muted-foreground">
+                <span className="mt-1 max-w-[76px] text-[10px] leading-tight font-medium text-muted-foreground text-center">
                   {total === 0 ? "Sin órdenes" : "órdenes registradas"}
                 </span>
               </div>
@@ -879,7 +887,7 @@ function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) 
   const isEmpty = visits.length === 0;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
@@ -915,7 +923,7 @@ function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) 
           ))}
         </div>
       ) : error && isEmpty ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
+        <div className="flex flex-col items-center justify-center gap-2 py-6 text-center">
           <AlertTriangle className="h-6 w-6 text-rose-500" />
           <p className="text-xs font-semibold text-rose-500">
             No se pudieron sincronizar las visitas programadas
@@ -923,7 +931,7 @@ function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) 
           <p className="text-[11px] text-muted-foreground leading-relaxed">{error}</p>
         </div>
       ) : isEmpty ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
           <CheckCircle2 className="h-8 w-8 text-slate-500 dark:text-gray-400" />
           <p className="text-xs text-muted-foreground leading-relaxed">
             No hay visitas registradas.
@@ -992,7 +1000,7 @@ function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) 
 function ActivityTableSkeleton() {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-5 py-4 border-b border-border">
         <div className="flex flex-col gap-2">
           <div className="h-4 w-52 animate-pulse rounded bg-slate-200 dark:bg-gray-800" />
           <div className="h-3 w-72 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
@@ -1000,7 +1008,7 @@ function ActivityTableSkeleton() {
         <div className="h-3 w-24 animate-pulse rounded bg-slate-100/60 dark:bg-gray-800/60" />
       </div>
 
-      <div className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
+      <div className="divide-y divide-border">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="grid grid-cols-4 gap-4 px-5 py-4">
             <div className="h-4 w-20 animate-pulse rounded bg-slate-100/80 dark:bg-gray-800/80" />
@@ -1020,7 +1028,7 @@ function ActivityTableSkeleton() {
 function ActivityTable({ log = [], onSelectOrderId, error }) {
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-5 py-4 border-b border-border">
         <div>
           <h2 className="text-sm font-semibold text-foreground">
             Registro de actividad reciente
@@ -1029,7 +1037,7 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
             Últimas acciones registradas por los usuarios del sistema · Haz clic en una fila para ver auditoría
           </p>
         </div>
-        <span className="text-xs text-muted-foreground font-medium">
+        <span className="text-xs text-muted-foreground font-medium shrink-0">
           Bitácora en tiempo real (America/Santiago)
         </span>
       </div>
@@ -1815,10 +1823,8 @@ export default function DispatchBoard() {
 
       {/* ── Layout principal ── */}
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
-          <div className="flex-1 flex flex-col gap-6">
-            {/* Cabecera + búsqueda, filtros, Inventario y botón Nueva OT */}
-            <div className="flex flex-col gap-4">
+        {/* Cabecera + búsqueda, filtros, Inventario y botón Nueva OT */}
+        <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h1 className="text-2xl font-semibold tracking-tight text-balance">
@@ -2011,9 +2017,12 @@ export default function DispatchBoard() {
               </div>
             )}
 
-            {/* KPIs — muestra skeleton mientras carga */}
-            <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} error={apiError} />
+        {/* KPIs — muestra skeleton mientras carga */}
+        <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} error={apiError} />
 
+        {/* Sección analítica y operativa — Columnas izquierda y derecha perfectamente alineadas */}
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
+          <div className="flex-1 flex flex-col gap-6 min-w-0">
             {/* Fila 1: Mapa geoespacial y Distribución de estado */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <ActiveZonesCard
