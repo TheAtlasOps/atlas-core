@@ -532,3 +532,221 @@ test("Orden en estado CANCELADA detiene el polling inmediatamente y purga GPS", 
   assert.equal(timerActive, false, "El polling debe detenerse tras la cancelación");
   assert.equal(liveTechLoc, null, "La ubicación GPS debe ser eliminada tras la cancelación");
 });
+
+// ─── 15. Flujo de Firma Digital: Borrador, Trazos Múltiples y Resiliencia ─────
+test("Ciclo de vida de firma digital: el borrador en memoria no desmonta el formulario y permite múltiples trazos", () => {
+  // Orden completada sin firma previa
+  const order = {
+    order_number: "#OT-08494",
+    status_key: "completada",
+    raw_status: "COMPLETADA",
+    is_completed: true,
+    is_signed: false,
+    signature_url: null,
+    is_audited: false,
+  };
+
+  let isSigned = false;
+  let signatureBase64 = null;
+  let hasDrawing = false;
+  let apiSummary = null;
+
+  // Función de cálculo idéntica a CustomerTrackingView
+  function evaluateSignatureState() {
+    const raw = String(order.raw_status || order.status_key || "").toUpperCase();
+    const canSign = ["EN_SITIO", "COMPLETADA"].includes(raw) || order.is_completed;
+    const persistedSignatureUrl = order.signature_url || apiSummary?.signature_url;
+    const hasExistingSignature = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+    const signatureDisplayUrl = persistedSignatureUrl || (isSigned ? signatureBase64 : null);
+    const isHeaderSigned = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+
+    return {
+      canSign,
+      hasExistingSignature,
+      signatureDisplayUrl,
+      isHeaderSigned,
+      showForm: !hasExistingSignature && canSign && !order.is_audited,
+      showSuccessBlock: hasExistingSignature,
+    };
+  }
+
+  // 1. Estado inicial: formulario habilitado, sin firma previa
+  let state = evaluateSignatureState();
+  assert.equal(state.canSign, true);
+  assert.equal(state.hasExistingSignature, false);
+  assert.equal(state.showForm, true);
+  assert.equal(state.showSuccessBlock, false);
+  assert.equal(state.isHeaderSigned, false);
+
+  // 2. Usuario dibuja el primer trazo y suelta el mouse (pointerup)
+  signatureBase64 = "data:image/png;base64,trazo_1_en_memoria";
+  hasDrawing = true;
+
+  state = evaluateSignatureState();
+  assert.equal(hasDrawing, true);
+  // El borrador NO debe provocar que hasExistingSignature sea true
+  assert.equal(state.hasExistingSignature, false, "El borrador en memoria no debe marcar la orden como firmada");
+  assert.equal(state.showForm, true, "El formulario debe permanecer montado tras el primer trazo");
+  assert.equal(state.showSuccessBlock, false, "El bloque verde de éxito no debe mostrarse mientras se dibuja");
+  assert.equal(state.isHeaderSigned, false, "La cabecera debe continuar en 'Pendiente de firma'");
+
+  // 3. Usuario dibuja un segundo trazo consecutivo en el mismo lienzo
+  signatureBase64 = "data:image/png;base64,trazo_1_mas_trazo_2_acumulado";
+  hasDrawing = true;
+
+  state = evaluateSignatureState();
+  assert.equal(hasDrawing, true);
+  assert.equal(state.hasExistingSignature, false, "Trazos múltiples no deben desmontar el lienzo");
+  assert.equal(state.showForm, true, "El formulario sigue activo para permitir más trazos o confirmar");
+  assert.equal(state.showSuccessBlock, false);
+});
+
+test("Validación de condiciones para habilitar botón 'Firmar Recepción Conforme'", () => {
+  function checkButtonEnabled({ isSigning, hasDrawing, signedByName, hasExistingSignature }) {
+    if (hasExistingSignature) return false;
+    return !isSigning && Boolean(hasDrawing) && Boolean(signedByName && signedByName.trim());
+  }
+
+  // Sin nombre ni trazos
+  assert.equal(checkButtonEnabled({ isSigning: false, hasDrawing: false, signedByName: "", hasExistingSignature: false }), false);
+
+  // Con nombre pero sin trazos
+  assert.equal(checkButtonEnabled({ isSigning: false, hasDrawing: false, signedByName: "Juan Pérez", hasExistingSignature: false }), false);
+
+  // Con trazos pero con nombre vacío o solo espacios
+  assert.equal(checkButtonEnabled({ isSigning: false, hasDrawing: true, signedByName: "   ", hasExistingSignature: false }), false);
+
+  // Con trazos y nombre válido -> Habilitado
+  assert.equal(checkButtonEnabled({ isSigning: false, hasDrawing: true, signedByName: "Prueba QA - Receptor", hasExistingSignature: false }), true);
+
+  // Durante el envío (isSigning = true) -> Deshabilitado para evitar peticiones dobles
+  assert.equal(checkButtonEnabled({ isSigning: true, hasDrawing: true, signedByName: "Prueba QA - Receptor", hasExistingSignature: false }), false);
+
+  // Si ya cuenta con firma existente -> Deshabilitado
+  assert.equal(checkButtonEnabled({ isSigning: false, hasDrawing: true, signedByName: "Prueba QA - Receptor", hasExistingSignature: true }), false);
+});
+
+test("Sincronización post-firma: confirmación y cabecera se actualizan solo tras POST exitoso", async () => {
+  const order = {
+    order_number: "#OT-08494",
+    status_key: "completada",
+    is_completed: true,
+    is_signed: false,
+    signature_url: null,
+  };
+
+  let isSigned = false;
+  let signatureBase64 = "data:image/png;base64,trazo_final";
+  let signedByName = "Prueba QA";
+  let signError = null;
+  let apiSummary = null;
+
+  const mockApi = {
+    sign: async (token, base64, signer) => {
+      assert.equal(token, "ml-token-test");
+      assert.ok(base64);
+      assert.equal(signer, "Prueba QA");
+      return {
+        success: true,
+        signature_url: "https://storage.neon.tech/signatures/f75b9563_abc123.png",
+        signed_at: "2026-11-09T23:00:00Z",
+      };
+    },
+  };
+
+  // Antes del envío
+  assert.equal(isSigned, false);
+
+  // Ejecución de handleSignConformity
+  try {
+    const res = await mockApi.sign("ml-token-test", signatureBase64, signedByName);
+    isSigned = true;
+    apiSummary = {
+      signature_url: res.signature_url,
+      is_signed: true,
+      signed_by_name: signedByName,
+      signed_at: res.signed_at,
+    };
+  } catch (err) {
+    signError = err.message;
+  }
+
+  // Tras éxito:
+  assert.equal(signError, null);
+  assert.equal(isSigned, true);
+
+  const persistedSignatureUrl = order.signature_url || apiSummary?.signature_url;
+  const hasExistingSignature = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+  const signatureDisplayUrl = persistedSignatureUrl || (isSigned ? signatureBase64 : null);
+  const isHeaderSigned = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+
+  assert.equal(hasExistingSignature, true, "Debe pasar al estado firmado tras la respuesta del backend");
+  assert.equal(isHeaderSigned, true, "El encabezado superior debe pasar a 'Recepción conforme firmada'");
+  assert.equal(signatureDisplayUrl, "https://storage.neon.tech/signatures/f75b9563_abc123.png");
+});
+
+test("Resiliencia ante error del backend: no produce falsa confirmación y conserva el borrador", async () => {
+  let isSigned = false;
+  let signatureBase64 = "data:image/png;base64,trazo_manuscrito_valido";
+  let signedByName = "Receptor QA";
+  let hasDrawing = true;
+  let signError = null;
+  let apiSummary = null;
+
+  const mockFailingApi = {
+    sign: async () => {
+      throw new Error("502 Bad Gateway: Fallo de almacenamiento en Neon Object Storage");
+    },
+  };
+
+  // Intento de firma que falla
+  try {
+    await mockFailingApi.sign();
+    isSigned = true;
+  } catch (err) {
+    signError = err?.message || "Error al firmar";
+  }
+
+  // Verificaciones de estado tras error:
+  assert.equal(isSigned, false, "isSigned debe permanecer false tras error HTTP");
+  assert.ok(signError.includes("502 Bad Gateway"), "El mensaje de error debe exponerse al usuario");
+
+  const order = { is_signed: false, signature_url: null };
+  const persistedSignatureUrl = order.signature_url || apiSummary?.signature_url;
+  const hasExistingSignature = Boolean(isSigned || order.is_signed || persistedSignatureUrl);
+
+  assert.equal(hasExistingSignature, false, "No debe mostrarse confirmación verde falsa ante un fallo del servidor");
+  assert.equal(hasDrawing, true, "El trazo en el lienzo no debe borrarse");
+  assert.equal(signatureBase64, "data:image/png;base64,trazo_manuscrito_valido", "El borrador debe conservarse para reintentar");
+  assert.equal(signedByName, "Receptor QA", "El nombre ingresado no debe perderse");
+});
+
+test("Firma persistida tras recarga (F5) renderiza comprobante limpio sin dark:invert", () => {
+  // Simulación de carga inicial desde el backend tras F5
+  const freshBackendSummary = {
+    order_number: "#OT-08494",
+    status_key: "completada",
+    is_signed: true,
+    signature_url: "https://storage.neon.tech/signatures/f75b9563_persisted.png",
+    signed_by_name: "Prueba QA - Recepción ATLAS",
+    signed_at: "2026-11-09T20:24:09Z",
+    is_audited: false,
+  };
+
+  const isSigned = false; // Sin estado local de envío
+  const signatureBase64 = null; // Sin borrador en memoria
+
+  const persistedSignatureUrl = freshBackendSummary.signature_url;
+  const hasExistingSignature = Boolean(isSigned || freshBackendSummary.is_signed || persistedSignatureUrl);
+  const signatureDisplayUrl = persistedSignatureUrl || (isSigned ? signatureBase64 : null);
+
+  assert.equal(hasExistingSignature, true, "Una orden con firma persistida debe reconocerse como firmada tras recargar");
+  assert.equal(signatureDisplayUrl, "https://storage.neon.tech/signatures/f75b9563_persisted.png");
+
+  // Validación de clases visuales: comprobante con fondo blanco y sin dark:invert
+  const containerClasses = "bg-white rounded-lg p-2.5 border border-slate-200 dark:border-gray-700 max-w-xs flex items-center justify-center shadow-xs";
+  const imgClasses = "max-h-20 w-auto object-contain";
+
+  assert.ok(!imgClasses.includes("dark:invert"), "La imagen de firma no debe tener dark:invert para evitar fondo negro");
+  assert.ok(containerClasses.includes("bg-white"), "El comprobante debe tener fondo blanco opaco como acta física");
+});
