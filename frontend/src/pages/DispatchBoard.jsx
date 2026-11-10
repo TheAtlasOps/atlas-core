@@ -16,6 +16,8 @@ import {
   Cpu,
   Database,
   AlertTriangle,
+  AlertCircle,
+  ExternalLink,
   RefreshCw,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
@@ -26,6 +28,17 @@ import { useTheme } from "../hooks/useTheme";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
+import {
+  AVAILABLE_STATUS_FILTERS,
+  getMarkerHexByStatus,
+  groupOrdersIntoClusters,
+  getMapSummaryCounters,
+  getSignalFreshness,
+  makeSingleOrderIcon,
+  makeClusterIcon,
+  makeTechnicianIcon,
+  isValidCoordinate,
+} from "../lib/mapClustering";
 import {
   SERVICE_TYPES,
   formatChileanDateTime,
@@ -92,122 +105,160 @@ function MapResizeHandler() {
   return null;
 }
 
-function getMarkerHexByStatus(status, fallbackHex) {
-  if (fallbackHex) return fallbackHex;
-  const s = (status || "").toUpperCase();
-  if (s === "COMPLETADA" || s === "COMPLETADO") return "#34d399";
-  if (s === "EN_RUTA" || s === "EN_SITIO" || s === "EN CAMINO") return "#f97316";
-  if (s === "CANCELADA" || s === "REAGENDADA") return "#f87171";
-  return "#60a5fa";
-}
-
-function makeIcon(hex) {
-  return L.divIcon({
-    className: "",
-    html: `
-      <div style="
-        width:16px;height:16px;border-radius:9999px;
-        background:${hex};
-        border:2px solid rgba(255,255,255,0.25);
-        box-shadow:0 0 0 4px ${hex}33;
-      "></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
-    popupAnchor: [0, -12],
-  });
-}
-
-function getSignalFreshness(lastLocationAt) {
-  if (!lastLocationAt) return { label: "Sin señal registrada", isRecent: false, isStale: false };
-  const diffMinutes = Math.floor((Date.now() - new Date(lastLocationAt).getTime()) / 60000);
-  if (diffMinutes < 5) {
-    return {
-      label: diffMinutes <= 0 ? "En vivo (ahora)" : `En vivo (hace ${diffMinutes} min)`,
-      isRecent: true,
-      isStale: false,
-    };
-  } else if (diffMinutes < 30) {
-    return {
-      label: `Señal hace ${diffMinutes} min`,
-      isRecent: false,
-      isStale: true,
-    };
-  } else {
-    return {
-      label: `Sin señal reciente (${diffMinutes} min)`,
-      isRecent: false,
-      isStale: false,
-    };
-  }
-}
-
-function makeTechnicianIcon({ isRecent, isStale, initials = "TC" }) {
-  const ringColor = isRecent ? "#10b981" : isStale ? "#f59e0b" : "#64748b";
-  const glow = isRecent ? `box-shadow: 0 0 8px ${ringColor};` : "";
-  return L.divIcon({
-    className: "",
-    html: `
-      <div style="
-        position: relative;
-        width: 28px; height: 28px;
-        border-radius: 9999px;
-        background: #0f172a;
-        border: 2px solid ${ringColor};
-        ${glow}
-        display: flex; align-items: center; justify-content: center;
-        color: #ffffff; font-weight: 700; font-size: 11px; font-family: monospace;
-      ">
-        <span>${initials}</span>
-        <span style="
-          position: absolute; bottom: -2px; right: -2px;
-          width: 8px; height: 8px; border-radius: 9999px;
-          background: ${ringColor};
-          border: 1.5px solid #0f172a;
-        "></span>
-      </div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -16],
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tarjeta 1 — Zonas activas (Mapa real react-leaflet)
+// Tarjeta 1 — Zonas activas (Mapa real react-leaflet con clustering y filtros)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [], onSelectOrderId }) {
+export function ActiveZonesCard({
+  isLoading,
+  error,
+  orders = [],
+  markers = [],
+  technicianMarkers = [],
+  onSelectOrderId,
+}) {
   const { isDark } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
-  const allMapPoints = useMemo(() => [...markers, ...technicianMarkers], [markers, technicianMarkers]);
+  const [statusFilter, setStatusFilter] = useState("TODAS");
+  const [showUnlocatedModal, setShowUnlocatedModal] = useState(false);
+
+  // Considerar orders si están provistas, con fallback a markers
+  const allOrdersList = useMemo(() => {
+    return Array.isArray(orders) && orders.length > 0 ? orders : markers;
+  }, [orders, markers]);
+
+  // Agrupación de marcadores según coordenadas exactas y filtro de estado activo
+  const { clusters, unlocatedOrders } = useMemo(
+    () => groupOrdersIntoClusters(allOrdersList, statusFilter),
+    [allOrdersList, statusFilter]
+  );
+
+  // Técnicos con coordenadas válidas
+  const validTechMarkers = useMemo(
+    () => technicianMarkers.filter((t) => isValidCoordinate(t.lat, t.lng)),
+    [technicianMarkers]
+  );
+
+  // Puntos geográficos para encuadre automático del mapa
+  const allMapPoints = useMemo(
+    () => [
+      ...clusters.map((c) => ({ lat: c.lat, lng: c.lng })),
+      ...validTechMarkers.map((t) => ({ lat: t.lat, lng: t.lng })),
+    ],
+    [clusters, validTechMarkers]
+  );
+
+  // Contadores del encabezado
+  const summary = useMemo(
+    () => getMapSummaryCounters(allOrdersList, validTechMarkers, statusFilter),
+    [allOrdersList, validTechMarkers, statusFilter]
+  );
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div>
+      <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-3 h-full">
+        {/* Encabezado con contadores y botón expandir */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-foreground">
-                Zonas activas y GPS
+                Distribución geográfica de órdenes y técnicos en terreno
               </h2>
-              <p className="text-xs text-muted-foreground">
-                Distribución en tiempo real ({markers.length} órdenes · {technicianMarkers.length} técnicos con GPS)
-              </p>
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
+                aria-label="En vivo"
+              />
             </div>
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0"
-              aria-label="En vivo"
-            />
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>{summary.summaryText}</span>
+              {summary.unlocatedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowUnlocatedModal((prev) => !prev)}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                  title="Ver órdenes sin coordenadas registradas"
+                >
+                  <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>{summary.unlocatedText}</span>
+                </button>
+              )}
+            </div>
           </div>
           <button
             type="button"
             onClick={() => setIsExpanded(true)}
             aria-label="Expandir mapa"
             title="Expandir mapa a pantalla completa"
-            className="flex items-center justify-center rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+            className="flex items-center justify-center rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors shrink-0"
           >
             <Maximize2 className="h-4 w-4" />
           </button>
         </div>
 
+        {/* Barra de filtros por estado */}
+        <div className="flex flex-wrap items-center gap-1.5 py-0.5" role="toolbar" aria-label="Filtros de estado en mapa">
+          {AVAILABLE_STATUS_FILTERS.map((f) => {
+            const isActive = statusFilter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setStatusFilter(f.id)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                }`}
+              >
+                {f.id !== "TODAS" && (
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: f.color }}
+                  />
+                )}
+                <span>{f.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Alerta desplegable de órdenes sin ubicación */}
+        {showUnlocatedModal && unlocatedOrders.length > 0 && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+            <div className="flex items-center justify-between font-bold text-[11px]">
+              <span className="flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                Órdenes sin coordenadas ({unlocatedOrders.length})
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowUnlocatedModal(false)}
+                className="text-amber-700 dark:text-amber-400 hover:opacity-75 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <ul className="divide-y divide-amber-500/20 max-h-28 overflow-y-auto pr-1">
+              {unlocatedOrders.map((uo) => (
+                <li key={uo.id} className="py-1 flex items-center justify-between gap-2 text-[11px]">
+                  <div className="truncate">
+                    <span className="font-semibold">{uo.orderNumber}</span>: {uo.title} ({uo.client})
+                  </div>
+                  {onSelectOrderId && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectOrderId(uo.orderNumber || uo.id)}
+                      className="shrink-0 font-semibold underline text-amber-800 dark:text-amber-300 hover:text-amber-900 cursor-pointer"
+                    >
+                      Ver OT
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Mapa Leaflet interactivo */}
         {isLoading ? (
           <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
             <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
@@ -220,12 +271,12 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
                   <span>
                     {error
                       ? "No se pudieron sincronizar las ubicaciones geográficas"
-                      : "No hay órdenes ni técnicos con ubicación registrada en este momento"}
+                      : "No hay órdenes ni técnicos con ubicación registrada para este filtro"}
                   </span>
                 </div>
               )}
               <MapContainer
-                center={[-33.4489, -70.6693]}
+                center={[-33.4372, -70.6506]}
                 zoom={12}
                 scrollWheelZoom={false}
                 style={{
@@ -243,50 +294,121 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
                 />
                 <MapAutoBounds markers={allMapPoints} />
 
-                {/* Marcadores de Órdenes */}
-                {markers.map((m) => {
-                  const hex = getMarkerHexByStatus(m.status, m.hex);
+                {/* Marcadores de Órdenes agrupadas (Clusters) y marcadores individuales */}
+                {clusters.map((cluster) => {
+                  const icon = cluster.isCluster
+                    ? makeClusterIcon(cluster.count, cluster.color, L)
+                    : makeSingleOrderIcon(cluster.color, L);
+
                   return (
                     <Marker
-                      key={m.id}
-                      position={[m.lat, m.lng]}
-                      icon={makeIcon(hex)}
+                      key={cluster.id}
+                      position={[cluster.lat, cluster.lng]}
+                      icon={icon}
                     >
-                      <Popup>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            lineHeight: "1.5",
-                            minWidth: "140px",
-                          }}
-                        >
-                          <strong className="block text-slate-900 font-bold">
-                            {m.orderNumber || m.id}
-                          </strong>
-                          <span className="block text-slate-600 text-[11px] mt-0.5">
-                            {m.client || m.title || m.label}
-                          </span>
-                          <span className="block mt-1 text-[11px]" style={{ color: hex, fontWeight: "700" }}>
-                            Estado: {m.status}
-                          </span>
-                        </div>
+                      <Popup minWidth={cluster.isCluster ? 250 : 180} maxWidth={320}>
+                        {cluster.isCluster ? (
+                          <div className="text-slate-900" style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                            <div className="border-b border-slate-200 pb-1.5 mb-2">
+                              <div className="flex items-center justify-between">
+                                <strong className="font-bold text-slate-900 text-xs">
+                                  Ubicación agrupada
+                                </strong>
+                                <span className="rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[10px] font-extrabold">
+                                  {cluster.count} órdenes
+                                </span>
+                              </div>
+                              <span className="block text-slate-500 text-[10px] truncate mt-0.5">
+                                {cluster.orders[0]?.client || "Misma dirección"}
+                              </span>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+                              {cluster.orders.map((o) => (
+                                <div key={o.id} className="pt-2 first:pt-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-bold text-slate-900 text-xs">{o.orderNumber}</span>
+                                    <span
+                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                      style={{ backgroundColor: getMarkerHexByStatus(o.status) }}
+                                    >
+                                      {o.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] font-semibold text-slate-800 mt-0.5 truncate">{o.client}</p>
+                                  <p className="text-[10px] text-slate-500 truncate">{o.title}</p>
+                                  {onSelectOrderId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isExpanded) setIsExpanded(false);
+                                        onSelectOrderId(o.orderNumber || o.id);
+                                      }}
+                                      className="mt-1.5 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                    >
+                                      <span>Ver detalle</span>
+                                      <ExternalLink className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          (() => {
+                            const o = cluster.orders[0];
+                            return (
+                              <div className="text-slate-900" style={{ fontSize: "12px", lineHeight: "1.4", minWidth: "160px" }}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <strong className="block text-slate-900 font-bold text-xs">
+                                    {o.orderNumber}
+                                  </strong>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                    style={{ backgroundColor: cluster.color }}
+                                  >
+                                    {o.status}
+                                  </span>
+                                </div>
+                                <span className="block text-slate-700 font-medium text-[11px] mt-1">
+                                  {o.client}
+                                </span>
+                                <span className="block text-slate-500 text-[10px] mt-0.5">
+                                  {o.title}
+                                </span>
+                                {onSelectOrderId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isExpanded) setIsExpanded(false);
+                                      onSelectOrderId(o.orderNumber || o.id);
+                                    }}
+                                    className="mt-2 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <span>Ver detalle</span>
+                                    <ExternalLink className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
                       </Popup>
                     </Marker>
                   );
                 })}
 
                 {/* Marcadores de Técnicos con GPS */}
-                {technicianMarkers.map((t) => {
+                {validTechMarkers.map((t) => {
                   const freshness = getSignalFreshness(t.lastLocationAt);
                   const techIcon = makeTechnicianIcon({
                     isRecent: freshness.isRecent,
                     isStale: freshness.isStale,
                     initials: t.initials || "TC",
-                  });
+                  }, L);
                   return (
                     <Marker key={t.id} position={[t.lat, t.lng]} icon={techIcon}>
-                      <Popup>
-                        <div style={{ fontSize: "12px", lineHeight: "1.5", minWidth: "160px" }}>
+                      <Popup minWidth={170}>
+                        <div style={{ fontSize: "12px", lineHeight: "1.5" }}>
                           <div className="font-bold text-slate-900 flex items-center justify-between">
                             <span>🚐 {t.name}</span>
                             {t.vehiclePlate && (
@@ -319,12 +441,15 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
               </MapContainer>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            {/* Leyenda de colores */}
+            <div className="flex flex-wrap gap-2.5 items-center text-xs">
               <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
               <LegendDot color="bg-amber-500" label="Técnico señal >5m" />
-              <LegendDot color="bg-primary" label="OT En camino" />
-              <LegendDot color="bg-emerald-400" label="OT Completada" />
-              <LegendDot color="bg-blue-400" label="OT Confirmada" />
+              <LegendDot color="bg-blue-500" label="OT Confirmada" />
+              <LegendDot color="bg-orange-500" label="OT En ruta" />
+              <LegendDot color="bg-purple-500" label="OT En sitio" />
+              <LegendDot color="bg-emerald-500" label="OT Completada" />
+              <LegendDot color="bg-rose-500" label="OT Cancelada" />
             </div>
           </>
         )}
@@ -340,29 +465,62 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
                 <h3 className="text-base font-semibold text-foreground">
                   Distribución geográfica de órdenes y técnicos en terreno
                 </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {markers.length} órdenes y {technicianMarkers.length} técnicos con señal GPS
-                </p>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                  <span>{summary.summaryText}</span>
+                  {summary.unlocatedCount > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                      ({summary.unlocatedText})
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="rounded-lg p-2 text-muted-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                className="rounded-lg p-2 text-muted-foreground hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
                 aria-label="Cerrar mapa"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
+            {/* Barra de filtros en vista expandida */}
+            <div className="flex flex-wrap items-center gap-1.5 px-6 py-2.5 border-b border-border bg-slate-50 dark:bg-card">
+              <span className="text-xs font-semibold text-slate-700 dark:text-gray-300 mr-1">Filtrar estado:</span>
+              {AVAILABLE_STATUS_FILTERS.map((f) => {
+                const isActive = statusFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setStatusFilter(f.id)}
+                    className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs"
+                        : "bg-white text-slate-600 hover:bg-slate-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700"
+                    }`}
+                  >
+                    {f.id !== "TODAS" && (
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: f.color }}
+                      />
+                    )}
+                    <span>{f.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Mapa interactivo expandido */}
             <div className="relative flex-1 w-full z-0 isolate">
               {allMapPoints.length === 0 && (
                 <div className="absolute inset-x-6 top-6 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-4 py-2.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
-                  <span>No hay órdenes ni técnicos con ubicación registrada en este momento</span>
+                  <span>No hay órdenes ni técnicos con ubicación registrada para el filtro seleccionado</span>
                 </div>
               )}
               <MapContainer
-                center={[-33.4489, -70.6693]}
+                center={[-33.4372, -70.6506]}
                 zoom={13}
                 scrollWheelZoom={true}
                 style={{ height: "100%", width: "100%" }}
@@ -376,47 +534,113 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
                 <MapAutoBounds markers={allMapPoints} />
                 <MapResizeHandler />
 
-                {markers.map((m) => {
-                  const hex = getMarkerHexByStatus(m.status, m.hex);
+                {/* Marcadores agrupados y unitarios */}
+                {clusters.map((cluster) => {
+                  const icon = cluster.isCluster
+                    ? makeClusterIcon(cluster.count, cluster.color, L)
+                    : makeSingleOrderIcon(cluster.color, L);
+
                   return (
                     <Marker
-                      key={m.id}
-                      position={[m.lat, m.lng]}
-                      icon={makeIcon(hex)}
+                      key={cluster.id}
+                      position={[cluster.lat, cluster.lng]}
+                      icon={icon}
                     >
-                      <Popup>
-                        <div style={{ fontSize: "12px", minWidth: "180px" }}>
-                          <p className="font-bold text-slate-900 text-sm">{m.orderNumber || m.id}</p>
-                          <p className="font-medium text-slate-800 mt-0.5">{m.client || "Cliente Corporativo"}</p>
-                          <p className="text-slate-500 text-[11px]">{m.title || m.label}</p>
-                          <p className="mt-1.5 text-xs" style={{ color: hex, fontWeight: "700" }}>Estado: {m.status}</p>
-                          {onSelectOrderId && (
-                            <button
-                              onClick={() => {
-                                setIsExpanded(false);
-                                onSelectOrderId(m.orderNumber || m.id);
-                              }}
-                              className="mt-2 w-full rounded bg-orange-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-orange-600"
-                            >
-                              Ver detalles de la orden
-                            </button>
-                          )}
-                        </div>
+                      <Popup minWidth={cluster.isCluster ? 270 : 200} maxWidth={340}>
+                        {cluster.isCluster ? (
+                          <div style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                            <div className="border-b border-slate-200 pb-1.5 mb-2">
+                              <div className="flex items-center justify-between">
+                                <strong className="font-bold text-slate-900 text-sm">
+                                  Ubicación agrupada
+                                </strong>
+                                <span className="rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-xs font-bold">
+                                  {cluster.count} órdenes
+                                </span>
+                              </div>
+                              <p className="text-slate-500 text-xs mt-0.5 truncate">
+                                {cluster.orders[0]?.client || "Misma dirección"}
+                              </p>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+                              {cluster.orders.map((o) => (
+                                <div key={o.id} className="pt-2 first:pt-0">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-bold text-slate-900 text-xs">{o.orderNumber}</span>
+                                    <span
+                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                      style={{ backgroundColor: getMarkerHexByStatus(o.status) }}
+                                    >
+                                      {o.status}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">{o.client}</p>
+                                  <p className="text-[11px] text-slate-500 truncate">{o.title}</p>
+                                  {onSelectOrderId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsExpanded(false);
+                                        onSelectOrderId(o.orderNumber || o.id);
+                                      }}
+                                      className="mt-1.5 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold py-1.5 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                    >
+                                      <span>Ver detalle de la orden</span>
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          (() => {
+                            const o = cluster.orders[0];
+                            return (
+                              <div style={{ fontSize: "12px", minWidth: "180px" }}>
+                                <div className="flex items-center justify-between gap-1">
+                                  <p className="font-bold text-slate-900 text-sm">{o.orderNumber}</p>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white"
+                                    style={{ backgroundColor: cluster.color }}
+                                  >
+                                    {o.status}
+                                  </span>
+                                </div>
+                                <p className="font-semibold text-slate-800 text-xs mt-1">{o.client}</p>
+                                <p className="text-slate-500 text-[11px] mt-0.5">{o.title}</p>
+                                {onSelectOrderId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsExpanded(false);
+                                      onSelectOrderId(o.orderNumber || o.id);
+                                    }}
+                                    className="mt-2.5 w-full rounded bg-orange-500 hover:bg-orange-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                  >
+                                    <span>Ver detalles de la orden</span>
+                                    <ExternalLink className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()
+                        )}
                       </Popup>
                     </Marker>
                   );
                 })}
 
-                {technicianMarkers.map((t) => {
+                {validTechMarkers.map((t) => {
                   const freshness = getSignalFreshness(t.lastLocationAt);
                   const techIcon = makeTechnicianIcon({
                     isRecent: freshness.isRecent,
                     isStale: freshness.isStale,
                     initials: t.initials || "TC",
-                  });
+                  }, L);
                   return (
                     <Marker key={t.id} position={[t.lat, t.lng]} icon={techIcon}>
-                      <Popup>
+                      <Popup minWidth={180}>
                         <div style={{ fontSize: "12px", minWidth: "180px" }}>
                           <p className="font-bold text-slate-900 text-sm">🚐 {t.name}</p>
                           {t.vehiclePlate && (
@@ -442,18 +666,19 @@ function ActiveZonesCard({ isLoading, error, markers = [], technicianMarkers = [
 
             {/* Pie con leyenda */}
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-4 text-xs">
                 <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
                 <LegendDot color="bg-amber-500" label="Técnico GPS (>5m)" />
-                <LegendDot color="bg-primary" label="OT En camino" />
-                <LegendDot color="bg-emerald-400" label="OT Completada" />
-                <LegendDot color="bg-blue-400" label="OT Confirmada" />
-                <LegendDot color="bg-rose-400" label="OT Cancelada" />
+                <LegendDot color="bg-blue-500" label="OT Confirmada" />
+                <LegendDot color="bg-orange-500" label="OT En ruta" />
+                <LegendDot color="bg-purple-500" label="OT En sitio" />
+                <LegendDot color="bg-emerald-500" label="OT Completada" />
+                <LegendDot color="bg-rose-500" label="OT Cancelada" />
               </div>
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-slate-100 dark:hover:bg-white/5"
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer"
               >
                 Cerrar vista
               </button>
@@ -1076,6 +1301,7 @@ export default function DispatchBoard() {
 
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
+  const [dashboardOrders, setDashboardOrders] = useState([]);
   const [mapMarkers, setMapMarkers] = useState([]);
   const [technicianMarkers, setTechnicianMarkers] = useState([]);
   const [activityLog, setActivityLog] = useState(null);
@@ -1149,6 +1375,7 @@ export default function DispatchBoard() {
         ordersData.status === "fulfilled" &&
         Array.isArray(ordersData.value?.items)
       ) {
+        setDashboardOrders(ordersData.value.items);
         const markers = ordersData.value.items
           .filter((o) => {
             const lat = parseFloat(o.lat);
@@ -1179,6 +1406,7 @@ export default function DispatchBoard() {
           }));
         setMapMarkers(markers);
       } else {
+        setDashboardOrders([]);
         setMapMarkers([]);
       }
 
@@ -1262,13 +1490,13 @@ export default function DispatchBoard() {
 
   const handleSelectOrderId = (orderId) => {
     for (const col of columns) {
-      const found = col.tasks.find((t) => t.orderId === orderId);
+      const found = col.tasks.find((t) => t.orderId === orderId || t.id === orderId || t.order_number === orderId);
       if (found) {
         setSelectedOrder({ ...found, columnStatus: col.label });
         return;
       }
     }
-    const visit = visitsList.find((v) => v.id === orderId);
+    const visit = visitsList.find((v) => v.id === orderId || v.orderId === orderId || v.order_number === orderId);
     if (visit) {
       setSelectedOrder({
         orderId: visit.id,
@@ -1281,6 +1509,26 @@ export default function DispatchBoard() {
         assigneeName: visit.technician,
         tag: visit.serviceType,
         columnStatus: visit.status,
+      });
+      return;
+    }
+    // Fallback con las órdenes completas cargadas desde el backend para el dashboard
+    const rawOrder = dashboardOrders.find(
+      (o) => o.id === orderId || o.order_number === orderId || o.orderNumber === orderId
+    );
+    if (rawOrder) {
+      setSelectedOrder({
+        ...rawOrder,
+        orderId: rawOrder.order_number || rawOrder.id,
+        order_number: rawOrder.order_number || rawOrder.id,
+        title: rawOrder.title || rawOrder.service || "Servicio técnico",
+        client: rawOrder.client?.business_name || rawOrder.client?.name || rawOrder.client_name || "Cliente Corporativo",
+        clientName: rawOrder.client?.business_name || rawOrder.client?.name || rawOrder.client_name || "Cliente Corporativo",
+        location: rawOrder.client?.address || rawOrder.address_override || "Santiago",
+        assignee: rawOrder.technician_summary?.full_name || "Sin asignar",
+        assigneeName: rawOrder.technician_summary?.full_name || "Sin asignar",
+        tag: rawOrder.tag || rawOrder.service_type || "SERVICIO",
+        columnStatus: rawOrder.status,
       });
     }
   };
@@ -1745,6 +1993,7 @@ export default function DispatchBoard() {
               <ActiveZonesCard
                 isLoading={isLoading}
                 error={apiError}
+                orders={dashboardOrders}
                 markers={mapMarkers}
                 technicianMarkers={technicianMarkers}
                 onSelectOrderId={handleSelectOrderId}
