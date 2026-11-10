@@ -1,4 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const API_BASE =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) ||
+  (typeof process !== "undefined" && process.env?.VITE_API_URL) ||
+  "http://localhost:8000/api/v1";
 
 async function request(endpoint, options = {}) {
   const isPublicEndpoint =
@@ -84,6 +87,12 @@ export const api = {
     getKpis: () => request("/orders/kpis"),
     create: (orderData) =>
       request("/orders", { method: "POST", body: JSON.stringify(orderData) }),
+    update: (id, orderData) =>
+      request(`/orders/${id}`, { method: "PATCH", body: JSON.stringify(orderData) }),
+    geocode: (query) => {
+      const q = encodeURIComponent(query);
+      return request(`/orders/geocode?query=${q}`);
+    },
     updateStatus: (id, newStatus, comment = "") =>
       request(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ new_status: newStatus, comment }) }),
     assign: (id, technicianId, eta = null) =>

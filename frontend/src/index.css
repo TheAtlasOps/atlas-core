@@ -86,5 +86,70 @@
   .scrollbar-kanban::-webkit-scrollbar-thumb:hover {
     background-color: #4b5563; /* gray-600 */
   }
+
+  /* ── Scrollbar cómodo y estilizado para ventanas emergentes del mapa ────── */
+  .atlas-map-popup-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .atlas-map-popup-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .atlas-map-popup-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .atlas-map-popup-scroll::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+
+  .atlas-map-popup-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #94a3b8;
+  }
+
+  .dark .atlas-map-popup-scroll {
+    scrollbar-color: #4b5563 transparent;
+  }
+
+  .dark .atlas-map-popup-scroll::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
+  }
+
+  .dark .atlas-map-popup-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
+  }
+
+  /* ── Estilos para Popup de Leaflet compatibles con tema claro y oscuro ── */
+  .leaflet-popup-content-wrapper {
+    border-radius: 0.75rem !important;
+    padding: 2px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.15) !important;
+  }
+
+  .leaflet-popup-content {
+    margin: 12px 14px !important;
+    line-height: 1.4 !important;
+  }
+
+  .dark .leaflet-popup-content-wrapper {
+    background: #1e1e1e !important;
+    color: #f3f4f6 !important;
+    border: 1px solid #374151 !important;
+  }
+
+  .dark .leaflet-popup-tip {
+    background: #1e1e1e !important;
+  }
+
+  .dark .leaflet-container a.leaflet-popup-close-button {
+    color: #9ca3af !important;
+  }
+
+  .dark .leaflet-container a.leaflet-popup-close-button:hover {
+    color: #ffffff !important;
+  }
 }
 

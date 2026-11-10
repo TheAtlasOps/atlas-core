@@ -1,4 +1,8 @@
 import uuid
+import json
+import urllib.request
+import urllib.parse
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
@@ -13,6 +17,7 @@ from app.models.enums import UserRoleEnum, OrderStatusEnum, OrderPriorityEnum, S
 from app.services.storage_service import generate_presigned_download_url
 from app.schemas.work_order import (
     WorkOrderCreate,
+    WorkOrderUpdate,
     WorkOrderStatusUpdate,
     WorkOrderAssign,
     WorkOrderLocationUpdate,
@@ -38,6 +43,7 @@ from app.services.order_service import (
     get_order_by_id,
     approve_order_audit,
     create_order,
+    update_order,
     update_order_status,
     update_technician_order_location,
     list_technicians_locations,
@@ -52,6 +58,7 @@ from app.services.order_service import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkOrderResponse:
@@ -422,6 +429,60 @@ async def get_activity_log(
 
 
 @router.get(
+    "/geocode",
+    summary="Geocodificar dirección a coordenadas",
+    description="Consulta el servicio de geocodificación abierta para obtener latitud y longitud a partir de una dirección.",
+)
+async def geocode_address(
+    query: str = Query(..., min_length=2, description="Dirección a geolocalizar"),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Geocodifica una dirección usando el servicio abierto de OpenStreetMap Nominatim."""
+    clean_query = query.strip()
+    if not clean_query:
+        return {
+            "success": False,
+            "lat": None,
+            "lng": None,
+            "error": "Por favor ingresa una dirección antes de buscar en el mapa.",
+        }
+
+    search_term = clean_query if "chile" in clean_query.lower() else f"{clean_query}, Chile"
+    encoded = urllib.parse.quote(search_term)
+    url = f"https://nominatim.openstreetmap.org/search?q={encoded}&format=json&limit=3&countrycodes=cl"
+
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "AtlasFSM/1.0 (soporte@theatlasops.cl)", "Accept": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data and len(data) > 0:
+                first = data[0]
+                return {
+                    "success": True,
+                    "lat": float(first["lat"]),
+                    "lng": float(first["lon"]),
+                    "display_name": first.get("display_name", ""),
+                }
+            return {
+                "success": False,
+                "lat": None,
+                "lng": None,
+                "error": "No se pudo localizar la dirección especificada. Por favor verifica la calle, número y comuna, o ubica el marcador manualmente en el mapa.",
+            }
+    except Exception as e:
+        logger.warning("Fallo al contactar servicio de geocodificación: %s", str(e))
+        return {
+            "success": False,
+            "lat": None,
+            "lng": None,
+            "error": "No se pudo conectar con el servicio de geolocalización. Puedes ubicar el marcador manualmente en el mapa.",
+        }
+
+
+@router.get(
     "/{order_id}",
     response_model=WorkOrderResponse,
     summary="Detalle de una orden técnica",
@@ -458,6 +519,23 @@ async def create_new_order(
     """Alta de orden de trabajo técnica."""
     created = await create_order(db, order_in, creator_user=current_user)
     return build_order_response(created)
+
+
+@router.patch(
+    "/{order_id}",
+    response_model=WorkOrderResponse,
+    summary="Actualizar orden de trabajo",
+    description="Permite modificar dirección, coordenadas geográficas (lat/lng), título y datos técnicos de una orden existente.",
+)
+async def update_work_order_endpoint(
+    order_id: uuid.UUID,
+    order_update: WorkOrderUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Actualización de datos y coordenadas de la orden."""
+    updated = await update_order(db, order_id, order_update, current_user=current_user)
+    return build_order_response(updated)
 
 
 @router.patch(

@@ -181,6 +181,7 @@ export default function WorkOrders() {
   const isEmpty = false;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -298,8 +299,19 @@ export default function WorkOrders() {
 
       <NewWorkOrderModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingOrder(null);
+        }}
+        initialOrder={editingOrder}
         onCreate={handleCreate}
+        onUpdate={() => {
+          setToast({
+            title: "Orden actualizada",
+            description: "Los cambios de ubicación y datos técnicos se guardaron exitosamente en Neon.",
+            type: "success",
+          });
+        }}
       />
 
       {/* Drawer lateral de Auditoría de OT */}
@@ -307,6 +319,11 @@ export default function WorkOrders() {
         order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onOpenInventoryModal={() => setIsInventoryOpen(true)}
+        onEditOrder={(order) => {
+          setSelectedOrder(null);
+          setEditingOrder(order);
+          setIsModalOpen(true);
+        }}
       />
 
       {/* Modal de Inventario de Hardware (SIM / Routers) */}
@@ -373,7 +390,10 @@ export default function WorkOrders() {
 
           <button
             type="button"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setEditingOrder(null);
+              setIsModalOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white active:scale-95 transition-all duration-150 shadow-sm"
             aria-label="Nueva OT"
           >
