@@ -7,11 +7,7 @@ import zoneinfo
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 
-try:
-    import zoneinfo
-    CHILE_TZ = zoneinfo.ZoneInfo("America/Santiago")
-except Exception:
-    CHILE_TZ = timezone(timedelta(hours=-3))
+CHILE_TZ = zoneinfo.ZoneInfo("America/Santiago")
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload

@@ -177,7 +177,7 @@ async def test_revoke_magic_link_for_order(sample_order):
 
 
 def test_compute_timeline_steps_chile_timezone(sample_order):
-    """Verifica que 20:06 UTC se formatee como 17:06 en horario de Chile (UTC-3)."""
+    """Verifica que 20:06 UTC se formatee como 17:06 en horario de verano de Chile (UTC-3)."""
     steps = compute_timeline_steps(sample_order)
     assert len(steps) == 4
 
@@ -193,6 +193,38 @@ def test_compute_timeline_steps_chile_timezone(sample_order):
     assert en_sitio.current is True
     assert en_sitio.timestamp == "17:06"  # 20:06 UTC - 3h = 17:06
     assert en_sitio.raw_timestamp is not None
+
+
+def test_compute_timeline_steps_winter_dst(sample_order):
+    """Verifica que en invierno (julio), Chile aplique dinámicamente UTC-4 y no un desplazamiento fijo UTC-3."""
+    # 15 de julio de 2026 (Invierno chileno: UTC-4)
+    sample_order.status_history = [
+        SimpleNamespace(
+            new_status=OrderStatusEnum.CONFIRMADA,
+            created_at=datetime(2026, 7, 15, 18, 0, 0, tzinfo=timezone.utc),
+            comment=None,
+        ),
+        SimpleNamespace(
+            new_status=OrderStatusEnum.EN_RUTA,
+            created_at=datetime(2026, 7, 15, 19, 0, 0, tzinfo=timezone.utc),
+            comment=None,
+        ),
+        SimpleNamespace(
+            new_status=OrderStatusEnum.EN_SITIO,
+            created_at=datetime(2026, 7, 15, 20, 6, 0, tzinfo=timezone.utc),
+            comment=None,
+        ),
+    ]
+
+    steps = compute_timeline_steps(sample_order)
+    confirmada = next(s for s in steps if s.key == "confirmada")
+    assert confirmada.timestamp == "14:00"  # 18:00 UTC - 4h = 14:00 (Invierno oficial)
+
+    en_ruta = next(s for s in steps if s.key == "en_ruta")
+    assert en_ruta.timestamp == "15:00"  # 19:00 UTC - 4h = 15:00 (Invierno oficial)
+
+    en_sitio = next(s for s in steps if s.key == "en_sitio")
+    assert en_sitio.timestamp == "16:06"  # 20:06 UTC - 4h = 16:06 (Invierno oficial)
 
 
 def test_summary_privacy_no_gps_on_site(sample_order):
