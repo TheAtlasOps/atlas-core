@@ -213,6 +213,10 @@ class MagicLinkDetailSummary(BaseModel):
     created_at: Optional[datetime] = None
     link_status: str = "SIN_ENLACE"  # VIGENTE | VENCIDO | REVOCADO | SIN_ENLACE
     portal_mode: str = "Resumen final"  # Seguimiento activo | Atención en sitio | Resumen final
+    has_signature: bool = False
+    signature_url: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    signed_by_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -236,6 +240,13 @@ class WorkOrderResponse(WorkOrderBase):
     audited_by_user_id: Optional[uuid.UUID] = None
     auditor: Optional[AuditorSummary] = None
     audit_notes: Optional[str] = None
+
+    # Trazabilidad de firma digital de conformidad
+    has_signature: bool = False
+    is_signed: bool = False
+    signature_url: Optional[str] = None
+    signed_at: Optional[datetime] = None
+    signed_by_name: Optional[str] = None
 
     # Entidades anidadas cargadas
     client: Optional[ClientSummary] = None

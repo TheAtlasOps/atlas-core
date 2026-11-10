@@ -1,3 +1,5 @@
+import { parseDateSafe } from "./magicLinksData.js";
+
 export const STATUS_LABELS = {
   DISPONIBLE: "Disponible",
   ASIGNADA_TECNICO: "Asignada a técnico",
@@ -505,9 +507,9 @@ export function getOrderAuditPackage(
     const type = String(ev.evidence_type || "FOTO_DESPUES").toUpperCase();
     const isSpeed = type === "TEST_VELOCIDAD" || type === "DIAGNOSTICO_DBM";
     const isBefore = type === "FOTO_ANTES";
-    const dateObj = ev.captured_at ? new Date(ev.captured_at) : null;
+    const dateObj = parseDateSafe(ev.captured_at);
     const timeLabel =
-      dateObj && !Number.isNaN(dateObj.getTime())
+      dateObj
         ? dateObj.toLocaleTimeString("es-CL", {
             timeZone: "America/Santiago",
             hour: "2-digit",
@@ -636,11 +638,16 @@ export function getOrderAuditPackage(
     {
       id: "chk-sign",
       label:
-        signatureEvidence
+        signatureEvidence || apiOrderDetail?.signature_url || apiOrderDetail?.has_signature
           ? "Acta de conformidad firmada por el cliente receptor"
           : "Firma digital de conformidad del cliente receptor",
-      metric: signatureEvidence ? "Firmada" : "Pendiente",
-      passed: Boolean(signatureEvidence),
+      metric:
+        signatureEvidence || apiOrderDetail?.signature_url || apiOrderDetail?.has_signature
+          ? "Firmada"
+          : "Pendiente",
+      passed: Boolean(
+        signatureEvidence || apiOrderDetail?.signature_url || apiOrderDetail?.has_signature
+      ),
     },
   ];
 
@@ -648,13 +655,13 @@ export function getOrderAuditPackage(
   const signatureUrl =
     signatureEvidence?.storage_url || apiOrderDetail?.signature_url || null;
   const isSigned = Boolean(
-    signatureEvidence || apiOrderDetail?.signature_url
+    signatureEvidence || apiOrderDetail?.signature_url || apiOrderDetail?.has_signature
   );
-  const sigDate = signatureEvidence?.captured_at
-    ? new Date(signatureEvidence.captured_at)
-    : null;
+  const rawSigDate =
+    signatureEvidence?.captured_at || apiOrderDetail?.signed_at || null;
+  const sigDate = parseDateSafe(rawSigDate);
   const signedAtText =
-    sigDate && !Number.isNaN(sigDate.getTime())
+    sigDate
       ? sigDate.toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) +
         " · " +
         sigDate.toLocaleTimeString("es-CL", {
@@ -673,8 +680,8 @@ export function getOrderAuditPackage(
   const rawAuditedAt = apiOrderDetail?.audited_at || order.audited_at || null;
   let auditedAtText = null;
   if (rawAuditedAt) {
-    const d = new Date(rawAuditedAt);
-    if (!Number.isNaN(d.getTime())) {
+    const d = parseDateSafe(rawAuditedAt);
+    if (d) {
       auditedAtText =
         d.toLocaleDateString("es-CL", { timeZone: "America/Santiago" }) +
         " · " +

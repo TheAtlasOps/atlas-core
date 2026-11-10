@@ -917,9 +917,9 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                         <strong>{signerNameDisplay}</strong>.
                       </span>
                     </div>
-                    {order.signed_at && (
+                    {(order.signed_at || apiSummary?.signed_at) && (
                       <span className="text-[11px] font-mono text-slate-500 dark:text-gray-400">
-                        {formatCompletedDateDisplay(order.signed_at)}
+                        {formatCompletedDateDisplay(order.signed_at || apiSummary?.signed_at)}
                       </span>
                     )}
                   </div>

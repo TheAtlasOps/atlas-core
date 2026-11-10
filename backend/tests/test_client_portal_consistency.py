@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.security import generate_magic_link_token
-from app.models.enums import EvidenceTypeEnum, OrderStatusEnum, ServiceTypeEnum
+from app.models.enums import EvidenceTypeEnum, OrderPriorityEnum, OrderStatusEnum, ServiceTypeEnum
+from app.api.v1.orders import build_order_response
 from app.schemas.client_portal import (
     ConfirmVisitRequest,
     SignConformityRequest,
@@ -48,24 +49,35 @@ def make_test_order(
 ):
     now = datetime.now(timezone.utc)
     order_id = uuid.uuid4()
+    client_id = uuid.uuid4()
     order = SimpleNamespace(
         id=order_id,
         order_number="#OT-08492",
         title="Instalación Router 5G de prueba",
+        description="Ficha de prueba para validación de firma",
+        priority=OrderPriorityEnum.MEDIA,
         status=status,
         service_type=ServiceTypeEnum.DIAGNOSTICO_ROUTER,
         scheduled_date=now,
         completed_at=now if status == OrderStatusEnum.COMPLETADA else None,
+        started_at=None,
         eta=None,
         address_override="Av. Apoquindo 4500",
         comuna_override="Las Condes",
+        client_id=client_id,
+        created_by=None,
+        created_at=now,
+        updated_at=now,
+        tag=None,
+        items=[],
         client=SimpleNamespace(
-            id=uuid.uuid4(),
+            id=client_id,
             business_name="Entel Corporaciones",
             address="Av. Apoquindo 4500",
             comuna="Las Condes",
             contact_person="Carlos Receptor",
             contact_phone="+56 2 2345 6789",
+            contact_email="carlos.receptor@entel.cl",
         ),
         technician=SimpleNamespace(
             id=uuid.uuid4(),
@@ -73,6 +85,10 @@ def make_test_order(
             initials="JP",
             credential_id="ENTEL-TECH-4401",
             vehicle_plate=None,
+            is_available=True,
+            current_lat=None,
+            current_lng=None,
+            last_location_at=None,
             user=SimpleNamespace(
                 full_name="Juan Pérez Técnico",
                 phone=None,
@@ -399,3 +415,72 @@ async def test_validate_token_expired_returns_410():
 
     assert exc_info.value.status_code == 410
     assert "ha expirado" in exc_info.value.detail
+
+
+# ─── 6. Trazabilidad de Firma en Respuestas de Órdenes y Magic Links ───────────
+
+def test_build_order_response_persisted_signature_traceability():
+    """Confirma que build_order_response marca has_signature=True tanto en la orden como en magic_link_detail."""
+    now_utc = datetime.now(timezone.utc)
+    order = make_test_order(
+        status=OrderStatusEnum.COMPLETADA,
+        has_signature=True,
+        signature_url="signatures/order_test_sig.png",
+        signed_by_name="Pedro Receptor",
+        signed_at=now_utc,
+    )
+    link = make_test_link(order, is_active=True)
+    order.magic_links = [link]
+
+    resp = build_order_response(order, include_token=True)
+
+    assert resp.has_signature is True
+    assert resp.is_signed is True
+    assert resp.signed_by_name == "Pedro Receptor"
+    assert resp.signed_at is not None
+    assert resp.signed_at.tzinfo is not None
+    assert resp.magic_link_detail is not None
+    assert resp.magic_link_detail.has_signature is True
+    assert resp.magic_link_detail.signed_by_name == "Pedro Receptor"
+    assert resp.magic_link_detail.signed_at is not None
+    assert resp.magic_link_detail.signed_at.tzinfo is not None
+
+
+def test_build_order_response_unsigned_order():
+    """Confirma que build_order_response marca has_signature=False cuando la orden no posee firma."""
+    order = make_test_order(
+        status=OrderStatusEnum.COMPLETADA,
+        has_signature=False,
+    )
+    link = make_test_link(order, is_active=True)
+    order.magic_links = [link]
+
+    resp = build_order_response(order, include_token=True)
+
+    assert resp.has_signature is False
+    assert resp.is_signed is False
+    assert resp.signature_url is None
+    assert resp.magic_link_detail is not None
+    assert resp.magic_link_detail.has_signature is False
+
+
+def test_order_signed_at_preserves_utc_timezone_when_naive():
+    """Verifica que marcas de tiempo de firma sin tzinfo se anclen explícitamente a UTC para evitar desfases."""
+    naive_dt = datetime(2026, 11, 9, 23, 17, 0)  # Timestamp sin tzinfo simulando DB naive
+    order = make_test_order(
+        status=OrderStatusEnum.COMPLETADA,
+        has_signature=True,
+        signature_url="signatures/naive_sig.png",
+        signed_by_name="Receptor QA",
+        signed_at=naive_dt,
+    )
+    link = make_test_link(order, is_active=True)
+    order.magic_links = [link]
+
+    resp = build_order_response(order, include_token=True)
+
+    assert resp.has_signature is True
+    assert resp.signed_at is not None
+    assert resp.signed_at.tzinfo == timezone.utc
+    assert resp.signed_at.hour == 23
+    assert resp.signed_at.minute == 17

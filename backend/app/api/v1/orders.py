@@ -9,7 +9,8 @@ from app.core.config import settings
 from app.api.deps import get_current_active_user, require_role
 from app.models.user import User
 from app.models.work_order import WorkOrder
-from app.models.enums import UserRoleEnum, OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum
+from app.models.enums import UserRoleEnum, OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum
+from app.services.storage_service import generate_presigned_download_url
 from app.schemas.work_order import (
     WorkOrderCreate,
     WorkOrderStatusUpdate,
@@ -90,6 +91,45 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
             ),
         )
 
+    # Trazabilidad de firma real de la orden (evidencias FIRMA_CLIENTE o MagicLink previo)
+    order_signature_key = None
+    order_signed_at = None
+    order_signed_by = None
+
+    if getattr(order, "evidences", None):
+        for ev in order.evidences:
+            if ev.evidence_type == EvidenceTypeEnum.FIRMA_CLIENTE and ev.storage_url and ev.storage_url.strip():
+                order_signature_key = ev.storage_url.strip()
+                order_signed_at = ev.captured_at
+                if ev.notes and "Firma conforme otorgada por:" in ev.notes:
+                    order_signed_by = ev.notes.split("Firma conforme otorgada por:", 1)[1].strip()
+                break
+
+    if not order_signature_key and getattr(order, "magic_links", None):
+        for ml in order.magic_links:
+            if ml.signature_url and ml.signature_url.strip():
+                order_signature_key = ml.signature_url.strip()
+                order_signed_at = ml.used_at or ml.created_at
+                break
+
+    if not order_signed_by and getattr(order, "status_history", None):
+        for h in order.status_history:
+            if h.comment and "Firma digital de conformidad registrada por receptor:" in h.comment:
+                order_signed_by = h.comment.split("Firma digital de conformidad registrada por receptor:", 1)[1].strip()
+                if not order_signed_at and h.created_at:
+                    order_signed_at = h.created_at
+                break
+
+    if order_signed_at and order_signed_at.tzinfo is None:
+        order_signed_at = order_signed_at.replace(tzinfo=timezone.utc)
+
+    has_signature = bool(order_signature_key)
+    sig_download_url = (
+        generate_presigned_download_url(order_signature_key)
+        if order_signature_key
+        else None
+    )
+
     # Buscar token de Magic Link activo solo si se solicita expresamente (P1)
     # y construir MagicLinkDetailSummary para administración y dashboard
     active_token = None
@@ -138,6 +178,10 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
                 created_at=latest_ml.created_at,
                 link_status=l_status,
                 portal_mode=p_mode,
+                has_signature=has_signature,
+                signature_url=sig_download_url,
+                signed_at=order_signed_at,
+                signed_by_name=order_signed_by,
             )
 
     # Mapeo de historial
@@ -191,6 +235,11 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
         audited_by_user_id=getattr(order, "audited_by_user_id", None),
         auditor=auditor_summary,
         audit_notes=getattr(order, "audit_notes", None),
+        has_signature=has_signature,
+        is_signed=has_signature,
+        signature_url=sig_download_url,
+        signed_at=order_signed_at,
+        signed_by_name=order_signed_by,
         client=client_summary,
         technician_summary=tech_summary,
         active_magic_link_token=active_token,

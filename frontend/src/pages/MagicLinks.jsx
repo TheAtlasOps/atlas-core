@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import { api } from "../lib/api";
-import { buildOrderMagicToken } from "../lib/magicLinksData";
+import { buildOrderMagicToken, parseDateSafe } from "../lib/magicLinksData";
 
 // ─── Skeleton Loader ──────────────────────────────────────────────────────────
 function MagicLinksSkeleton() {
@@ -67,10 +67,12 @@ function MagicLinksSkeleton() {
                   <div className="h-4 w-16 bg-slate-200 dark:bg-gray-800 rounded animate-pulse" />
                 </td>
                 <td className="px-4 py-4">
-                  <div className="h-4 w-24 bg-slate-200 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-gray-800 rounded animate-pulse mb-1" />
+                  <div className="h-3 w-16 bg-slate-200 dark:bg-gray-800 rounded animate-pulse" />
                 </td>
                 <td className="px-4 py-4">
-                  <div className="h-4 w-24 bg-slate-200 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-4 w-24 bg-slate-200 dark:bg-gray-800 rounded animate-pulse mb-1" />
+                  <div className="h-3 w-16 bg-slate-200 dark:bg-gray-800 rounded animate-pulse" />
                 </td>
                 <td className="px-4 py-4 text-right">
                   <div className="h-4 w-16 bg-slate-200 dark:bg-gray-800 rounded animate-pulse ml-auto" />
@@ -159,11 +161,40 @@ function PortalModeBadge({ mode }) {
   );
 }
 
+// ─── Signature Status Badge (Trazabilidad de Firma Digital) ──────────────────
+export function SignatureStatusBadge({ hasSignature, orderStatus }) {
+  const normStatus = String(orderStatus || "").toUpperCase();
+
+  if (hasSignature) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/25">
+        <CheckCircle2 className="h-3 w-3 shrink-0" />
+        <span>Firmada</span>
+      </span>
+    );
+  }
+
+  if (normStatus === "EN_SITIO" || normStatus === "COMPLETADA") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/25">
+        <Clock className="h-3 w-3 shrink-0" />
+        <span>Pendiente de firma</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-gray-500 px-0.5">
+      Firma no disponible
+    </span>
+  );
+}
+
 // ─── Formatters ──────────────────────────────────────────────────────────────
 function formatChileanDateTime(dateString) {
   if (!dateString) return "—";
-  const date = new Date(dateString);
-  if (isNaN(date.getTime())) return "—";
+  const date = parseDateSafe(dateString);
+  if (!date) return "—";
   return date.toLocaleDateString("es-CL", {
     timeZone: "America/Santiago",
     day: "2-digit",
@@ -278,11 +309,21 @@ export default function MagicLinks() {
           const expiresAt = detail?.expires_at || null;
           const remainingText = formatRemainingTime(expiresAt, linkStatus === "VIGENTE");
 
+          const hasSignature = Boolean(
+            o.has_signature ||
+            detail?.has_signature ||
+            o.is_signed ||
+            o.signature_url ||
+            detail?.signature_url
+          );
+
           return {
             id: o.id,
             workOrderId: o.id,
             token,
             hasPersistedToken: hasToken,
+            hasSignature,
+            signatureUrl: o.signature_url || detail?.signature_url || null,
             client: clientName,
             clientEmail,
             company,
@@ -732,9 +773,15 @@ export default function MagicLinks() {
                         )}
                       </td>
 
-                      {/* Modo del Portal */}
+                      {/* Modo del Portal y Estado de Firma */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
-                        <PortalModeBadge mode={row.portalMode} />
+                        <div className="flex flex-col gap-1 items-start">
+                          <PortalModeBadge mode={row.portalMode} />
+                          <SignatureStatusBadge
+                            hasSignature={row.hasSignature}
+                            orderStatus={row.orderStatus}
+                          />
+                        </div>
                       </td>
 
                       {/* Acciones */}
