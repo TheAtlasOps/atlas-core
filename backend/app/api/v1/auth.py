@@ -1,3 +1,4 @@
+import uuid
 from collections import OrderedDict, deque
 from time import monotonic
 
@@ -17,6 +18,7 @@ from app.services.auth_service import (
     authenticate_user,
     create_user_token_response,
     generate_magic_link_for_order,
+    revoke_magic_link_for_order,
 )
 
 router = APIRouter()
@@ -135,5 +137,24 @@ async def generate_magic_link(
     return await generate_magic_link_for_order(
         db=db,
         work_order_id=request.work_order_id,
-        expire_hours=request.expire_hours or 48
+        expire_hours=request.expire_hours or 48,
+        force_new=bool(request.force_new),
+    )
+
+
+@router.post(
+    "/magic-link/{work_order_id}/revoke",
+    status_code=status.HTTP_200_OK,
+    summary="Revocar Magic Link de una orden",
+    description="Invalida de inmediato todos los enlaces activos de la orden, dejando el acceso en 410 Gone (RNF-SEG-03 / RF-CLI-09). Solo Coordinadores y Administradores.",
+)
+async def revoke_magic_link(
+    work_order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN]))
+):
+    """Revoca todos los Magic Links activos asociados a la orden."""
+    return await revoke_magic_link_for_order(
+        db=db,
+        work_order_id=work_order_id,
     )

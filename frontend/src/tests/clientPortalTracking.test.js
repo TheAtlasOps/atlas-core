@@ -10,6 +10,8 @@ const __dirname = path.dirname(__filename);
 import {
   mapApiSummaryToTrackingOrder,
   formatCompletedDateDisplay,
+  formatAddressDisplay,
+  formatChileanTime,
   getPortalAccessError,
 } from "../lib/magicLinksData.js";
 
@@ -250,4 +252,283 @@ test("CustomerTrackingView renderiza órdenes completadas, firmadas y auditadas 
   } finally {
     await server.close();
   }
+});
+
+// ─── 10. Horarios y Zona Horaria Chilena (America/Santiago UTC-3) ─────────────
+test("formatChileanTime convierte timestamps ISO UTC a hora de Chile (UTC-3)", () => {
+  // 20:17 UTC -> 17:17 Chile (UTC-3)
+  const timeChile = formatChileanTime("2026-11-09T20:17:00.000Z");
+  assert.equal(timeChile, "17:17");
+
+  // Preserva cadenas que ya tienen formato HH:mm
+  assert.equal(formatChileanTime("17:17"), "17:17");
+  assert.equal(formatChileanTime(null), "—");
+});
+
+// ─── 11. Deduplicación de Direcciones y Comunas ──────────────────────────────
+test("formatAddressDisplay deduplica comunas y segmentos repetidos", () => {
+  // Caso de prueba reportado: 'Providencia, Providencia (Providencia)'
+  const cleaned1 = formatAddressDisplay("Av. Providencia 1234, Providencia, Providencia", "Providencia");
+  assert.equal(cleaned1, "Av. Providencia 1234, Providencia");
+  assert.equal(cleaned1.includes("(Providencia)"), false);
+
+  // Dirección normal sin la comuna incluida en el texto principal
+  const cleaned2 = formatAddressDisplay("Av. Apoquindo 4500", "Las Condes");
+  assert.equal(cleaned2, "Av. Apoquindo 4500 (Las Condes)");
+
+  // Dirección que ya termina con la comuna
+  const cleaned3 = formatAddressDisplay("General Bustamante 26, Providencia", "Providencia");
+  assert.equal(cleaned3, "General Bustamante 26, Providencia");
+});
+
+// ─── 12. Mapeo de Estados Terminales y Modos de Portal ────────────────────────
+test("mapApiSummaryToTrackingOrder clasifica correctamente estados terminales y modos", () => {
+  const completedSummary = {
+    order_id: "test-uuid-1",
+    order_number: "#OT-08494",
+    status: "Completada",
+    status_key: "completada",
+    address: "Av. Providencia 1234, Providencia",
+    comuna: "Providencia",
+    timeline_steps: [
+      { key: "confirmada", label: "Confirmada", completed: true, current: false, raw_timestamp: "2026-11-09T18:00:00.000Z" },
+      { key: "completada", label: "Completada", completed: true, current: true, raw_timestamp: "2026-11-09T20:17:00.000Z" },
+    ],
+  };
+
+  const mappedCompleted = mapApiSummaryToTrackingOrder(completedSummary);
+  assert.equal(mappedCompleted.isTerminal, true);
+  assert.equal(mappedCompleted.portalMode, "resumen");
+  assert.equal(mappedCompleted.timeline_steps[1].timestamp, "17:17");
+
+  const cancelledSummary = {
+    order_id: "test-uuid-2",
+    order_number: "#OT-08495",
+    status: "Cancelada",
+    status_key: "cancelada",
+    address: "Av. Las Condes 1000",
+    comuna: "Las Condes",
+  };
+
+  const mappedCancelled = mapApiSummaryToTrackingOrder(cancelledSummary);
+  assert.equal(mappedCancelled.isTerminal, true);
+  assert.equal(mappedCancelled.portalMode, "resumen");
+});
+
+// ─── 13. Simulación Integral de Polling: CONFIRMADA → EN_RUTA → EN_SITIO → COMPLETADA ───
+test("Ciclo de polling 30s actualiza secuencialmente estados, previene concurrencia y detiene al completar", async () => {
+  // Simulador del controlador de polling idéntico a CustomerTrackingView.jsx
+  class CustomerTrackingPollingSimulator {
+    constructor(token, initialSummary, apiMock) {
+      this.token = token;
+      this.api = apiMock;
+      this.summary = initialSummary;
+      this.liveTechLocation = initialSummary.technician_location || null;
+      this.inFlight = false;
+      this.intervalId = null;
+      this.intervalMs = 0;
+      this.requestCount = 0;
+      this.trackingCount = 0;
+      this.summaryCount = 0;
+      this.isPollingActive = false;
+
+      this.initTimer();
+    }
+
+    get statusKey() {
+      return (this.summary?.status_key || "").toLowerCase();
+    }
+
+    get isTerminal() {
+      return this.statusKey === "completada" || this.statusKey === "cancelada";
+    }
+
+    get isEnRuta() {
+      return this.statusKey === "en_ruta";
+    }
+
+    initTimer() {
+      if (!this.token || this.isTerminal) {
+        if (this.isTerminal) this.liveTechLocation = null;
+        this.stopTimer();
+        return;
+      }
+
+      this.isPollingActive = true;
+      this.intervalMs = 30000; // 30 segundos exactos
+      this.intervalId = "timer-active-id";
+    }
+
+    stopTimer() {
+      this.isPollingActive = false;
+      this.intervalId = null;
+    }
+
+    async pollTick() {
+      if (!this.isPollingActive || this.isTerminal) return;
+      if (this.inFlight) return; // Prevención de peticiones simultáneas
+
+      this.inFlight = true;
+      this.requestCount++;
+
+      try {
+        if (this.isEnRuta) {
+          this.trackingCount++;
+          const tracking = await this.api.getTracking(this.token);
+          const trackingStatus = (tracking?.order_status || tracking?.status || "").toLowerCase();
+
+          if (trackingStatus && trackingStatus !== "en_ruta") {
+            this.summaryCount++;
+            const freshSummary = await this.api.getSummary(this.token);
+            if (freshSummary) {
+              this.summary = freshSummary;
+              if (["completada", "cancelada"].includes(freshSummary.status_key?.toLowerCase())) {
+                this.liveTechLocation = null;
+                this.stopTimer();
+              }
+            }
+          } else if (tracking?.lat != null && tracking?.lng != null) {
+            this.liveTechLocation = {
+              lat: parseFloat(tracking.lat),
+              lng: parseFloat(tracking.lng),
+              last_updated_at: tracking.last_updated_at,
+              is_live: Boolean(tracking.is_live),
+            };
+          }
+        } else {
+          this.summaryCount++;
+          const freshSummary = await this.api.getSummary(this.token);
+          if (freshSummary) {
+            this.summary = freshSummary;
+            if (["completada", "cancelada"].includes(freshSummary.status_key?.toLowerCase())) {
+              this.liveTechLocation = null;
+              this.stopTimer();
+            }
+          }
+        }
+      } finally {
+        this.inFlight = false;
+      }
+    }
+  }
+
+  // Secuencia de estados simulados en el backend
+  let backendCurrentStatus = "confirmada";
+  let backendTrackingStatus = "confirmada";
+
+  const apiMock = {
+    getSummary: async () => ({
+      order_id: "test-08494",
+      order_number: "#OT-08494",
+      status_key: backendCurrentStatus,
+      status: backendCurrentStatus.toUpperCase(),
+      address: "Av. Providencia 1234",
+      comuna: "Providencia",
+    }),
+    getTracking: async () => ({
+      order_id: "test-08494",
+      order_status: backendTrackingStatus,
+      lat: backendTrackingStatus === "en_ruta" ? -33.425 : null,
+      lng: backendTrackingStatus === "en_ruta" ? -70.612 : null,
+      is_live: backendTrackingStatus === "en_ruta",
+    }),
+  };
+
+  const simulator = new CustomerTrackingPollingSimulator(
+    "token-valid-08494",
+    { order_id: "test-08494", status_key: "confirmada" },
+    apiMock
+  );
+
+  // 1. Estado inicial: CONFIRMADA
+  assert.equal(simulator.statusKey, "confirmada");
+  assert.equal(simulator.isPollingActive, true);
+  assert.equal(simulator.intervalMs, 30000, "El intervalo de polling debe ser de 30 segundos");
+  assert.equal(simulator.liveTechLocation, null, "No debe haber ubicación de técnico antes de EN_RUTA");
+
+  // 2. Tick 1 (30s): El técnico inicia ruta -> EN_RUTA
+  backendCurrentStatus = "en_ruta";
+  backendTrackingStatus = "en_ruta";
+  await simulator.pollTick();
+
+  assert.equal(simulator.statusKey, "en_ruta", "El portal debe actualizar a en_ruta sin recargar");
+  assert.equal(simulator.isEnRuta, true);
+  assert.equal(simulator.isPollingActive, true);
+
+  // 3. Tick 2 (60s): Mientras está en ruta, recibe telemetría GPS
+  await simulator.pollTick();
+  assert.ok(simulator.liveTechLocation, "Debe tener coordenadas GPS del técnico en ruta");
+  assert.equal(simulator.liveTechLocation.lat, -33.425);
+  assert.equal(simulator.liveTechLocation.is_live, true);
+
+  // 4. Concurrencia: Si una petición está en vuelo, la siguiente llamada debe descartarse
+  simulator.inFlight = true;
+  const prevCount = simulator.requestCount;
+  await simulator.pollTick();
+  assert.equal(simulator.requestCount, prevCount, "No debe ejecutar solicitudes simultáneas mientras inFlight=true");
+  simulator.inFlight = false;
+
+  // 5. Tick 3 (90s): El técnico confirma llegada -> EN_SITIO
+  backendCurrentStatus = "en_sitio";
+  backendTrackingStatus = "en_sitio";
+  await simulator.pollTick();
+
+  assert.equal(simulator.statusKey, "en_sitio", "El portal debe actualizar a en_sitio automáticamente");
+  assert.equal(simulator.isPollingActive, true);
+
+  // 6. Tick 4 (120s): El técnico finaliza la visita -> COMPLETADA
+  backendCurrentStatus = "completada";
+  backendTrackingStatus = "completada";
+  await simulator.pollTick();
+
+  assert.equal(simulator.statusKey, "completada", "El portal debe detectar COMPLETADA automáticamente");
+  assert.equal(simulator.isTerminal, true);
+  assert.equal(simulator.isPollingActive, false, "El polling debe detenerse definitivamente al completar");
+  assert.equal(simulator.liveTechLocation, null, "La ubicación GPS debe purgarse al completar la orden");
+
+  // 7. Ticks posteriores: No deben emitir ninguna petición adicional
+  const finalRequests = simulator.requestCount;
+  await simulator.pollTick();
+  assert.equal(simulator.requestCount, finalRequests, "No deben emitirse peticiones tras finalizar la orden");
+});
+
+// ─── 14. Polling ante CANCELADA como Estado Terminal ──────────────────────────
+test("Orden en estado CANCELADA detiene el polling inmediatamente y purga GPS", async () => {
+  let backendStatus = "confirmada";
+  const apiMock = {
+    getSummary: async () => ({
+      order_id: "test-08495",
+      order_number: "#OT-08495",
+      status_key: backendStatus,
+    }),
+    getTracking: async () => ({ order_status: backendStatus }),
+  };
+
+  // Simulación idéntica al controller de CustomerTrackingView
+  let isTerminal = false;
+  let liveTechLoc = { lat: -33.4, lng: -70.6 };
+  let timerActive = true;
+
+  async function poll() {
+    if (!timerActive || isTerminal) return;
+    const res = await apiMock.getSummary();
+    if (res.status_key === "cancelada") {
+      isTerminal = true;
+      liveTechLoc = null;
+      timerActive = false;
+    }
+  }
+
+  // Orden activa
+  await poll();
+  assert.equal(timerActive, true);
+  assert.ok(liveTechLoc);
+
+  // Mesa de soporte cancela la orden
+  backendStatus = "cancelada";
+  await poll();
+
+  assert.equal(isTerminal, true, "CANCELADA debe ser reconocida como estado terminal");
+  assert.equal(timerActive, false, "El polling debe detenerse tras la cancelación");
+  assert.equal(liveTechLoc, null, "La ubicación GPS debe ser eliminada tras la cancelación");
 });

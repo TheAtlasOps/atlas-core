@@ -72,10 +72,17 @@ function NewWorkOrderForm({ onClose, onCreate }) {
     setIsSubmitting(true);
     setFormError(null);
 
-    const addressParts = form.address.split(",");
+    const rawParts = form.address.split(",").map((p) => p.trim()).filter(Boolean);
+    const dedupedParts = [];
+    for (const p of rawParts) {
+      if (!dedupedParts.length || dedupedParts[dedupedParts.length - 1].toLowerCase() !== p.toLowerCase()) {
+        dedupedParts.push(p);
+      }
+    }
+    const cleanAddress = dedupedParts.join(", ") || form.address;
     const comunaOverride =
-      addressParts.length > 1
-        ? addressParts[addressParts.length - 1].trim()
+      dedupedParts.length > 1
+        ? dedupedParts[dedupedParts.length - 1]
         : "Santiago";
 
     // Determinar ID del técnico seleccionado (UUID real o null)
@@ -111,7 +118,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
       technician_id: technicianId,
       scheduled_date: scheduledDateIso,
       eta: etaIso,
-      address_override: form.address,
+      address_override: cleanAddress,
       comuna_override: comunaOverride,
       tag: form.serviceType,
     };
@@ -219,10 +226,22 @@ function NewWorkOrderForm({ onClose, onCreate }) {
               const matched = availableClients.find(
                 (c) => c.business_name.toLowerCase() === val.trim().toLowerCase()
               );
+              let clientAddress = prev.address;
+              if (matched) {
+                const addr = matched.address ? matched.address.trim() : "";
+                const com = matched.comuna ? matched.comuna.trim() : "";
+                if (addr && com) {
+                  clientAddress = addr.toLowerCase().includes(com.toLowerCase())
+                    ? addr
+                    : `${addr}, ${com}`;
+                } else {
+                  clientAddress = addr || com || prev.address;
+                }
+              }
               setForm((prev) => ({
                 ...prev,
                 clientName: val,
-                address: matched ? `${matched.address}, ${matched.comuna}` : prev.address,
+                address: clientAddress,
               }));
             }}
             placeholder="Ej: Entel B2B - Soluciones SpA"

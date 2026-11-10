@@ -51,12 +51,72 @@ const STATUS_KEY_LABELS = {
   cancelada: "Servicio Cancelado",
 };
 
+export function formatChileanTime(rawDateOrTime) {
+  if (!rawDateOrTime) return "—";
+  if (typeof rawDateOrTime === "string" && /^\d{2}:\d{2}$/.test(rawDateOrTime.trim())) {
+    return rawDateOrTime.trim();
+  }
+  const parsed = new Date(rawDateOrTime);
+  if (Number.isNaN(parsed.getTime())) return String(rawDateOrTime);
+  try {
+    return parsed.toLocaleTimeString("es-CL", {
+      timeZone: "America/Santiago",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return String(rawDateOrTime);
+  }
+}
+
+export function formatAddressDisplay(rawAddress, rawComuna) {
+  if (!rawAddress) return rawComuna ? `Comuna ${rawComuna}` : "Dirección no informada";
+
+  const segments = String(rawAddress)
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const deduplicated = [];
+  for (const seg of segments) {
+    const lower = seg.toLowerCase();
+    if (deduplicated.length > 0 && deduplicated[deduplicated.length - 1].toLowerCase() === lower) {
+      continue;
+    }
+    deduplicated.push(seg);
+  }
+
+  const cleanedAddress = deduplicated.join(", ");
+  const comuna = rawComuna ? String(rawComuna).trim() : "";
+
+  if (!comuna) {
+    return cleanedAddress;
+  }
+
+  const cleanedLower = cleanedAddress.toLowerCase();
+  const comunaLower = comuna.toLowerCase();
+
+  const alreadyContainsComuna =
+    cleanedLower.endsWith(comunaLower) ||
+    cleanedLower.includes(` ${comunaLower}`) ||
+    cleanedLower.includes(`, ${comunaLower}`) ||
+    cleanedLower.includes(`(${comunaLower})`);
+
+  if (alreadyContainsComuna) {
+    return cleanedAddress;
+  }
+
+  return `${cleanedAddress} (${comuna})`;
+}
+
 function formatScheduledDateDisplay(rawDate) {
   if (!rawDate) return "Horario por confirmar";
   const parsed = new Date(rawDate);
   if (Number.isNaN(parsed.getTime())) return String(rawDate);
   try {
     return parsed.toLocaleDateString("es-CL", {
+      timeZone: "America/Santiago",
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -74,11 +134,13 @@ export function formatCompletedDateDisplay(rawDate) {
   if (Number.isNaN(parsed.getTime())) return String(rawDate);
   try {
     const timeStr = parsed.toLocaleTimeString("es-CL", {
+      timeZone: "America/Santiago",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     });
     const dateStr = parsed.toLocaleDateString("es-CL", {
+      timeZone: "America/Santiago",
       day: "2-digit",
       month: "short",
     });
@@ -168,16 +230,21 @@ export function mapApiSummaryToTrackingOrder(summary) {
 
   const timelineSteps =
     Array.isArray(summary.timeline_steps) && summary.timeline_steps.length > 0
-      ? summary.timeline_steps.map((s) => ({
-          key: s.key,
-          label: s.label || s.title || s.key,
-          title: s.label || s.title || s.key,
-          description: s.description || "",
-          timestamp: s.timestamp || s.time || null,
-          time: s.timestamp || s.time || null,
-          completed: Boolean(s.completed),
-          current: Boolean(s.current),
-        }))
+      ? summary.timeline_steps.map((s) => {
+          const rawTime = s.raw_timestamp || s.timestamp || s.time || null;
+          const formattedTime = rawTime ? formatChileanTime(rawTime) : null;
+          return {
+            key: s.key,
+            label: s.label || s.title || s.key,
+            title: s.label || s.title || s.key,
+            description: s.description || "",
+            timestamp: formattedTime,
+            raw_timestamp: s.raw_timestamp || null,
+            time: formattedTime,
+            completed: Boolean(s.completed),
+            current: Boolean(s.current),
+          };
+        })
       : computeStepsFromStatusKey(statusKey, hasAssignedTech);
 
   const techPlate = tech?.vehicle_plate || null;
@@ -211,6 +278,14 @@ export function mapApiSummaryToTrackingOrder(summary) {
       summary.title || summary.service_type || "Servicio Técnico Atlas Entel",
     address: summary.address || "Dirección del Cliente",
     comuna: summary.comuna || "",
+    displayAddress: formatAddressDisplay(summary.address, summary.comuna),
+    isTerminal: statusKey === "completada" || statusKey === "cancelada",
+    portalMode:
+      statusKey === "completada" || statusKey === "cancelada"
+        ? "resumen"
+        : statusKey === "en_sitio"
+        ? "en_sitio"
+        : "seguimiento",
     lat: summary.lat !== null && summary.lat !== undefined ? parseFloat(summary.lat) : null,
     lng: summary.lng !== null && summary.lng !== undefined ? parseFloat(summary.lng) : null,
     technician_location: summary.technician_location

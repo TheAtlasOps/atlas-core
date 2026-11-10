@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.deps import get_current_active_user, require_role
 from app.models.user import User
 from app.models.work_order import WorkOrder
@@ -29,6 +30,7 @@ from app.schemas.work_order import (
     WorkOrderItemResponse,
     AuditorSummary,
     AuditApprovalRequest,
+    MagicLinkDetailSummary,
 )
 from app.services.order_service import (
     list_orders,
@@ -89,18 +91,54 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
         )
 
     # Buscar token de Magic Link activo solo si se solicita expresamente (P1)
+    # y construir MagicLinkDetailSummary para administración y dashboard
     active_token = None
-    if include_token and order.magic_links:
+    magic_link_detail = None
+    if order.magic_links:
         now_utc = datetime.now(timezone.utc)
         sorted_links = sorted(
             order.magic_links,
             key=lambda l: l.created_at or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
-        for ml in sorted_links:
-            if ml.is_active and ml.expires_at > now_utc:
-                active_token = ml.token
-                break
+        if include_token:
+            for ml in sorted_links:
+                if ml.is_active and ml.expires_at > now_utc:
+                    active_token = ml.token
+                    break
+
+        latest_ml = sorted_links[0] if sorted_links else None
+        if latest_ml:
+            if not latest_ml.is_active:
+                l_status = "REVOCADO"
+            elif latest_ml.expires_at <= now_utc:
+                l_status = "VENCIDO"
+            else:
+                l_status = "VIGENTE"
+
+            if order.status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA):
+                p_mode = "Resumen final"
+            elif order.status == OrderStatusEnum.EN_SITIO:
+                p_mode = "Atención en sitio"
+            else:
+                p_mode = "Seguimiento activo"
+
+            portal_url_val = (
+                f"{settings.FRONTEND_PORTAL_URL}/{latest_ml.token}"
+                if (include_token and latest_ml.token)
+                else None
+            )
+
+            magic_link_detail = MagicLinkDetailSummary(
+                id=latest_ml.id,
+                token=latest_ml.token if include_token else None,
+                portal_url=portal_url_val,
+                is_active=latest_ml.is_active,
+                expires_at=latest_ml.expires_at,
+                created_at=latest_ml.created_at,
+                link_status=l_status,
+                portal_mode=p_mode,
+            )
 
     # Mapeo de historial
     history_responses = []
@@ -156,6 +194,7 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
         client=client_summary,
         technician_summary=tech_summary,
         active_magic_link_token=active_token,
+        magic_link_detail=magic_link_detail,
         status_history=history_responses,
         items=[
             WorkOrderItemResponse(

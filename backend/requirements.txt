@@ -8,6 +8,7 @@ fastapi==0.115.8
 uvicorn[standard]==0.34.0
 pydantic==2.10.6
 pydantic-settings==2.8.0
+tzdata==2024.2
 
 # Base de Datos & ORM Asíncrono
 SQLAlchemy==2.0.38
