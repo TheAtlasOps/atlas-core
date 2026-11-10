@@ -208,6 +208,12 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
             )
         )
 
+    # Resolver coordenadas con fallback de cliente si la orden no tiene coordenadas directas
+    client_lat = getattr(order.client, "lat", None) if getattr(order, "client", None) else None
+    client_lng = getattr(order.client, "lng", None) if getattr(order, "client", None) else None
+    resolved_lat = order.lat if order.lat is not None else client_lat
+    resolved_lng = order.lng if order.lng is not None else client_lng
+
     return WorkOrderResponse(
         id=order.id,
         order_number=order.order_number,
@@ -222,8 +228,8 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
         eta=order.eta,
         address_override=order.address_override,
         comuna_override=order.comuna_override,
-        lat=order.lat,
-        lng=order.lng,
+        lat=resolved_lat,
+        lng=resolved_lng,
         tag=order.tag,
         started_at=order.started_at,
         completed_at=order.completed_at,
