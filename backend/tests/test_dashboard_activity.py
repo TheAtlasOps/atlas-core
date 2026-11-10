@@ -179,3 +179,62 @@ def test_work_order_create_accepts_null_schedule_and_null_coordinates():
     assert order_in.lng is None
     assert order_in.address_override == "Av. Providencia 1234, Providencia"
     assert order_in.comuna_override == "Providencia"
+
+
+def test_activity_log_paginated_response(client, db, test_user, auth_headers):
+    """Verifica que /api/v1/orders/activity-log con page y size retorne respuesta paginada."""
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = test_user
+
+    count_res = MagicMock()
+    count_res.scalar.return_value = 25
+
+    now = datetime.now(timezone.utc)
+    order_id = uuid.uuid4()
+    mock_history = OrderStatusHistory(
+        id=uuid.uuid4(),
+        work_order_id=order_id,
+        work_order=None,
+        old_status=OrderStatusEnum.EN_RUTA,
+        new_status=OrderStatusEnum.EN_SITIO,
+        changed_by_user=test_user,
+        comment="Técnico arribó al sitio del cliente",
+        created_at=now,
+    )
+    history_res = MagicMock()
+    scalars_mock = MagicMock()
+    scalars_mock.all.return_value = [mock_history]
+    history_res.scalars.return_value = scalars_mock
+
+    # user_res, count_res, history_res
+    db.execute.side_effect = [user_res, count_res, history_res]
+
+    response = client.get("/api/v1/orders/activity-log?page=1&size=10", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "size" in data
+    assert "pages" in data
+    assert data["total"] == 25
+    assert data["page"] == 1
+    assert data["size"] == 10
+    assert data["pages"] == 3
+    assert len(data["items"]) == 1
+    assert data["items"][0]["action"] == "Técnico arribó al sitio del cliente"
+
+
+def test_activity_log_pagination_validation(client, db, test_user, auth_headers):
+    """Verifica validación de parámetros de paginación."""
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = test_user
+    db.execute.return_value = user_res
+
+    # page < 1
+    res1 = client.get("/api/v1/orders/activity-log?page=0&size=10", headers=auth_headers)
+    assert res1.status_code == 422
+
+    # size > 100
+    res2 = client.get("/api/v1/orders/activity-log?page=1&size=150", headers=auth_headers)
+    assert res2.status_code == 422

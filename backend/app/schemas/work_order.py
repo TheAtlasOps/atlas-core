@@ -146,6 +146,16 @@ class OrderActivityLogItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class OrderActivityLogPaginatedResponse(BaseModel):
+    items: List[OrderActivityLogItem]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ─── Creación y Actualización de Órdenes ─────────────────────────────────────
 class WorkOrderBase(BaseModel):
     title: str = Field(..., max_length=250)

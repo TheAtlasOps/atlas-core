@@ -2,7 +2,7 @@ import uuid
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import selectinload
@@ -30,6 +30,7 @@ from app.schemas.work_order import (
     TechnicianCreate,
     ClientSummary,
     OrderActivityLogItem,
+    OrderActivityLogPaginatedResponse,
 )
 from app.services.auth_service import generate_magic_link_for_order
 from app.core.security import get_password_hash
@@ -809,23 +810,8 @@ async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.U
     )
 
 
-async def get_recent_activity_log(
-    db: AsyncSession, limit: int = 50
-) -> List[OrderActivityLogItem]:
-    """Retorna la bitácora cronológica inmutable de transiciones de estado reales (RF-BO-12)."""
-    query = (
-        select(OrderStatusHistory)
-        .options(
-            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.client),
-            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.technician).selectinload(Technician.user),
-            selectinload(OrderStatusHistory.changed_by_user),
-        )
-        .order_by(desc(OrderStatusHistory.created_at))
-        .limit(limit)
-    )
-    result = await db.execute(query)
-    entries = result.scalars().all()
-
+def _build_activity_log_items(entries) -> List[OrderActivityLogItem]:
+    """Convierte entradas de OrderStatusHistory a modelos OrderActivityLogItem."""
     items = []
     for h in entries:
         order = h.work_order
@@ -874,6 +860,65 @@ async def get_recent_activity_log(
             )
         )
     return items
+
+
+async def get_recent_activity_log(
+    db: AsyncSession,
+    limit: int = 50,
+    page: Optional[int] = None,
+    size: Optional[int] = None,
+) -> Union[OrderActivityLogPaginatedResponse, List[OrderActivityLogItem]]:
+    """Retorna la bitácora cronológica inmutable de transiciones de estado reales (RF-BO-12)."""
+    base_order = (desc(OrderStatusHistory.created_at), desc(OrderStatusHistory.id))
+
+    if page is not None:
+        page_num = max(1, page)
+        page_size = max(1, min(100, size or 10))
+
+        count_query = select(func.count()).select_from(OrderStatusHistory)
+        total_res = await db.execute(count_query)
+        total = total_res.scalar() or 0
+
+        offset_val = (page_num - 1) * page_size
+        query = (
+            select(OrderStatusHistory)
+            .options(
+                selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.client),
+                selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.technician).selectinload(Technician.user),
+                selectinload(OrderStatusHistory.changed_by_user),
+            )
+            .order_by(*base_order)
+            .offset(offset_val)
+            .limit(page_size)
+        )
+        result = await db.execute(query)
+        entries = result.scalars().all()
+
+        items = _build_activity_log_items(entries)
+        pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+        return OrderActivityLogPaginatedResponse(
+            items=items,
+            total=total,
+            page=page_num,
+            size=page_size,
+            pages=pages,
+        )
+
+    # Modo sin paginar (compatible con limit)
+    query = (
+        select(OrderStatusHistory)
+        .options(
+            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.client),
+            selectinload(OrderStatusHistory.work_order).selectinload(WorkOrder.technician).selectinload(Technician.user),
+            selectinload(OrderStatusHistory.changed_by_user),
+        )
+        .order_by(*base_order)
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    entries = result.scalars().all()
+    return _build_activity_log_items(entries)
 
 async def approve_order_audit(
     db: AsyncSession,
