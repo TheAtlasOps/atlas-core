@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, FilePlus, RefreshCw, AlertTriangle } from "lucide-react";
+import { X, Plus, FilePlus, RefreshCw, AlertTriangle, CheckCircle2, MapPin } from "lucide-react";
 import {
   SERVICE_TYPES,
   PRIORITIES,
@@ -8,29 +8,57 @@ import {
 } from "../../lib/workOrderOptions";
 import { api } from "../../lib/api";
 import { useWorkOrders } from "../../context/WorkOrderContext";
+import AddressLocationPicker from "./AddressLocationPicker";
 
 const FIELD_CLASS =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-[#121212] dark:text-white dark:placeholder:text-gray-500";
 const LABEL_CLASS =
   "mb-1.5 block text-xs font-medium text-slate-500 dark:text-gray-400";
 
-const INITIAL_FORM = {
-  title: "",
-  clientName: "",
-  address: "",
-  serviceType: "",
-  technician: "",
-  priority: "MEDIA",
-  scheduledDate: "",
-};
-
 /**
  * Formulario interno. Vive solo mientras el modal está abierto, de modo que
- * el estado se reinicia automáticamente en cada apertura.
+ * el estado se reinicia automáticamente en cada apertura o según la orden provista.
  */
-function NewWorkOrderForm({ onClose, onCreate }) {
+function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
   const { refreshOrders } = useWorkOrders();
-  const [form, setForm] = useState(INITIAL_FORM);
+  const isEditing = Boolean(initialOrder?.id);
+
+  const [form, setForm] = useState(() => ({
+    title: initialOrder?.title || "",
+    clientName:
+      initialOrder?.client?.business_name ||
+      initialOrder?.client_name ||
+      initialOrder?.clientName ||
+      (typeof initialOrder?.client === "string" ? initialOrder.client : "") ||
+      "",
+    address:
+      initialOrder?.address_override ||
+      initialOrder?.location ||
+      initialOrder?.client?.address ||
+      "",
+    lat:
+      initialOrder?.lat !== null && initialOrder?.lat !== undefined
+        ? Number(initialOrder.lat)
+        : null,
+    lng:
+      initialOrder?.lng !== null && initialOrder?.lng !== undefined
+        ? Number(initialOrder.lng)
+        : null,
+    serviceType:
+      initialOrder?.service_type ||
+      initialOrder?.tag ||
+      initialOrder?.serviceType ||
+      "",
+    technician:
+      initialOrder?.technician_id ||
+      initialOrder?.technician?.id ||
+      "",
+    priority: String(initialOrder?.priority || "MEDIA").toUpperCase(),
+    scheduledDate: initialOrder?.scheduled_date
+      ? new Date(initialOrder.scheduled_date).toISOString().slice(0, 16)
+      : "",
+  }));
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableTechs, setAvailableTechs] = useState([]);
   const [availableClients, setAvailableClients] = useState([]);
@@ -53,7 +81,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           }
         }
       } catch (err) {
-        console.warn("No se pudieron cargar técnicos en vivo:", err);
+        console.warn("No se pudieron cargar técnicos o clientes en vivo:", err);
       }
     }
     fetchMetadata();
@@ -72,7 +100,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
     setIsSubmitting(true);
     setFormError(null);
 
-    const rawParts = form.address.split(",").map((p) => p.trim()).filter(Boolean);
+    const rawParts = (form.address || "").split(",").map((p) => p.trim()).filter(Boolean);
     const dedupedParts = [];
     for (const p of rawParts) {
       if (!dedupedParts.length || dedupedParts[dedupedParts.length - 1].toLowerCase() !== p.toLowerCase()) {
@@ -91,13 +119,13 @@ function NewWorkOrderForm({ onClose, onCreate }) {
     );
     const technicianId = matchedTech ? matchedTech.id : null;
 
-    // Determinar ID del cliente (por coincidencia de nombre o null para que el backend cree uno nuevo)
+    // Determinar ID del cliente
     const matchedClient = availableClients.find(
-      (c) => c.business_name.toLowerCase() === form.clientName.trim().toLowerCase()
+      (c) => c.business_name.toLowerCase() === (form.clientName || "").trim().toLowerCase()
     );
     const clientId = matchedClient ? matchedClient.id : null;
 
-    // Manejo de fecha programada: si el usuario no la especifica, se envía null (Por coordinar)
+    // Manejo de fecha programada
     let scheduledDateIso = null;
     let etaIso = null;
     if (form.scheduledDate && form.scheduledDate.trim()) {
@@ -108,49 +136,85 @@ function NewWorkOrderForm({ onClose, onCreate }) {
       }
     }
 
-    const orderPayload = {
-      title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
-      description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
-      service_type: mapServiceTagToEnum(form.serviceType),
-      priority: String(form.priority || "MEDIA").toUpperCase(),
-      client_id: clientId,
-      client_name: form.clientName.trim(),
-      technician_id: technicianId,
-      scheduled_date: scheduledDateIso,
-      eta: etaIso,
-      address_override: cleanAddress,
-      comuna_override: comunaOverride,
-      tag: form.serviceType,
-    };
-
     try {
-      const createdOrder = await api.orders.create(orderPayload);
-      if (!createdOrder || !createdOrder.id) {
-        throw new Error("El backend no confirmó la persistencia de la orden.");
-      }
+      if (isEditing) {
+        // Actualización de orden existente
+        const updatePayload = {
+          title: form.title.trim() || undefined,
+          service_type: form.serviceType ? mapServiceTagToEnum(form.serviceType) : undefined,
+          priority: form.priority ? String(form.priority).toUpperCase() : undefined,
+          address_override: cleanAddress,
+          comuna_override: comunaOverride,
+          lat: form.lat !== null && form.lat !== undefined ? Number(form.lat) : null,
+          lng: form.lng !== null && form.lng !== undefined ? Number(form.lng) : null,
+          scheduled_date: scheduledDateIso,
+          eta: etaIso,
+        };
 
-      let finalOrder = createdOrder;
-
-      if (technicianId && createdOrder?.id && !createdOrder?.technician_id) {
-        try {
-          finalOrder = await api.orders.assign(
-            createdOrder.id,
-            technicianId,
-            etaIso
-          );
-        } catch {
-          // Si falla la asignación puntual, conserva la orden recién creada
+        const updatedOrder = await api.orders.update(initialOrder.id, updatePayload);
+        if (!updatedOrder || !updatedOrder.id) {
+          throw new Error("El backend no confirmó la actualización de la orden.");
         }
-      }
 
-      if (onCreate) onCreate(form, finalOrder);
-      await refreshOrders();
-      onClose();
+        // Si se cambió el técnico asignado
+        if (technicianId && technicianId !== initialOrder.technician_id) {
+          try {
+            await api.orders.assign(updatedOrder.id, technicianId, etaIso);
+          } catch {
+            // Silencioso si falla la reasignación puntual
+          }
+        }
+
+        if (onUpdate) onUpdate(form, updatedOrder);
+        else if (onCreate) onCreate(form, updatedOrder);
+        await refreshOrders();
+        onClose();
+      } else {
+        // Creación de nueva orden
+        const orderPayload = {
+          title: form.title.trim() || `${form.serviceType} — ${form.clientName}`,
+          description: `Cliente: ${form.clientName} · Dirección: ${form.address}`,
+          service_type: mapServiceTagToEnum(form.serviceType),
+          priority: String(form.priority || "MEDIA").toUpperCase(),
+          client_id: clientId,
+          client_name: form.clientName.trim(),
+          technician_id: technicianId,
+          scheduled_date: scheduledDateIso,
+          eta: etaIso,
+          address_override: cleanAddress,
+          comuna_override: comunaOverride,
+          lat: form.lat !== null && form.lat !== undefined ? Number(form.lat) : null,
+          lng: form.lng !== null && form.lng !== undefined ? Number(form.lng) : null,
+          tag: form.serviceType,
+        };
+
+        const createdOrder = await api.orders.create(orderPayload);
+        if (!createdOrder || !createdOrder.id) {
+          throw new Error("El backend no confirmó la persistencia de la orden.");
+        }
+
+        let finalOrder = createdOrder;
+
+        if (technicianId && createdOrder?.id && !createdOrder?.technician_id) {
+          try {
+            finalOrder = await api.orders.assign(
+              createdOrder.id,
+              technicianId,
+              etaIso
+            );
+          } catch {
+            // Si falla la asignación puntual, conserva la orden recién creada
+          }
+        }
+
+        if (onCreate) onCreate(form, finalOrder);
+        await refreshOrders();
+        onClose();
+      }
     } catch (err) {
-      console.error("Error al crear la orden de trabajo:", err);
+      console.error("Error al guardar la orden de trabajo:", err);
       const msg = err?.message || "No se pudo conectar con el servidor para guardar la orden en Neon.";
       setFormError(msg);
-      // NUNCA llamar a onCreate con null ni simular guardado local
     } finally {
       setIsSubmitting(false);
     }
@@ -161,17 +225,25 @@ function NewWorkOrderForm({ onClose, onCreate }) {
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
-            <FilePlus className="h-5 w-5" aria-hidden="true" />
+            {isEditing ? (
+              <MapPin className="h-5 w-5" aria-hidden="true" />
+            ) : (
+              <FilePlus className="h-5 w-5" aria-hidden="true" />
+            )}
           </div>
           <div>
             <h2
               id="new-wo-title"
               className="text-base font-semibold text-slate-900 dark:text-white"
             >
-              Nueva Orden de Trabajo
+              {isEditing
+                ? `Editar Orden ${initialOrder.order_number || ""}`
+                : "Nueva Orden de Trabajo"}
             </h2>
             <p className="text-xs text-slate-500 dark:text-gray-400">
-              Completa los detalles para despachar
+              {isEditing
+                ? "Modifica los datos técnicos y la ubicación geográfica de la orden"
+                : "Completa los detalles para despachar"}
             </p>
           </div>
         </div>
@@ -226,23 +298,33 @@ function NewWorkOrderForm({ onClose, onCreate }) {
               const matched = availableClients.find(
                 (c) => c.business_name.toLowerCase() === val.trim().toLowerCase()
               );
-              let clientAddress = prev.address;
-              if (matched) {
-                const addr = matched.address ? matched.address.trim() : "";
-                const com = matched.comuna ? matched.comuna.trim() : "";
-                if (addr && com) {
-                  clientAddress = addr.toLowerCase().includes(com.toLowerCase())
-                    ? addr
-                    : `${addr}, ${com}`;
-                } else {
-                  clientAddress = addr || com || prev.address;
+              setForm((prev) => {
+                let clientAddress = prev.address;
+                let clientLat = prev.lat;
+                let clientLng = prev.lng;
+                if (matched) {
+                  const addr = matched.address ? matched.address.trim() : "";
+                  const com = matched.comuna ? matched.comuna.trim() : "";
+                  if (addr && com) {
+                    clientAddress = addr.toLowerCase().includes(com.toLowerCase())
+                      ? addr
+                      : `${addr}, ${com}`;
+                  } else {
+                    clientAddress = addr || com || prev.address;
+                  }
+                  if (matched.lat != null && matched.lng != null && prev.lat == null) {
+                    clientLat = Number(matched.lat);
+                    clientLng = Number(matched.lng);
+                  }
                 }
-              }
-              setForm((prev) => ({
-                ...prev,
-                clientName: val,
-                address: clientAddress,
-              }));
+                return {
+                  ...prev,
+                  clientName: val,
+                  address: clientAddress,
+                  lat: clientLat,
+                  lng: clientLng,
+                };
+              });
             }}
             placeholder="Ej: Entel B2B - Soluciones SpA"
             className={FIELD_CLASS}
@@ -258,20 +340,26 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           )}
         </div>
 
-        <div>
-          <label htmlFor="new-wo-address" className={LABEL_CLASS}>
-            Comuna / Dirección
-          </label>
-          <input
-            id="new-wo-address"
-            type="text"
-            required
-            value={form.address}
-            onChange={setField("address")}
-            placeholder="Ej: Av. Providencia 1234, Providencia"
-            className={FIELD_CLASS}
-          />
-        </div>
+        {/* Selector interactivo de dirección y ubicación geográfica en mapa */}
+        <AddressLocationPicker
+          address={form.address}
+          onAddressChange={(newAddr) => {
+            setFormError(null);
+            setForm((prev) => ({ ...prev, address: newAddr }));
+          }}
+          lat={form.lat}
+          lng={form.lng}
+          onLocationChange={({ lat, lng, address: updatedAddr }) => {
+            setFormError(null);
+            setForm((prev) => ({
+              ...prev,
+              lat,
+              lng,
+              ...(updatedAddr ? { address: updatedAddr } : {}),
+            }));
+          }}
+          disabled={isSubmitting}
+        />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
@@ -343,7 +431,7 @@ function NewWorkOrderForm({ onClose, onCreate }) {
           </select>
           {availableTechs.length === 0 && (
             <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
-              No hay técnicos registrados en la base de datos. La orden se creará en estado pendiente (Sin asignar).
+              No hay técnicos registrados en la base de datos. La orden se guardará sin técnico asignado.
             </p>
           )}
         </div>
@@ -380,10 +468,18 @@ function NewWorkOrderForm({ onClose, onCreate }) {
         >
           {isSubmitting ? (
             <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : isEditing ? (
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
           ) : (
             <Plus className="h-4 w-4" aria-hidden="true" />
           )}
-          {isSubmitting ? "Creando..." : "Crear Orden"}
+          {isSubmitting
+            ? isEditing
+              ? "Guardando..."
+              : "Creando..."
+            : isEditing
+            ? "Guardar Cambios"
+            : "Crear Orden"}
         </button>
       </div>
     </form>
@@ -391,15 +487,23 @@ function NewWorkOrderForm({ onClose, onCreate }) {
 }
 
 /**
- * Modal "Nueva OT". Se controla con estado local desde la vista que lo usa.
+ * Modal "Nueva / Editar OT". Se controla con estado local desde la vista que lo usa.
  * Renderizado vía createPortal con bloqueo de scroll y cierre con Escape.
  *
  * Props:
- *  - isOpen   {boolean}
- *  - onClose  {() => void}
- *  - onCreate {(data) => void} opcional; recibe los datos del formulario
+ *  - isOpen        {boolean}
+ *  - onClose       {() => void}
+ *  - onCreate      {(data, order) => void} opcional; recibe los datos del formulario y orden creada
+ *  - onUpdate      {(data, order) => void} opcional; recibe los datos del formulario y orden actualizada
+ *  - initialOrder  {object} opcional; orden a editar
  */
-export default function NewWorkOrderModal({ isOpen, onClose, onCreate }) {
+export default function NewWorkOrderModal({
+  isOpen,
+  onClose,
+  onCreate,
+  onUpdate,
+  initialOrder = null,
+}) {
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -436,7 +540,12 @@ export default function NewWorkOrderModal({ isOpen, onClose, onCreate }) {
         onClick={(e) => e.stopPropagation()}
         className="relative my-auto w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-gray-800 dark:bg-[#1e1e1e]"
       >
-        <NewWorkOrderForm onClose={onClose} onCreate={onCreate} />
+        <WorkOrderForm
+          onClose={onClose}
+          onCreate={onCreate}
+          onUpdate={onUpdate}
+          initialOrder={initialOrder}
+        />
       </div>
     </div>,
     document.body

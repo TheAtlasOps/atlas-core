@@ -177,6 +177,8 @@ class WorkOrderUpdate(BaseModel):
     eta: Optional[datetime] = None
     address_override: Optional[str] = None
     comuna_override: Optional[str] = None
+    lat: Optional[Decimal] = None
+    lng: Optional[Decimal] = None
     tag: Optional[str] = None
 
 

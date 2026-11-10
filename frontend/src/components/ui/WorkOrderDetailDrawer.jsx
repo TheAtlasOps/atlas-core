@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
+import { isValidCoordinate } from "../../lib/mapClustering.js";
 
 const SAFE_STATUS_LABELS = STATUS_LABELS || {
   DISPONIBLE: "Disponible",
@@ -119,6 +120,7 @@ function WorkOrderDetailDrawerContent({
   order,
   onClose,
   onOpenInventoryModal,
+  onEditOrder,
 }) {
   const {
     hardwareInventory,
@@ -237,6 +239,9 @@ function WorkOrderDetailDrawerContent({
     order.address_override ||
     apiOrderDetail?.client?.address ||
     "Ubicación en terreno";
+  const orderLat = apiOrderDetail?.lat ?? order.lat;
+  const orderLng = apiOrderDetail?.lng ?? order.lng;
+  const hasGeoloc = isValidCoordinate(orderLat, orderLng);
   const assigneeDisplayName =
     apiOrderDetail?.technician?.full_name ||
     order.assigneeName ||
@@ -436,12 +441,33 @@ function WorkOrderDetailDrawerContent({
           </h2>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-gray-400">
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-500" />
-              <span>
-                {clientDisplayName ? `${clientDisplayName} · ` : ""}
-                {locationDisplay}
-              </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+                <span>
+                  {clientDisplayName ? `${clientDisplayName} · ` : ""}
+                  {locationDisplay}
+                </span>
+              </div>
+              {hasGeoloc ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  ✓ Geolocalizada
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                  ⚠ Sin GPS
+                </span>
+              )}
+              {onEditOrder && !isAudited && (
+                <button
+                  type="button"
+                  onClick={() => onEditOrder(apiOrderDetail || order)}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 underline cursor-pointer"
+                  title="Editar dirección y ajustar coordenadas de la orden"
+                >
+                  Editar ubicación
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

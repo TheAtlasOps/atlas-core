@@ -260,12 +260,12 @@ export function ActiveZonesCard({
 
         {/* Mapa Leaflet interactivo */}
         {isLoading ? (
-          <div className="relative flex min-h-[220px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+          <div className="relative flex min-h-[280px] flex-1 items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
             <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
           </div>
         ) : (
           <>
-            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[220px] h-[220px] w-full">
+            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate min-h-[280px] h-[280px] w-full">
               {allMapPoints.length === 0 && (
                 <div className="absolute inset-x-4 top-4 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
                   <span>
@@ -306,36 +306,39 @@ export function ActiveZonesCard({
                       position={[cluster.lat, cluster.lng]}
                       icon={icon}
                     >
-                      <Popup minWidth={cluster.isCluster ? 250 : 180} maxWidth={320}>
+                      <Popup minWidth={cluster.isCluster ? 310 : 200} maxWidth={360}>
                         {cluster.isCluster ? (
-                          <div className="text-slate-900" style={{ fontSize: "12px", lineHeight: "1.4" }}>
-                            <div className="border-b border-slate-200 pb-1.5 mb-2">
-                              <div className="flex items-center justify-between">
-                                <strong className="font-bold text-slate-900 text-xs">
+                          <div className="text-slate-900 dark:text-gray-100" style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                            <div className="border-b border-slate-200 dark:border-gray-700 pb-2 mb-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <strong className="font-bold text-slate-900 dark:text-white text-xs">
                                   Ubicación agrupada
                                 </strong>
-                                <span className="rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[10px] font-extrabold">
+                                <span className="rounded-full bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 px-2 py-0.5 text-[10px] font-extrabold shadow-2xs">
                                   {cluster.count} órdenes
                                 </span>
                               </div>
-                              <span className="block text-slate-500 text-[10px] truncate mt-0.5">
+                              <span className="block text-slate-500 dark:text-gray-400 text-[10px] truncate mt-0.5">
                                 {cluster.orders[0]?.client || "Misma dirección"}
                               </span>
                             </div>
-                            <div className="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+                            <div className="max-h-[210px] overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
                               {cluster.orders.map((o) => (
-                                <div key={o.id} className="pt-2 first:pt-0">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="font-bold text-slate-900 text-xs">{o.orderNumber}</span>
+                                <div
+                                  key={o.id}
+                                  className="rounded-lg border border-slate-200/90 dark:border-gray-700/80 bg-slate-50/90 dark:bg-gray-800/80 p-2.5 shadow-2xs space-y-1"
+                                >
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <span className="font-bold text-slate-900 dark:text-white text-xs">{o.orderNumber}</span>
                                     <span
-                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-2xs shrink-0"
                                       style={{ backgroundColor: getMarkerHexByStatus(o.status) }}
                                     >
                                       {o.status}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] font-semibold text-slate-800 mt-0.5 truncate">{o.client}</p>
-                                  <p className="text-[10px] text-slate-500 truncate">{o.title}</p>
+                                  <p className="text-[11px] font-semibold text-slate-800 dark:text-gray-200 truncate">{o.client}</p>
+                                  <p className="text-[10px] text-slate-500 dark:text-gray-400 line-clamp-2 leading-tight">{o.title}</p>
                                   {onSelectOrderId && (
                                     <button
                                       type="button"
@@ -343,10 +346,10 @@ export function ActiveZonesCard({
                                         if (isExpanded) setIsExpanded(false);
                                         onSelectOrderId(o.orderNumber || o.id);
                                       }}
-                                      className="mt-1.5 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                      className="mt-2 w-full rounded-md bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-[11px] font-semibold py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                                     >
-                                      <span>Ver detalle</span>
-                                      <ExternalLink className="h-3 w-3" />
+                                      <span>Ver detalle de la orden</span>
+                                      <ExternalLink className="h-3 w-3 shrink-0" />
                                     </button>
                                   )}
                                 </div>
@@ -357,22 +360,22 @@ export function ActiveZonesCard({
                           (() => {
                             const o = cluster.orders[0];
                             return (
-                              <div className="text-slate-900" style={{ fontSize: "12px", lineHeight: "1.4", minWidth: "160px" }}>
-                                <div className="flex items-center justify-between gap-1">
-                                  <strong className="block text-slate-900 font-bold text-xs">
+                              <div className="text-slate-900 dark:text-gray-100 p-0.5" style={{ fontSize: "12px", lineHeight: "1.4", minWidth: "180px" }}>
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <strong className="block text-slate-900 dark:text-white font-bold text-xs">
                                     {o.orderNumber}
                                   </strong>
                                   <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-2xs shrink-0"
                                     style={{ backgroundColor: cluster.color }}
                                   >
                                     {o.status}
                                   </span>
                                 </div>
-                                <span className="block text-slate-700 font-medium text-[11px] mt-1">
+                                <span className="block text-slate-800 dark:text-gray-200 font-semibold text-[11px] mt-1.5 truncate">
                                   {o.client}
                                 </span>
-                                <span className="block text-slate-500 text-[10px] mt-0.5">
+                                <span className="block text-slate-500 dark:text-gray-400 text-[10px] mt-0.5 line-clamp-2 leading-tight">
                                   {o.title}
                                 </span>
                                 {onSelectOrderId && (
@@ -382,10 +385,10 @@ export function ActiveZonesCard({
                                       if (isExpanded) setIsExpanded(false);
                                       onSelectOrderId(o.orderNumber || o.id);
                                     }}
-                                    className="mt-2 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                    className="mt-2.5 w-full rounded-md bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-[11px] font-semibold py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                                   >
-                                    <span>Ver detalle</span>
-                                    <ExternalLink className="h-3 w-3" />
+                                    <span>Ver detalle de la orden</span>
+                                    <ExternalLink className="h-3 w-3 shrink-0" />
                                   </button>
                                 )}
                               </div>
@@ -546,36 +549,39 @@ export function ActiveZonesCard({
                       position={[cluster.lat, cluster.lng]}
                       icon={icon}
                     >
-                      <Popup minWidth={cluster.isCluster ? 270 : 200} maxWidth={340}>
+                      <Popup minWidth={cluster.isCluster ? 330 : 220} maxWidth={400}>
                         {cluster.isCluster ? (
-                          <div style={{ fontSize: "12px", lineHeight: "1.4" }}>
-                            <div className="border-b border-slate-200 pb-1.5 mb-2">
-                              <div className="flex items-center justify-between">
-                                <strong className="font-bold text-slate-900 text-sm">
+                          <div className="text-slate-900 dark:text-gray-100" style={{ fontSize: "12px", lineHeight: "1.4" }}>
+                            <div className="border-b border-slate-200 dark:border-gray-700 pb-2 mb-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <strong className="font-bold text-slate-900 dark:text-white text-sm">
                                   Ubicación agrupada
                                 </strong>
-                                <span className="rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-xs font-bold">
+                                <span className="rounded-full bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 px-2.5 py-0.5 text-xs font-bold shadow-2xs">
                                   {cluster.count} órdenes
                                 </span>
                               </div>
-                              <p className="text-slate-500 text-xs mt-0.5 truncate">
+                              <p className="text-slate-500 dark:text-gray-400 text-xs mt-0.5 truncate">
                                 {cluster.orders[0]?.client || "Misma dirección"}
                               </p>
                             </div>
-                            <div className="max-h-60 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+                            <div className="max-h-[320px] overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
                               {cluster.orders.map((o) => (
-                                <div key={o.id} className="pt-2 first:pt-0">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="font-bold text-slate-900 text-xs">{o.orderNumber}</span>
+                                <div
+                                  key={o.id}
+                                  className="rounded-lg border border-slate-200/90 dark:border-gray-700/80 bg-slate-50/90 dark:bg-gray-800/80 p-3 shadow-2xs space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <span className="font-bold text-slate-900 dark:text-white text-xs">{o.orderNumber}</span>
                                     <span
-                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-xs"
+                                      className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-2xs shrink-0"
                                       style={{ backgroundColor: getMarkerHexByStatus(o.status) }}
                                     >
                                       {o.status}
                                     </span>
                                   </div>
-                                  <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">{o.client}</p>
-                                  <p className="text-[11px] text-slate-500 truncate">{o.title}</p>
+                                  <p className="text-xs font-semibold text-slate-800 dark:text-gray-200 truncate">{o.client}</p>
+                                  <p className="text-[11px] text-slate-500 dark:text-gray-400 line-clamp-2 leading-tight">{o.title}</p>
                                   {onSelectOrderId && (
                                     <button
                                       type="button"
@@ -583,10 +589,10 @@ export function ActiveZonesCard({
                                         setIsExpanded(false);
                                         onSelectOrderId(o.orderNumber || o.id);
                                       }}
-                                      className="mt-1.5 w-full rounded bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold py-1.5 px-2 transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                      className="mt-2 w-full rounded-md bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white text-xs font-semibold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                                     >
                                       <span>Ver detalle de la orden</span>
-                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                     </button>
                                   )}
                                 </div>
@@ -597,18 +603,18 @@ export function ActiveZonesCard({
                           (() => {
                             const o = cluster.orders[0];
                             return (
-                              <div style={{ fontSize: "12px", minWidth: "180px" }}>
-                                <div className="flex items-center justify-between gap-1">
-                                  <p className="font-bold text-slate-900 text-sm">{o.orderNumber}</p>
+                              <div className="text-slate-900 dark:text-gray-100 p-0.5" style={{ fontSize: "12px", minWidth: "200px" }}>
+                                <div className="flex items-center justify-between gap-1.5">
+                                  <p className="font-bold text-slate-900 dark:text-white text-sm">{o.orderNumber}</p>
                                   <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white"
+                                    className="text-[10px] px-1.5 py-0.5 rounded font-bold text-white shadow-2xs shrink-0"
                                     style={{ backgroundColor: cluster.color }}
                                   >
                                     {o.status}
                                   </span>
                                 </div>
-                                <p className="font-semibold text-slate-800 text-xs mt-1">{o.client}</p>
-                                <p className="text-slate-500 text-[11px] mt-0.5">{o.title}</p>
+                                <p className="font-semibold text-slate-800 dark:text-gray-200 text-xs mt-1.5 truncate">{o.client}</p>
+                                <p className="text-slate-500 dark:text-gray-400 text-[11px] mt-0.5 line-clamp-2 leading-tight">{o.title}</p>
                                 {onSelectOrderId && (
                                   <button
                                     type="button"
@@ -616,10 +622,10 @@ export function ActiveZonesCard({
                                       setIsExpanded(false);
                                       onSelectOrderId(o.orderNumber || o.id);
                                     }}
-                                    className="mt-2.5 w-full rounded bg-orange-500 hover:bg-orange-600 px-2 py-1.5 text-xs font-semibold text-white transition-colors flex items-center justify-center gap-1 shadow-xs cursor-pointer"
+                                    className="mt-2.5 w-full rounded-md bg-orange-500 hover:bg-orange-600 active:bg-orange-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                                   >
-                                    <span>Ver detalles de la orden</span>
-                                    <ExternalLink className="h-3.5 w-3.5" />
+                                    <span>Ver detalle de la orden</span>
+                                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                   </button>
                                 )}
                               </div>
@@ -1292,6 +1298,7 @@ export default function DispatchBoard() {
     createWorkOrder,
   } = useWorkOrders();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [search, setSearch] = useState("");
@@ -1770,11 +1777,22 @@ export default function DispatchBoard() {
         </aside>
       )}
 
-      {/* ── Modal nueva OT ── */}
+      {/* ── Modal nueva / editar OT ── */}
       <NewWorkOrderModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingOrder(null);
+        }}
+        initialOrder={editingOrder}
         onCreate={handleCreateOT}
+        onUpdate={() => {
+          setToast({
+            title: "Orden actualizada",
+            description: "Los cambios de ubicación y datos técnicos se guardaron exitosamente en Neon.",
+            type: "success",
+          });
+        }}
       />
 
       {/* ── Modal Inventario SIM / Routers ── */}
@@ -1788,6 +1806,11 @@ export default function DispatchBoard() {
         order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onOpenInventoryModal={() => setIsInventoryOpen(true)}
+        onEditOrder={(order) => {
+          setSelectedOrder(null);
+          setEditingOrder(order);
+          setIsModalOpen(true);
+        }}
       />
 
       {/* ── Layout principal ── */}
@@ -1858,7 +1881,10 @@ export default function DispatchBoard() {
                   {/* Botón Nueva OT */}
                   <button
                     id="btn-new-ot"
-                    onClick={() => setIsModalOpen(true)}
+                    onClick={() => {
+                      setEditingOrder(null);
+                      setIsModalOpen(true);
+                    }}
                     className="flex items-center gap-2 rounded-lg bg-orange-500 hover:bg-orange-600 px-4 py-2 text-sm font-semibold text-white active:scale-95 transition-all duration-150 shadow-sm"
                   >
                     <Plus className="h-4 w-4" />

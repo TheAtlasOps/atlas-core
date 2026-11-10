@@ -17,6 +17,7 @@ from app.models.inventory import SimCard, Equipment
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum, SimStatusEnum, UserRoleEnum
 from app.schemas.work_order import (
     WorkOrderCreate,
+    WorkOrderUpdate,
     WorkOrderStatusUpdate,
     WorkOrderAssign,
     WorkOrderLocationUpdate,
@@ -247,6 +248,38 @@ async def create_order(
         pass  # Si falla la emisión automática, se puede generar manualmente
 
     return await get_order_by_id(db, new_order.id)
+
+
+async def update_order(
+    db: AsyncSession,
+    order_id: uuid.UUID,
+    order_update: WorkOrderUpdate,
+    current_user: User,
+) -> WorkOrder:
+    """
+    Actualiza datos técnicos o de geolocalización de una orden de trabajo.
+    Permite fijar o corregir dirección y coordenadas reales (lat/lng).
+    """
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {order_id} no encontrada",
+        )
+
+    if order.is_audited:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se pueden modificar datos de una orden que ya cuenta con auditoría aprobada y cerrada.",
+        )
+
+    update_dict = order_update.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(order, key, value)
+
+    order.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return await get_order_by_id(db, order_id)
 
 
 async def update_order_status(
