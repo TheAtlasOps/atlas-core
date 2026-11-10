@@ -4,7 +4,7 @@ import urllib.request
 import urllib.parse
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from app.schemas.work_order import (
     TechnicianCreate,
     OrderStatusHistoryResponse,
     OrderActivityLogItem,
+    OrderActivityLogPaginatedResponse,
     WorkOrderItemResponse,
     AuditorSummary,
     AuditApprovalRequest,
@@ -415,17 +416,19 @@ async def get_clients(
 
 @router.get(
     "/activity-log",
-    response_model=List[OrderActivityLogItem],
+    response_model=Union[OrderActivityLogPaginatedResponse, List[OrderActivityLogItem]],
     summary="Bitácora de actividad reciente",
     description="Retorna las transiciones de estado y eventos registrados reales en order_status_history (RF-BO-12).",
 )
 async def get_activity_log(
-    limit: int = Query(50, ge=1, le=100, description="Cantidad máxima de eventos"),
+    page: Optional[int] = Query(None, ge=1, description="Número de página para paginación"),
+    size: Optional[int] = Query(None, ge=1, le=100, description="Cantidad de registros por página"),
+    limit: int = Query(50, ge=1, le=100, description="Cantidad máxima de eventos (modo sin paginar)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Consulta de bitácora de actividad reciente verificable."""
-    return await get_recent_activity_log(db=db, limit=limit)
+    """Consulta de bitácora de actividad reciente verificable con soporte de paginación."""
+    return await get_recent_activity_log(db=db, limit=limit, page=page, size=size)
 
 
 @router.get(

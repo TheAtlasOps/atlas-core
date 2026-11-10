@@ -19,6 +19,8 @@ import {
   AlertCircle,
   ExternalLink,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -757,8 +759,8 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-4">
-      <div>
+    <div className="rounded-xl border border-border bg-card p-5 flex flex-col h-full">
+      <div className="shrink-0">
         <h2 className="text-sm font-semibold text-foreground">
           Estado de visitas
         </h2>
@@ -767,115 +769,117 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
         </p>
       </div>
 
-      {isLoading ? (
-        <>
-          <div className="flex items-center justify-center py-1">
-            <div className="w-[150px] h-[150px] rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
-          </div>
-          <div className="flex flex-col gap-2.5">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-slate-200 dark:bg-gray-700 animate-pulse shrink-0" />
-                  <div
-                    className="h-3 animate-pulse rounded bg-slate-200 dark:bg-gray-800"
-                    style={{ width: `${60 + i * 12}px` }}
-                  />
+      <div className="flex-1 flex flex-col justify-center gap-4 py-1">
+        {isLoading ? (
+          <>
+            <div className="flex items-center justify-center py-1">
+              <div className="w-[150px] h-[150px] rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
+            </div>
+            <div className="flex flex-col gap-2.5">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-slate-200 dark:bg-gray-700 animate-pulse shrink-0" />
+                    <div
+                      className="h-3 animate-pulse rounded bg-slate-200 dark:bg-gray-800"
+                      style={{ width: `${60 + i * 12}px` }}
+                    />
+                  </div>
+                  <div className="h-3 w-8 animate-pulse rounded bg-slate-100/70 dark:bg-gray-800/70" />
                 </div>
-                <div className="h-3 w-8 animate-pulse rounded bg-slate-100/70 dark:bg-gray-800/70" />
-              </div>
-            ))}
+              ))}
+            </div>
+          </>
+        ) : error && total === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
+            <p className="text-xs font-semibold text-rose-500">
+              No se pudo obtener la distribución de estados
+            </p>
+            <p className="text-[11px] text-muted-foreground">{error}</p>
           </div>
-        </>
-      ) : error && total === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 text-center py-6">
-          <p className="text-xs font-semibold text-rose-500">
-            No se pudo obtener la distribución de estados
-          </p>
-          <p className="text-[11px] text-muted-foreground">{error}</p>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-center py-1">
-            <div className="relative flex items-center justify-center">
-              <svg
-                width="150"
-                height="150"
-                viewBox="0 0 100 100"
-                className="-rotate-90"
-                aria-label="Gráfico donut de estado de visitas"
-              >
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="11"
-                  className="text-slate-900/10 dark:text-white/5"
-                />
-                {segments.map((seg) => (
+        ) : (
+          <>
+            <div className="flex items-center justify-center py-1">
+              <div className="relative flex items-center justify-center">
+                <svg
+                  width="150"
+                  height="150"
+                  viewBox="0 0 100 100"
+                  className="-rotate-90"
+                  aria-label="Gráfico donut de estado de visitas"
+                >
                   <circle
-                    key={seg.label}
                     cx="50"
                     cy="50"
                     r="40"
                     fill="none"
-                    stroke={seg.strokeColor}
+                    stroke="currentColor"
                     strokeWidth="11"
-                    strokeDasharray={`${seg.dash} ${CIRCUMFERENCE - seg.dash}`}
-                    strokeDashoffset={seg.offset}
-                    strokeLinecap="butt"
+                    className="text-slate-900/10 dark:text-white/5"
                   />
-                ))}
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none p-2">
-                <span
-                  className={`font-bold tracking-tight text-foreground leading-none ${
-                    total >= 1000
-                      ? "text-xl"
-                      : total >= 100
-                      ? "text-2xl"
-                      : "text-3xl"
-                  }`}
-                >
-                  {total}
-                </span>
-                <span className="mt-1 max-w-[76px] text-[10px] leading-tight font-medium text-muted-foreground text-center">
-                  {total === 0 ? "Sin órdenes" : "órdenes registradas"}
-                </span>
+                  {segments.map((seg) => (
+                    <circle
+                      key={seg.label}
+                      cx="50"
+                      cy="50"
+                      r="40"
+                      fill="none"
+                      stroke={seg.strokeColor}
+                      strokeWidth="11"
+                      strokeDasharray={`${seg.dash} ${CIRCUMFERENCE - seg.dash}`}
+                      strokeDashoffset={seg.offset}
+                      strokeLinecap="butt"
+                    />
+                  ))}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none select-none p-2">
+                  <span
+                    className={`font-bold tracking-tight text-foreground leading-none ${
+                      total >= 1000
+                        ? "text-xl"
+                        : total >= 100
+                        ? "text-2xl"
+                        : "text-3xl"
+                    }`}
+                  >
+                    {total}
+                  </span>
+                  <span className="mt-1 max-w-[76px] text-[10px] leading-tight font-medium text-muted-foreground text-center">
+                    {total === 0 ? "Sin órdenes" : "órdenes registradas"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-2">
-            {dynamicSegments.map((seg) => (
-              <div
-                key={seg.label}
-                className="flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: seg.color }}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {seg.label}
-                  </span>
+            <div className="flex flex-col gap-2">
+              {dynamicSegments.map((seg) => (
+                <div
+                  key={seg.label}
+                  className="flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: seg.color }}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {seg.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-foreground tabular-nums">
+                      {seg.value}
+                    </span>
+                    <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">
+                      {total > 0 ? Math.round((seg.value / total) * 100) : 0}%
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-foreground tabular-nums">
-                    {seg.value}
-                  </span>
-                  <span className="text-xs text-muted-foreground w-8 text-right tabular-nums">
-                    {total > 0 ? Math.round((seg.value / total) * 100) : 0}%
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -1023,9 +1027,21 @@ function ActivityTableSkeleton() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tabla — Registro de actividad reciente
+// Tabla — Registro de actividad reciente con paginación real desde backend
 // ═══════════════════════════════════════════════════════════════════════════════
-function ActivityTable({ log = [], onSelectOrderId, error }) {
+function ActivityTable({
+  log = [],
+  pagination = { page: 1, size: 10, total: 0, pages: 1 },
+  onPageChange,
+  onSizeChange,
+  isLoading = false,
+  error = null,
+  onSelectOrderId,
+  onRetry,
+}) {
+  const startRecord = pagination.total > 0 ? (pagination.page - 1) * pagination.size + 1 : 0;
+  const endRecord = Math.min(pagination.page * pagination.size, pagination.total);
+
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-5 py-4 border-b border-border">
@@ -1037,15 +1053,28 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
             Últimas acciones registradas por los usuarios del sistema · Haz clic en una fila para ver auditoría
           </p>
         </div>
-        <span className="text-xs text-muted-foreground font-medium shrink-0">
-          Bitácora en tiempo real (America/Santiago)
-        </span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-xs text-muted-foreground font-medium hidden md:inline">
+            Bitácora en tiempo real (America/Santiago)
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:text-gray-300 border border-border">
+            Total: {pagination.total} {pagination.total === 1 ? "registro" : "registros"}
+          </span>
+        </div>
       </div>
 
-      <div className="overflow-x-auto scrollbar-kanban">
+      <div className="overflow-x-auto scrollbar-kanban relative min-h-[140px]">
+        {isLoading && (
+          <div className="absolute inset-0 bg-background/50 backdrop-blur-2xs flex items-center justify-center z-10 transition-opacity">
+            <div className="flex items-center gap-2 rounded-lg bg-card border border-border px-3 py-2 shadow-sm text-xs font-medium text-foreground">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-orange-500" />
+              <span>Cargando registros...</span>
+            </div>
+          </div>
+        )}
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-gray-700">
+            <tr className="border-b border-border">
               <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 w-28">
                 ID Orden
               </th>
@@ -1055,37 +1084,52 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
               <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400">
                 Acción
               </th>
-              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 text-right w-20">
+              <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 text-right w-24">
                 Hora
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200/60 dark:divide-gray-700/60">
-            {log.length === 0 ? (
+          <tbody className="divide-y divide-border">
+            {error && log.length === 0 ? (
               <tr>
                 <td
                   colSpan={4}
                   className="px-5 py-8 text-center text-xs text-muted-foreground"
                 >
-                  {error ? (
-                    <div className="flex flex-col items-center justify-center gap-1.5 py-2">
-                      <AlertTriangle className="h-5 w-5 text-rose-500" />
-                      <span className="font-semibold text-rose-500">
-                        No se pudo sincronizar la bitácora de actividad
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {error}
-                      </span>
-                    </div>
-                  ) : (
-                    "No hay actividad reciente registrada"
-                  )}
+                  <div className="flex flex-col items-center justify-center gap-1.5 py-2">
+                    <AlertTriangle className="h-5 w-5 text-rose-500" />
+                    <span className="font-semibold text-rose-500">
+                      No se pudo sincronizar la bitácora de actividad
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {error}
+                    </span>
+                    {onRetry && (
+                      <button
+                        type="button"
+                        onClick={onRetry}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="h-3 w-3" />
+                        Reintentar
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : log.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-5 py-8 text-center text-xs text-muted-foreground"
+                >
+                  No hay actividad reciente registrada
                 </td>
               </tr>
             ) : (
               log.map((row, idx) => (
                 <tr
-                  key={row.id || idx}
+                  key={row.historyId || row.id || idx}
                   onClick={() => onSelectOrderId?.(row.id)}
                   className="cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
                 >
@@ -1096,7 +1140,7 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
                     <div className="flex items-center gap-2">
                       <span>{row.performer || row.technician}</span>
                       {row.performerRole && (
-                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300 border border-slate-200 dark:border-gray-700">
+                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300 border border-border">
                           {row.performerRole}
                         </span>
                       )}
@@ -1113,6 +1157,56 @@ function ActivityTable({ log = [], onSelectOrderId, error }) {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Barra de Paginación ── */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-border bg-slate-50/50 dark:bg-card/50 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span>Registros por página:</span>
+          <select
+            value={pagination.size}
+            onChange={(e) => onSizeChange?.(Number(e.target.value))}
+            disabled={isLoading}
+            className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer"
+            aria-label="Registros por página"
+          >
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+          <span className="text-slate-400 dark:text-gray-500">·</span>
+          <span>
+            {pagination.total > 0
+              ? `Mostrando ${startRecord} - ${endRecord} de ${pagination.total}`
+              : "0 registros"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="font-medium mr-1">
+            Página {pagination.page} de {Math.max(1, pagination.pages)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange?.(pagination.page - 1)}
+            disabled={pagination.page <= 1 || isLoading}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-slate-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            aria-label="Página anterior"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            <span>Anterior</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange?.(pagination.page + 1)}
+            disabled={pagination.page >= pagination.pages || isLoading}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground hover:bg-slate-100 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            aria-label="Página siguiente"
+          >
+            <span>Siguiente</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1320,19 +1414,83 @@ export default function DispatchBoard() {
   const [mapMarkers, setMapMarkers] = useState([]);
   const [technicianMarkers, setTechnicianMarkers] = useState([]);
   const [activityLog, setActivityLog] = useState(null);
+  const [activityPagination, setActivityPagination] = useState({
+    page: 1,
+    size: 10,
+    total: 0,
+    pages: 1,
+  });
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(null);
   const [apiError, setApiError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const fetchActivityPage = useCallback(
+    async (targetPage = 1, targetSize = activityPagination.size) => {
+      try {
+        setIsActivityLoading(true);
+        setActivityError(null);
+        const res = await api.orders.getActivityLog({ page: targetPage, size: targetSize });
+        if (res) {
+          const rawItems = res.items || (Array.isArray(res) ? res : []);
+          const mapped = rawItems.map((item) => ({
+            id: item.order_number || item.order_id,
+            historyId: item.id,
+            performer: item.technician_name || "Coordinación",
+            performerRole: item.performer_role || null,
+            technician: item.technician_name || "Coordinación",
+            client: item.client_name || "Cliente Corporativo",
+            action: item.action,
+            status: item.new_status,
+            serviceType: mapServiceEnumToTag(item.service_type),
+            time: formatChileanDateTime(item.created_at) || "",
+            rawTimestamp: new Date(item.created_at).getTime(),
+          }));
+          setActivityLog(mapped);
+          setActivityPagination({
+            page: res.page || targetPage,
+            size: res.size || targetSize,
+            total: res.total !== undefined ? res.total : mapped.length,
+            pages: res.pages || Math.max(1, Math.ceil((res.total !== undefined ? res.total : mapped.length) / targetSize)),
+          });
+        }
+      } catch (err) {
+        setActivityError(err.message || "Error al actualizar la bitácora de actividad.");
+      } finally {
+        setIsActivityLoading(false);
+      }
+    },
+    [activityPagination.size]
+  );
+
+  const handleActivityPageChange = useCallback(
+    (newPage) => {
+      if (newPage < 1 || newPage > activityPagination.pages) return;
+      fetchActivityPage(newPage, activityPagination.size);
+    },
+    [activityPagination.pages, activityPagination.size, fetchActivityPage]
+  );
+
+  const handleActivitySizeChange = useCallback(
+    (newSize) => {
+      fetchActivityPage(1, newSize);
+    },
+    [fetchActivityPage]
+  );
 
   const loadDashboard = useCallback(async () => {
     let cancelled = false;
     try {
       setIsLoading(true);
       setApiError(null);
+      setActivityError(null);
       const [kpisRes, ordersData, techsData, activityRes] = await Promise.allSettled([
         api.orders.getKpis(),
         api.orders.getAll({ size: 50 }),
         api.orders.getTechnicians(),
-        api.orders.getActivityLog ? api.orders.getActivityLog(50) : Promise.reject(new Error("No endpoint")),
+        api.orders.getActivityLog
+          ? api.orders.getActivityLog({ page: 1, size: 10 })
+          : Promise.reject(new Error("No endpoint")),
       ]);
 
       if (cancelled) return;
@@ -1426,8 +1584,10 @@ export default function DispatchBoard() {
       }
 
       // Actividad verificable:
-      if (activityRes.status === "fulfilled" && Array.isArray(activityRes.value)) {
-        const mapped = activityRes.value.map((item) => ({
+      if (activityRes.status === "fulfilled" && activityRes.value) {
+        const val = activityRes.value;
+        const rawItems = val.items || (Array.isArray(val) ? val : []);
+        const mapped = rawItems.map((item) => ({
           id: item.order_number || item.order_id,
           historyId: item.id,
           performer: item.technician_name || "Coordinación",
@@ -1441,9 +1601,21 @@ export default function DispatchBoard() {
           rawTimestamp: new Date(item.created_at).getTime(),
         }));
         setActivityLog(mapped);
+        setActivityPagination({
+          page: val.page || 1,
+          size: val.size || 10,
+          total: val.total !== undefined ? val.total : rawItems.length,
+          pages: val.pages || Math.max(1, Math.ceil((val.total !== undefined ? val.total : rawItems.length) / (val.size || 10))),
+        });
       } else if (ordersData.status === "fulfilled" && Array.isArray(ordersData.value?.items)) {
         const fromOrders = buildActivitiesFromOrders(ordersData.value.items);
-        setActivityLog(fromOrders);
+        setActivityLog(fromOrders.slice(0, 10));
+        setActivityPagination({
+          page: 1,
+          size: 10,
+          total: fromOrders.length,
+          pages: Math.max(1, Math.ceil(fromOrders.length / 10)),
+        });
       }
     } catch (err) {
       setApiError(err.message || "Error al cargar los datos del tablero.");
@@ -2072,8 +2244,13 @@ export default function DispatchBoard() {
         ) : (
           <ActivityTable
             log={filteredActivityLog}
-            error={apiError}
+            pagination={activityPagination}
+            onPageChange={handleActivityPageChange}
+            onSizeChange={handleActivitySizeChange}
+            isLoading={isActivityLoading}
+            error={activityError || apiError}
             onSelectOrderId={handleSelectOrderId}
+            onRetry={() => fetchActivityPage(activityPagination.page, activityPagination.size)}
           />
         )}
       </div>

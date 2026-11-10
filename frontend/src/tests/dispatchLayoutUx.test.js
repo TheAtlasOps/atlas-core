@@ -75,26 +75,27 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
     );
   });
 
-  it("3. Eliminación de h-full y justify-between artificiales en tarjetas operativas", () => {
-    // ActiveZonesCard no debe forzar h-full ni justify-between desproporcionados
+  it("3. Centrado vertical equilibrado en DonutChartCard y alineación general con el mapa", () => {
+    // DonutChartCard debe usar h-full para igualar la altura de ActiveZonesCard en el grid
+    assert.ok(
+      dispatchBoardCode.includes('DonutChartCard'),
+      "DonutChartCard debe estar presente"
+    );
+    assert.ok(
+      dispatchBoardCode.includes("flex-1 flex flex-col justify-center gap-4 py-1"),
+      "DonutChartCard debe centrar verticalmente el conjunto de donut y leyenda con 'flex-1 flex flex-col justify-center'"
+    );
+
+    // ActiveZonesCard y UpcomingVisitsCard no deben forzar justify-between desproporcionados
     assert.strictEqual(
       dispatchBoardCode.includes("rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-3 h-full"),
       false,
-      "ActiveZonesCard no debe forzar h-full con justify-between"
+      "ActiveZonesCard no debe forzar justify-between desproporcionado"
     );
-
-    // DonutChartCard no debe forzar h-full ni justify-between
     assert.strictEqual(
       dispatchBoardCode.includes("rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full"),
       false,
-      "DonutChartCard no debe forzar h-full con justify-between"
-    );
-
-    // UpcomingVisitsCard no debe forzar h-full ni justify-between
-    assert.strictEqual(
-      dispatchBoardCode.includes("rounded-xl border border-border bg-card p-5 flex flex-col justify-between gap-4 h-full"),
-      false,
-      "UpcomingVisitsCard no debe forzar h-full con justify-between"
+      "UpcomingVisitsCard no debe forzar justify-between desproporcionado"
     );
   });
 
@@ -126,6 +127,54 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
     assert.ok(
       aiInsightsIndex < activityTableIndex,
       "ActivityTable debe posicionarse debajo de las dos columnas de forma natural"
+    );
+  });
+
+  it("5. Paginación real de Bitácora de Actividad: controles de 10, 20, 50, navegación Anterior/Siguiente y conteo total", () => {
+    // Verificar que ActivityTable incluya selector de registros por página con opciones 10, 20, 50
+    assert.ok(
+      dispatchBoardCode.includes("<option value={10}>10</option>"),
+      "Debe incluir opción de 10 registros por página"
+    );
+    assert.ok(
+      dispatchBoardCode.includes("<option value={20}>20</option>"),
+      "Debe incluir opción de 20 registros por página"
+    );
+    assert.ok(
+      dispatchBoardCode.includes("<option value={50}>50</option>"),
+      "Debe incluir opción de 50 registros por página"
+    );
+
+    // Verificar presencia de botones Anterior y Siguiente
+    assert.ok(
+      dispatchBoardCode.includes('aria-label="Página anterior"'),
+      "Debe incluir botón accesible de Página anterior"
+    );
+    assert.ok(
+      dispatchBoardCode.includes('aria-label="Página siguiente"'),
+      "Debe incluir botón accesible de Página siguiente"
+    );
+
+    // Verificar texto informativo de páginas y total
+    assert.ok(
+      dispatchBoardCode.includes("Página {pagination.page} de {Math.max(1, pagination.pages)}"),
+      "Debe mostrar página actual y total de páginas"
+    );
+    assert.ok(
+      dispatchBoardCode.includes("Total: {pagination.total}"),
+      "Debe mostrar total de registros"
+    );
+
+    // Verificar columnas de tabla preservadas
+    assert.ok(dispatchBoardCode.includes("ID Orden"), "Debe conservar columna ID Orden");
+    assert.ok(dispatchBoardCode.includes("Realizado por"), "Debe conservar columna Realizado por");
+    assert.ok(dispatchBoardCode.includes("Acción"), "Debe conservar columna Acción");
+    assert.ok(dispatchBoardCode.includes("Hora"), "Debe conservar columna Hora");
+
+    // Verificar interactividad y auditoría al hacer clic en fila
+    assert.ok(
+      dispatchBoardCode.includes("onClick={() => onSelectOrderId?.(row.id)}"),
+      "Debe permitir abrir auditoría o detalle de orden al hacer clic en fila"
     );
   });
 });

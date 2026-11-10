@@ -114,7 +114,17 @@ export const api = {
     toggleTechnicianAvailability: (id) =>
       request(`/orders/technicians/${id}/toggle-availability`, { method: "PATCH" }),
     getClients: () => request("/orders/clients"),
-    getActivityLog: (limit = 50) => request(`/orders/activity-log?limit=${limit}`),
+    getActivityLog: (params = 50) => {
+      if (typeof params === "object" && params !== null) {
+        const query = new URLSearchParams();
+        if (params.page !== undefined) query.set("page", params.page);
+        if (params.size !== undefined) query.set("size", params.size);
+        if (params.limit !== undefined) query.set("limit", params.limit);
+        const qs = query.toString();
+        return request(`/orders/activity-log${qs ? `?${qs}` : ""}`);
+      }
+      return request(`/orders/activity-log?limit=${params}`);
+    },
   },
   evidences: {
     getByOrderId: (workOrderId) => request(`/evidences/order/${workOrderId}`),
