@@ -360,6 +360,7 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
 
     assert.ok(visit !== null);
     assert.equal(visit.code, 'OT-08492');
+    assert.equal(visit.title, 'Instalación Entel Corporativo');
     assert.equal(visit.equipo.modelo, 'Teltonika RUTX50');
     assert.equal(visit.equipo.serie, 'RTR-ENTEL-2024-001');
     assert.equal(visit.equipo.iccid, '89560200102400018501');
@@ -387,9 +388,35 @@ describe('ATLAS Mobile — Suite de Integración de Evidencias y Hardware Real',
     const visit = orderToVisit(mockOrderEmpty);
 
     assert.ok(visit !== null);
+    assert.equal(visit.title, 'Diagnóstico preliminar');
     assert.equal(visit.equipo.modelo, 'Sin información');
     assert.equal(visit.equipo.serie, 'Sin información');
     assert.equal(visit.equipo.iccid, 'Sin información');
+  });
+
+  test('orderToVisit resuelve fallback de título al nombre del servicio si el título viene vacío', () => {
+    const mockWithoutTitle = {
+      id: 'wo-08493-uuid',
+      order_number: 'OT-08493',
+      title: '   ',
+      description: null,
+      service_type: 'CAMBIO_SIM',
+      priority: 'MEDIA',
+      status: 'CONFIRMADA',
+      client_id: 'client-01-uuid',
+      technician_id: 'tech-01-uuid',
+      scheduled_date: '2026-11-01T14:00:00Z',
+      eta: null,
+      address_override: null,
+      comuna_override: null,
+      client: null,
+      items: [],
+    };
+
+    const visit = orderToVisit(mockWithoutTitle);
+
+    assert.ok(visit !== null);
+    assert.equal(visit.title, 'Cambio de SIM');
   });
 
   // ─── 7. Transiciones de Estado y Finalización de Visita ─────────────────────

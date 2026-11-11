@@ -208,10 +208,14 @@ export function DetailScreen(p: DetailProps) {
           {p.visit.code} · {p.visit.zone}
         </Text>
         <View className="flex-row items-center justify-between mb-0.5">
-          <Text className="text-text1 font-bold text-[17px] flex-1 tracking-tight">{p.visit.service}</Text>
+          <Text className="text-text1 font-bold text-[17px] flex-1 tracking-tight mr-2" numberOfLines={2}>
+            {p.visit.title || p.visit.service}
+          </Text>
           <StatusBadge status={p.visit.status} />
         </View>
-        <Text className="text-xs text-text2">{p.visit.client}</Text>
+        <Text className="text-xs text-text2">
+          {p.visit.client}{p.visit.service ? ` · ${p.visit.service}` : ''}
+        </Text>
       </View>
 
       {/* Tabs */}
@@ -246,10 +250,12 @@ export function DetailScreen(p: DetailProps) {
         {p.tab === 'resumen' && (
           <View>
             <Card className="mb-[10px]">
-              <DataRow icon="map-pin" label="Dirección" value={p.visit.address} />
-              <DataRow icon="clock"   label="Ventana"   value={p.visit.time} mono />
-              <DataRow icon="tool"    label="Zona"      value={p.visit.zone} />
-              <DataRow icon="clipboard" label="Trabajo"   value={p.visit.description || p.visit.title} last />
+              <DataRow icon="file-text" label="Orden"     value={p.visit.title || p.visit.service} />
+              <DataRow icon="tool"      label="Servicio"  value={p.visit.service} />
+              <DataRow icon="map-pin"   label="Dirección" value={p.visit.address} />
+              <DataRow icon="clock"     label="Ventana"   value={p.visit.time} mono />
+              <DataRow icon="map"       label="Zona"      value={p.visit.zone} />
+              <DataRow icon="clipboard" label="Detalle"   value={p.visit.description || 'Sin descripción adicional'} last />
             </Card>
             <SectionLabel>Hardware asignado</SectionLabel>
             <Card className="mb-4">

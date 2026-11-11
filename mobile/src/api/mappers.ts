@@ -78,7 +78,7 @@ export function orderToVisit(o: ApiOrder): Visit | null {
     client: o.client?.business_name ?? 'Cliente sin datos',
     service: labelFor(o.service_type),
     serviceType: o.service_type,
-    title: o.title,
+    title: (o.title && o.title.trim()) || labelFor(o.service_type),
     description: o.description,
     address: comuna ? `${street}, ${comuna}` : street,
     zone: comuna || '—',

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert,
+  View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
@@ -57,10 +57,15 @@ export function AgendaScreen({
         {/* Header */}
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center flex-1 mr-2">
-            <View className="w-[30px] h-[30px] rounded-[9px] bg-card border border-brand/40 items-center justify-center">
-              <Text className="text-brand text-base font-bold">A</Text>
+            <View className="w-[32px] h-[32px] rounded-[9px] bg-card border border-border-bright items-center justify-center overflow-hidden">
+              <Image
+                source={require('../../assets/atlas-logo.png')}
+                className="w-[28px] h-[28px] rounded-[8px]"
+                resizeMode="contain"
+                accessibilityLabel="Logotipo oficial de ATLAS"
+              />
             </View>
-            <View className="ml-2 flex-shrink">
+            <View className="ml-2.5 flex-shrink">
               <Text className="text-sm font-semibold text-text1">Atlas técnico</Text>
               {userName ? (
                 <Text className="text-[10px] text-text3" numberOfLines={1}>{userName}</Text>
@@ -164,8 +169,12 @@ export function AgendaScreen({
                   <Feather name={iconName} size={16} color={accentColor} />
                 </View>
                 <View className="flex-1 ml-2.5">
-                  <Text className="text-text1 font-bold text-[13px]">{v.service}</Text>
-                  <Text className="text-xs text-text2">{v.client}</Text>
+                  <Text className="text-text1 font-bold text-[13px]" numberOfLines={2}>
+                    {v.title || v.service}
+                  </Text>
+                  <Text className="text-xs text-text2 mt-0.5" numberOfLines={1}>
+                    {v.client}{v.service && v.service !== v.title ? ` · ${v.service}` : ''}
+                  </Text>
                   <View className="flex-row items-center mt-1">
                     <Feather name="map-pin" size={11} color={colors.text3} />
                     <Text
