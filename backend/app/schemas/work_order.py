@@ -39,6 +39,13 @@ class AuditorSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TechnicianActiveOrderItem(BaseModel):
+    id: str
+    order_number: str
+    status: str
+    title: Optional[str] = None
+
+
 class TechnicianSummary(BaseModel):
     id: uuid.UUID
     full_name: str
@@ -47,6 +54,9 @@ class TechnicianSummary(BaseModel):
     phone: Optional[str] = None
     vehicle_plate: Optional[str] = None
     is_available: bool = True
+    operational_status: str = "DISPONIBLE"
+    active_orders_count: int = 0
+    active_orders: List[TechnicianActiveOrderItem] = []
     current_lat: Optional[Decimal] = None
     current_lng: Optional[Decimal] = None
     last_location_at: Optional[datetime] = None
@@ -85,6 +95,8 @@ class TechnicianLocationSummary(BaseModel):
     active_order_number: Optional[str] = None
     active_order_status: Optional[str] = None
     is_available: bool = True
+    operational_status: str = "DISPONIBLE"
+    active_orders_count: int = 0
 
 
 class TechnicianCreate(BaseModel):

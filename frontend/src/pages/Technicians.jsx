@@ -3,7 +3,6 @@ import {
   Users,
   UserCheck,
   UserX,
-  Truck,
   Plus,
   Search,
   Phone,
@@ -11,20 +10,64 @@ import {
   Car,
   RefreshCw,
   CheckCircle2,
-    ToggleLeft,
+  ToggleLeft,
   ToggleRight,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Activity,
 } from "lucide-react";
 import { api } from "../lib/api";
 import NewTechnicianModal from "../components/ui/NewTechnicianModal";
+
+const OPERATIONAL_STATUS_CONFIG = {
+  DISPONIBLE: {
+    label: "Disponible",
+    badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/40",
+    dotClass: "bg-emerald-500",
+  },
+  ASIGNADO: {
+    label: "Asignado",
+    badgeClass: "bg-blue-50 text-blue-700 border-blue-200/80 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800/40",
+    dotClass: "bg-blue-500",
+  },
+  OCUPADO: {
+    label: "Ocupado",
+    badgeClass: "bg-amber-50 text-amber-700 border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/40",
+    dotClass: "bg-amber-500",
+  },
+  NO_DISPONIBLE: {
+    label: "No disponible",
+    badgeClass: "bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-400 dark:border-rose-800/40",
+    dotClass: "bg-rose-500",
+  },
+};
+
+function getTechnicianOperationalStatus(tech) {
+  if (tech?.operational_status) return tech.operational_status;
+  if (!tech?.is_available) return "NO_DISPONIBLE";
+  if (tech?.active_orders_count > 0 || (Array.isArray(tech?.active_orders) && tech.active_orders.length > 0)) {
+    return "ASIGNADO";
+  }
+  return "DISPONIBLE";
+}
 
 export default function Technicians() {
   const [technicians, setTechnicians] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterAvailability, setFilterAvailability] = useState("ALL"); // ALL, AVAILABLE, UNAVAILABLE
+  const [filterAvailability, setFilterAvailability] = useState("ALL"); // ALL, DISPONIBLE, ASIGNADO, OCUPADO, NO_DISPONIBLE
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [togglingId, setTogglingId] = useState(null);
   const [notification, setNotification] = useState("");
+  const [expandedOrders, setExpandedOrders] = useState({});
+
+  const toggleOrders = (techId) => {
+    setExpandedOrders((prev) => ({
+      ...prev,
+      [techId]: !prev[techId],
+    }));
+  };
 
   const loadTechnicians = async () => {
     try {
@@ -49,9 +92,9 @@ export default function Technicians() {
       setTogglingId(techId);
       const updated = await api.orders.toggleTechnicianAvailability(techId);
       setTechnicians((prev) =>
-        prev.map((t) => (t.id === techId ? { ...t, is_available: updated.is_available } : t))
+        prev.map((t) => (t.id === techId ? { ...t, ...updated } : t))
       );
-      showNotification(`Estado de disponibilidad actualizado correctamente.`);
+      showNotification(`Estado de bloqueo administrativo actualizado correctamente.`);
     } catch (err) {
       console.error("Error al alternar disponibilidad:", err);
       showNotification("Error al alternar disponibilidad del técnico.");
@@ -70,11 +113,21 @@ export default function Technicians() {
     showNotification(`¡Técnico ${newTech.full_name} registrado exitosamente!`);
   };
 
-  // KPIs
+  // KPIs por estado operativo real
   const totalCount = technicians.length;
-  const availableCount = technicians.filter((t) => t.is_available).length;
-  const unavailableCount = totalCount - availableCount;
-  const vehiclesCount = technicians.filter((t) => Boolean(t.vehicle_plate)).length;
+  const availableCount = technicians.filter(
+    (t) => getTechnicianOperationalStatus(t) === "DISPONIBLE"
+  ).length;
+  const assignedCount = technicians.filter(
+    (t) => getTechnicianOperationalStatus(t) === "ASIGNADO"
+  ).length;
+  const occupiedCount = technicians.filter(
+    (t) => getTechnicianOperationalStatus(t) === "OCUPADO"
+  ).length;
+  const inFieldCount = assignedCount + occupiedCount;
+  const unavailableCount = technicians.filter(
+    (t) => getTechnicianOperationalStatus(t) === "NO_DISPONIBLE"
+  ).length;
 
   // Filtrado
   const filteredTechnicians = useMemo(() => {
@@ -89,8 +142,11 @@ export default function Technicians() {
 
       if (!matchesSearch) return false;
 
-      if (filterAvailability === "AVAILABLE") return t.is_available;
-      if (filterAvailability === "UNAVAILABLE") return !t.is_available;
+      const opStatus = getTechnicianOperationalStatus(t);
+      if (filterAvailability === "DISPONIBLE") return opStatus === "DISPONIBLE";
+      if (filterAvailability === "ASIGNADO") return opStatus === "ASIGNADO";
+      if (filterAvailability === "OCUPADO") return opStatus === "OCUPADO";
+      if (filterAvailability === "NO_DISPONIBLE") return opStatus === "NO_DISPONIBLE";
       return true;
     });
   }, [technicians, searchQuery, filterAvailability]);
@@ -112,7 +168,7 @@ export default function Technicians() {
             Gestión de Técnicos
           </h1>
           <p className="text-sm text-slate-500 dark:text-gray-400">
-            Administración de cuadrillas en terreno, asignación de vehículos y disponibilidad operativa.
+            Disponibilidad operativa automática según órdenes de trabajo, cuadrillas y control de bloqueo.
           </p>
         </div>
 
@@ -160,21 +216,21 @@ export default function Technicians() {
 
         <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#1e1e1e]">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500 dark:bg-amber-500/20">
-            <UserX className="h-6 w-6" />
+            <Activity className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-gray-400">No Disponibles</p>
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{unavailableCount}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-gray-400">Asignados / En Terreno</p>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{inFieldCount}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-[#1e1e1e]">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/10 text-purple-500 dark:bg-purple-500/20">
-            <Truck className="h-6 w-6" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-500 dark:bg-rose-500/20">
+            <UserX className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-medium text-slate-500 dark:text-gray-400">Vehículos Asignados</p>
-            <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{vehiclesCount}</p>
+            <p className="text-xs font-medium text-slate-500 dark:text-gray-400">Bloqueados (No Disp.)</p>
+            <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{unavailableCount}</p>
           </div>
         </div>
       </div>
@@ -204,9 +260,9 @@ export default function Technicians() {
             Todos ({totalCount})
           </button>
           <button
-            onClick={() => setFilterAvailability("AVAILABLE")}
+            onClick={() => setFilterAvailability("DISPONIBLE")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-              filterAvailability === "AVAILABLE"
+              filterAvailability === "DISPONIBLE"
                 ? "bg-emerald-600 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             }`}
@@ -214,10 +270,30 @@ export default function Technicians() {
             Disponibles ({availableCount})
           </button>
           <button
-            onClick={() => setFilterAvailability("UNAVAILABLE")}
+            onClick={() => setFilterAvailability("ASIGNADO")}
             className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-              filterAvailability === "UNAVAILABLE"
+              filterAvailability === "ASIGNADO"
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
+          >
+            Asignados ({assignedCount})
+          </button>
+          <button
+            onClick={() => setFilterAvailability("OCUPADO")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+              filterAvailability === "OCUPADO"
                 ? "bg-amber-600 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
+          >
+            Ocupados ({occupiedCount})
+          </button>
+          <button
+            onClick={() => setFilterAvailability("NO_DISPONIBLE")}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+              filterAvailability === "NO_DISPONIBLE"
+                ? "bg-rose-600 text-white"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             }`}
           >
@@ -242,22 +318,22 @@ export default function Technicians() {
             <Users className="h-6 w-6" />
           </div>
           <p className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
-            {filterAvailability === "UNAVAILABLE"
-              ? "No hay técnicos no disponibles"
-              : filterAvailability === "AVAILABLE"
-              ? "No hay técnicos disponibles"
+            {filterAvailability === "NO_DISPONIBLE"
+              ? "No hay técnicos bloqueados administrativamente"
+              : filterAvailability === "DISPONIBLE"
+              ? "No hay técnicos con estado Disponible"
+              : filterAvailability === "ASIGNADO"
+              ? "No hay técnicos con órdenes asignadas pendientes"
+              : filterAvailability === "OCUPADO"
+              ? "No hay técnicos ocupados en ruta o en sitio"
               : searchQuery
               ? "No se encontraron técnicos"
               : "No hay técnicos registrados"}
           </p>
           <p className="mt-1 text-sm text-slate-500 dark:text-gray-400">
-            {filterAvailability === "UNAVAILABLE"
-              ? "Todos los técnicos registrados se encuentran actualmente con disponibilidad operativa activa."
-              : filterAvailability === "AVAILABLE"
-              ? "Todos los técnicos registrados se encuentran actualmente ocupados en servicios o no disponibles."
-              : searchQuery
+            {searchQuery
               ? `Ningún técnico coincide con "${searchQuery}". Prueba cambiando el término de búsqueda o filtro.`
-              : "Comienza registrando al primer técnico de cuadrilla en terreno."}
+              : "La disponibilidad se calcula automáticamente según las órdenes asignadas y el control administrativo."}
           </p>
           {!searchQuery && filterAvailability === "ALL" && totalCount === 0 && (
             <button
@@ -273,6 +349,12 @@ export default function Technicians() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredTechnicians.map((tech) => {
             const isToggling = togglingId === tech.id;
+            const opStatus = getTechnicianOperationalStatus(tech);
+            const statusConfig = OPERATIONAL_STATUS_CONFIG[opStatus] || OPERATIONAL_STATUS_CONFIG.DISPONIBLE;
+            const activeOrders = tech.active_orders || [];
+            const activeCount = tech.active_orders_count ?? activeOrders.length;
+            const isOrdersExpanded = Boolean(expandedOrders[tech.id]);
+
             return (
               <div
                 key={tech.id}
@@ -296,20 +378,19 @@ export default function Technicians() {
                       </div>
                     </div>
 
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        tech.is_available
-                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400"
-                          : "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
-                      }`}
-                    >
+                    <div className="flex flex-col items-end gap-1">
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          tech.is_available ? "bg-emerald-500" : "bg-amber-500"
-                        }`}
-                      />
-                      {tech.is_available ? "Disponible" : "Ocupado"}
-                    </span>
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusConfig.badgeClass}`}
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full ${statusConfig.dotClass}`} />
+                        {statusConfig.label}
+                      </span>
+                      {activeCount > 0 && (
+                        <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
+                          {activeCount} {activeCount === 1 ? "OT activa" : "OT activas"}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Body: Contact & Vehicle */}
@@ -336,33 +417,112 @@ export default function Technicians() {
                       )}
                     </div>
                   </div>
+
+                  {/* Órdenes Vinculadas / Acordeón */}
+                  {activeCount > 0 ? (
+                    <div className="mt-3 border-t border-slate-100 pt-2.5 dark:border-gray-800">
+                      <button
+                        type="button"
+                        onClick={() => toggleOrders(tech.id)}
+                        className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        <span className="flex items-center gap-1.5 text-orange-600 dark:text-orange-400">
+                          <FileText className="h-3.5 w-3.5" />
+                          <span>Órdenes vinculadas ({activeCount})</span>
+                        </span>
+                        {isOrdersExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        )}
+                      </button>
+
+                      {isOrdersExpanded && (
+                        <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2 dark:border-gray-800 dark:bg-gray-900/40">
+                          {activeOrders.length > 0 ? (
+                            activeOrders.map((ord) => (
+                              <div
+                                key={ord.id || ord.order_number}
+                                className="flex items-center justify-between rounded-md bg-white p-2 text-[11px] shadow-xs dark:bg-gray-800/80"
+                              >
+                                <div className="flex flex-col min-w-0 pr-2">
+                                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                    {ord.order_number}
+                                  </span>
+                                  <span className="truncate text-slate-500 dark:text-gray-400" title={ord.title}>
+                                    {ord.title || "Sin título"}
+                                  </span>
+                                </div>
+                                <span
+                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                    ord.status === "EN_SITIO"
+                                      ? "bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300"
+                                      : ord.status === "EN_RUTA"
+                                      ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                                      : "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300"
+                                  }`}
+                                >
+                                  {ord.status === "EN_SITIO"
+                                    ? "En Sitio"
+                                    : ord.status === "EN_RUTA"
+                                    ? "En Ruta"
+                                    : "Confirmada"}
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-[11px] text-slate-500 italic">
+                              {activeCount} orden(es) activa(s) asignada(s)
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-3 flex items-center gap-1.5 border-t border-slate-100 pt-2.5 text-[11px] text-slate-400 dark:border-gray-800 dark:text-gray-500">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                      <span>Sin órdenes activas en curso</span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Footer: Toggle Availability Action */}
-                <div className="mt-5 border-t border-slate-100 pt-3 dark:border-gray-800">
-                  <button
-                    onClick={() => handleToggleAvailability(tech.id)}
-                    disabled={isToggling}
-                    className={`flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition active:scale-95 ${
-                      tech.is_available
-                        ? "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-                        : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300"
-                    }`}
-                  >
-                    {isToggling ? (
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                    ) : tech.is_available ? (
-                      <>
-                        <ToggleRight className="h-4 w-4 text-emerald-500" />
-                        <span>Marcar No Disponible</span>
-                      </>
-                    ) : (
-                      <>
-                        <ToggleLeft className="h-4 w-4 text-slate-400" />
-                        <span>Habilitar en Campo</span>
-                      </>
-                    )}
-                  </button>
+                {/* Footer: Control Administrativo (Bloqueo / Desbloqueo) */}
+                <div className="mt-4 border-t border-slate-100 pt-3 dark:border-gray-800">
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      onClick={() => handleToggleAvailability(tech.id)}
+                      disabled={isToggling}
+                      className={`flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold transition active:scale-95 ${
+                        tech.is_available
+                          ? "border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300 dark:hover:bg-rose-950/50"
+                          : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                      }`}
+                      title={
+                        tech.is_available
+                          ? "Bloqueo administrativo (licencia, descanso o indisponibilidad)"
+                          : "Habilita al técnico para recibir asignaciones operativas"
+                      }
+                    >
+                      {isToggling ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : tech.is_available ? (
+                        <>
+                          <ToggleRight className="h-4 w-4 text-rose-500" />
+                          <span>Bloquear Técnico (Marcar Ausencia)</span>
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft className="h-4 w-4 text-emerald-500" />
+                          <span>Habilitar para Despacho</span>
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[10px] text-center text-slate-400 dark:text-gray-500">
+                      {tech.is_available
+                        ? "Control administrativo · No altera órdenes activas"
+                        : "Bloqueado administrativamente · No disponible"}
+                    </p>
+                  </div>
                 </div>
               </div>
             );
