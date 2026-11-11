@@ -95,8 +95,16 @@ export const api = {
     },
     updateStatus: (id, newStatus, comment = "") =>
       request(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ new_status: newStatus, comment }) }),
-    assign: (id, technicianId, eta = null) =>
-      request(`/orders/${id}/assign`, { method: "PATCH", body: JSON.stringify({ technician_id: technicianId, eta }) }),
+    assign: (id, technicianId, eta = null, confirmAssignment = false, scheduledDate = null) =>
+      request(`/orders/${id}/assign`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          technician_id: technicianId,
+          eta,
+          scheduled_date: scheduledDate,
+          confirm_assignment: confirmAssignment,
+        }),
+      }),
     approveAudit: (id, notes = "") =>
       request(`/orders/${id}/audit-approve`, {
         method: "POST",

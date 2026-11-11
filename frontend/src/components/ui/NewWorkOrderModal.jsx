@@ -63,6 +63,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
   const [availableTechs, setAvailableTechs] = useState([]);
   const [availableClients, setAvailableClients] = useState([]);
   const [formError, setFormError] = useState(null);
+  const [assignmentConfirmed, setAssignmentConfirmed] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -94,6 +95,51 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
     setFormError(null);
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
+
+  const handleTechnicianChange = (e) => {
+    setFormError(null);
+    setAssignmentConfirmed(false);
+    setForm((prev) => ({ ...prev, technician: e.target.value }));
+  };
+
+  const handleScheduledDateChange = (e) => {
+    setFormError(null);
+    setAssignmentConfirmed(false);
+    setForm((prev) => ({ ...prev, scheduledDate: e.target.value }));
+  };
+
+  const selectedTech = availableTechs.find(
+    (t) => t.id === form.technician || t.full_name === form.technician
+  );
+
+  const selectedTechStatus = selectedTech
+    ? selectedTech.operational_status || (selectedTech.is_available ? "DISPONIBLE" : "NO_DISPONIBLE")
+    : null;
+
+  const scheduledTime = form.scheduledDate ? new Date(form.scheduledDate).getTime() : NaN;
+  const isFutureScheduled = !isNaN(scheduledTime) && scheduledTime > Date.now();
+
+  let isAssignmentBlocked = false;
+  let requiresConfirmation = false;
+  let blockMessage = "";
+
+  if (selectedTech) {
+    if (selectedTechStatus === "NO_DISPONIBLE") {
+      isAssignmentBlocked = true;
+      blockMessage = "Técnico bloqueado administrativamente. Seleccione otro técnico o guarde la orden sin asignar.";
+    } else if (selectedTechStatus === "OCUPADO") {
+      if (!isFutureScheduled) {
+        isAssignmentBlocked = true;
+        blockMessage = "Técnico ocupado en terreno. Las asignaciones inmediatas están bloqueadas; programe una fecha futura o guarde la orden sin asignar.";
+      } else {
+        requiresConfirmation = true;
+      }
+    } else if (selectedTechStatus === "ASIGNADO") {
+      requiresConfirmation = true;
+    }
+  }
+
+  const canSubmitAssignment = !isAssignmentBlocked && (!requiresConfirmation || assignmentConfirmed);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -158,11 +204,13 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
 
         // Si se cambió el técnico asignado
         if (technicianId && technicianId !== initialOrder.technician_id) {
-          try {
-            await api.orders.assign(updatedOrder.id, technicianId, etaIso);
-          } catch {
-            // Silencioso si falla la reasignación puntual
-          }
+          await api.orders.assign(
+            updatedOrder.id,
+            technicianId,
+            etaIso,
+            Boolean(assignmentConfirmed),
+            scheduledDateIso
+          );
         }
 
         if (onUpdate) onUpdate(form, updatedOrder);
@@ -179,6 +227,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
           client_id: clientId,
           client_name: form.clientName.trim(),
           technician_id: technicianId,
+          confirm_assignment: Boolean(technicianId && assignmentConfirmed),
           scheduled_date: scheduledDateIso,
           eta: etaIso,
           address_override: cleanAddress,
@@ -196,15 +245,13 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
         let finalOrder = createdOrder;
 
         if (technicianId && createdOrder?.id && !createdOrder?.technician_id) {
-          try {
-            finalOrder = await api.orders.assign(
-              createdOrder.id,
-              technicianId,
-              etaIso
-            );
-          } catch {
-            // Si falla la asignación puntual, conserva la orden recién creada
-          }
+          finalOrder = await api.orders.assign(
+            createdOrder.id,
+            technicianId,
+            etaIso,
+            Boolean(assignmentConfirmed),
+            scheduledDateIso
+          );
         }
 
         if (onCreate) onCreate(form, finalOrder);
@@ -410,7 +457,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
           <select
             id="new-wo-tech"
             value={form.technician}
-            onChange={setField("technician")}
+            onChange={handleTechnicianChange}
             className={FIELD_CLASS}
             disabled={availableTechs.length === 0}
           >
@@ -447,59 +494,109 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
             )}
           </select>
 
-          {/* Advertencia / Aviso según disponibilidad operativa (no bloqueante) */}
-          {(() => {
-            if (!form.technician) return null;
-            const selected = availableTechs.find(
-              (t) => t.id === form.technician || t.full_name === form.technician
-            );
-            if (!selected) return null;
-
-            const opStatus =
-              selected.operational_status ||
-              (selected.is_available ? "DISPONIBLE" : "NO_DISPONIBLE");
-            const count = selected.active_orders_count || 0;
-
-            if (opStatus === "NO_DISPONIBLE") {
-              return (
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold">Técnico bloqueado administrativamente:</span> El técnico figura como No Disponible. La orden se asignará como carga adicional sin bloquear la creación.
+          {/* Banners informativos y de control según estado operativo */}
+          {selectedTech && (
+            <div className="mt-2.5 space-y-2">
+              {selectedTechStatus === "NO_DISPONIBLE" && (
+                <div className="flex flex-col gap-1.5 rounded-xl border border-rose-300 bg-rose-50/95 p-3 text-xs text-rose-900 shadow-xs dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-rose-950 dark:text-rose-100">
+                        Asignación bloqueada — Técnico No Disponible
+                      </p>
+                      <p className="leading-relaxed">
+                        El técnico se encuentra bloqueado administrativamente (licencia o indisponibilidad). No se permite asignarle nuevas órdenes hasta que sea habilitado en la sección de Técnicos.
+                      </p>
+                      <p className="font-semibold text-rose-800 dark:text-rose-300">
+                        Para continuar, seleccione otro técnico disponible o elija «Sin asignar / Por coordinar».
+                      </p>
+                    </div>
                   </div>
                 </div>
-              );
-            }
+              )}
 
-            if (opStatus === "OCUPADO") {
-              return (
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold">Técnico ocupado en terreno:</span> Registra {count > 0 ? `${count} orden(es)` : "otra orden"} en ruta o en sitio. La asignación se guardará como orden adicional sin bloquear la operación.
+              {selectedTechStatus === "OCUPADO" && !isFutureScheduled && (
+                <div className="flex flex-col gap-1.5 rounded-xl border border-amber-300 bg-amber-50/95 p-3 text-xs text-amber-900 shadow-xs dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-amber-950 dark:text-amber-100">
+                        Asignación inmediata no permitida — Técnico Ocupado
+                      </p>
+                      <p className="leading-relaxed">
+                        El técnico está actualmente en terreno (en ruta o en sitio) atendiendo {selectedTech.active_orders_count || 1} orden(es). Las asignaciones inmediatas están bloqueadas para resguardar la atención en curso.
+                      </p>
+                      <p className="font-semibold text-amber-800 dark:text-amber-300">
+                        Para asignarlo a una visita futura, ingrese una Fecha y Hora Programada posterior al momento actual.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              );
-            }
+              )}
 
-            if (opStatus === "ASIGNADO") {
-              return (
-                <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold">Técnico con asignaciones previas:</span> Ya tiene {count} orden(es) confirmada(s) en cola. Se sumará esta nueva orden sin restricciones.
+              {selectedTechStatus === "OCUPADO" && isFutureScheduled && (
+                <div className="flex flex-col gap-2 rounded-xl border border-amber-400/80 bg-amber-50/95 p-3 text-xs text-amber-900 shadow-xs dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-amber-950 dark:text-amber-100">
+                        Visita futura programada — Revisión de agenda requerida
+                      </p>
+                      <p className="leading-relaxed">
+                        El técnico está actualmente ocupado. Se detectó una fecha programada futura. La plataforma no garantiza ausencia de conflictos de horario; la agenda del técnico debe ser revisada por el coordinador.
+                      </p>
+                    </div>
                   </div>
+                  <label className="flex items-start gap-2.5 rounded-lg border border-amber-300/80 bg-white/80 p-2.5 cursor-pointer dark:border-amber-800/60 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-900 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={assignmentConfirmed}
+                      onChange={(e) => setAssignmentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-amber-400 text-orange-500 focus:ring-orange-500"
+                    />
+                    <span className="font-semibold text-amber-950 dark:text-amber-100 text-xs leading-snug">
+                      Confirmo que revisé la agenda del técnico y autorizo la asignación de esta visita futura programada.
+                    </span>
+                  </label>
                 </div>
-              );
-            }
+              )}
 
-            return (
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>Técnico disponible para asignación inmediata (sin órdenes en curso).</span>
-              </div>
-            );
-          })()}
+              {selectedTechStatus === "ASIGNADO" && (
+                <div className="flex flex-col gap-2 rounded-xl border border-blue-300 bg-blue-50/95 p-3 text-xs text-blue-900 shadow-xs dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-blue-950 dark:text-blue-100">
+                        Técnico con asignaciones previas
+                      </p>
+                      <p className="leading-relaxed">
+                        El técnico ya tiene {selectedTech.active_orders_count || 1} orden(es) asignada(s) pendientes de atención. Asignar esta orden sumará carga adicional a su cola de trabajo.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-2.5 rounded-lg border border-blue-200/80 bg-white/80 p-2.5 cursor-pointer dark:border-blue-800/60 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-900 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={assignmentConfirmed}
+                      onChange={(e) => setAssignmentConfirmed(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="font-semibold text-blue-950 dark:text-blue-100 text-xs leading-snug">
+                      Confirmo la asignación de esta orden adicional bajo mi supervisión como coordinador.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {selectedTechStatus === "DISPONIBLE" && (
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>Técnico disponible para asignación inmediata (sin órdenes en curso).</span>
+                </div>
+              )}
+            </div>
+          )}
           {availableTechs.length === 0 && (
             <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
               No hay técnicos registrados en la base de datos. La orden se guardará sin técnico asignado.
@@ -515,7 +612,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
             id="new-wo-scheduled-date"
             type="datetime-local"
             value={form.scheduledDate}
-            onChange={setField("scheduledDate")}
+            onChange={handleScheduledDateChange}
             className={FIELD_CLASS}
           />
           <p className="mt-1 text-[11px] text-slate-500 dark:text-gray-400">
@@ -524,34 +621,56 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
         </div>
       </div>
 
-      <div className="mt-6 flex justify-end gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-100 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800"
-        >
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 active:scale-95 disabled:opacity-60"
-        >
-          {isSubmitting ? (
-            <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : isEditing ? (
-            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Plus className="h-4 w-4" aria-hidden="true" />
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-h-5">
+          {isAssignmentBlocked && (
+            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              {blockMessage}
+            </span>
           )}
-          {isSubmitting
-            ? isEditing
-              ? "Guardando..."
-              : "Creando..."
-            : isEditing
-            ? "Guardar Cambios"
-            : "Crear Orden"}
-        </button>
+          {!isAssignmentBlocked && requiresConfirmation && !assignmentConfirmed && (
+            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+              Marque la casilla de confirmación para habilitar la asignación.
+            </span>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-100 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting || !canSubmitAssignment}
+            className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-orange-600 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={
+              !canSubmitAssignment && blockMessage
+                ? blockMessage
+                : !canSubmitAssignment && requiresConfirmation && !assignmentConfirmed
+                ? "Requiere confirmación explícita del coordinador"
+                : ""
+            }
+          >
+            {isSubmitting ? (
+              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : isEditing ? (
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            )}
+            {isSubmitting
+              ? isEditing
+                ? "Guardando..."
+                : "Creando..."
+              : isEditing
+              ? "Guardar Cambios"
+              : "Crear Orden"}
+          </button>
+        </div>
       </div>
     </form>
   );
