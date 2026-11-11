@@ -1308,8 +1308,8 @@ function AiInsights({
   }, [columns, hardwareInventory, techniciansCount]);
 
   return (
-    <aside className="rounded-xl border border-border border-t-2 border-t-primary bg-card p-5 flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-2">
+    <aside className="rounded-xl border border-border border-t-2 border-t-primary bg-card p-5 flex flex-col justify-between h-full gap-4">
+      <div className="flex items-start justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/15 text-primary shrink-0">
             <Sparkles className="h-4 w-4" />
@@ -1330,34 +1330,34 @@ function AiInsights({
       </div>
 
       {isLoading ? (
-        <div className="mt-2 flex flex-col gap-3">
+        <div className="flex-1 flex flex-col justify-between gap-3.5 my-1">
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-24 rounded-md bg-slate-200 dark:bg-gray-800 animate-pulse"
+              className="flex-1 min-h-[115px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse"
             />
           ))}
         </div>
       ) : (
-        <div className="mt-1 flex flex-col gap-3">
+        <div className="flex-1 flex flex-col justify-between gap-3.5 my-1">
           {dataBackedInsights.map((insight) => (
             <div
               key={insight.id}
-              className="rounded-lg border border-border bg-background/40 p-3"
+              className="flex-1 min-h-[115px] rounded-xl border border-border bg-background/50 hover:bg-background/80 p-4 transition-colors flex flex-col justify-between shadow-2xs"
             >
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="shrink-0 rounded-md bg-orange-500/10 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                  <span className="shrink-0 rounded-md bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400">
                     {insight.badge}
                   </span>
                 </div>
-                <div className="flex items-start gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 mt-1" />
-                  <h3 className="text-xs font-semibold text-foreground leading-snug">
+                <div className="flex items-start gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1" />
+                  <h3 className="text-xs sm:text-sm font-semibold text-foreground leading-snug">
                     {insight.title}
                   </h3>
                 </div>
-                <p className="text-xs text-muted-foreground leading-relaxed pl-3">
+                <p className="text-xs text-muted-foreground leading-relaxed pl-4">
                   {insight.body}
                 </p>
               </div>
@@ -1369,7 +1369,7 @@ function AiInsights({
       <button
         type="button"
         onClick={onRecalculate}
-        className="mt-1 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+        className="mt-auto shrink-0 w-full rounded-md border border-primary/40 bg-primary/10 px-3 py-2.5 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors cursor-pointer"
       >
         Recalcular con datos actuales
       </button>
@@ -2193,7 +2193,7 @@ export default function DispatchBoard() {
         <KpiGrid metrics={dynamicKpiData} isLoading={isLoading} error={apiError} />
 
         {/* Sección analítica y operativa — Columnas izquierda y derecha perfectamente alineadas */}
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-stretch">
           <div className="flex-1 flex flex-col gap-6 min-w-0">
             {/* Fila 1: Mapa geoespacial y Distribución de estado */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2224,7 +2224,7 @@ export default function DispatchBoard() {
           </div>
 
           {/* Panel lateral AI respaldado por datos reales */}
-          <div className="w-full xl:w-80 xl:shrink-0">
+          <div className="w-full xl:w-80 xl:shrink-0 flex flex-col">
             <AiInsights
               isLoading={isLoading}
               columns={columns}

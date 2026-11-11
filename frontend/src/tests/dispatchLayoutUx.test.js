@@ -102,7 +102,7 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
   it("4. Layout y alineación entre columnas: Cabecera y KPIs abarcan ancho completo, columnas analíticas inician al mismo nivel", () => {
     // La cabecera y KpiGrid deben preceder la división en columnas xl:flex-row
     const kpiIndex = dispatchBoardCode.indexOf("<KpiGrid");
-    const xlRowIndex = dispatchBoardCode.indexOf('<div className="flex flex-col gap-6 xl:flex-row xl:items-start">');
+    const xlRowIndex = dispatchBoardCode.indexOf('<div className="flex flex-col gap-6 xl:flex-row xl:items-stretch">');
     const aiInsightsIndex = dispatchBoardCode.indexOf("<AiInsights");
     const activityTableIndex = dispatchBoardCode.indexOf("<ActivityTable");
 
@@ -127,6 +127,12 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
     assert.ok(
       aiInsightsIndex < activityTableIndex,
       "ActivityTable debe posicionarse debajo de las dos columnas de forma natural"
+    );
+
+    // AiInsights debe distribuir uniformemente sus tarjetas interiores con flex-1 y min-h
+    assert.ok(
+      dispatchBoardCode.includes("flex-1 min-h-[115px] rounded-xl"),
+      "Las tarjetas interiores de Alertas operativas deben ocupar el espacio disponible con flex-1 y min-h"
     );
   });
 
