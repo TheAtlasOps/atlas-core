@@ -417,11 +417,28 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
             {availableTechs.length > 0 ? (
               <>
                 <option value="">Sin asignar / Por coordinar</option>
-                {availableTechs.map((tech) => (
-                  <option key={tech.id} value={tech.id}>
-                    {tech.full_name} {tech.vehicle_plate ? `(${tech.vehicle_plate})` : ""}
-                  </option>
-                ))}
+                {availableTechs.map((tech) => {
+                  const opStatus =
+                    tech.operational_status ||
+                    (tech.is_available ? "DISPONIBLE" : "NO_DISPONIBLE");
+                  const statusLabel =
+                    opStatus === "DISPONIBLE"
+                      ? "Disponible"
+                      : opStatus === "ASIGNADO"
+                      ? "Asignado"
+                      : opStatus === "OCUPADO"
+                      ? "Ocupado"
+                      : "No disponible";
+                  const ordersBadge =
+                    tech.active_orders_count > 0 ? ` · ${tech.active_orders_count} OT` : "";
+                  const plateText = tech.vehicle_plate ? ` [${tech.vehicle_plate}]` : "";
+
+                  return (
+                    <option key={tech.id} value={tech.id}>
+                      {tech.full_name} ({statusLabel}{ordersBadge}){plateText}
+                    </option>
+                  );
+                })}
               </>
             ) : (
               <option value="" disabled>
@@ -429,6 +446,60 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
               </option>
             )}
           </select>
+
+          {/* Advertencia / Aviso según disponibilidad operativa (no bloqueante) */}
+          {(() => {
+            if (!form.technician) return null;
+            const selected = availableTechs.find(
+              (t) => t.id === form.technician || t.full_name === form.technician
+            );
+            if (!selected) return null;
+
+            const opStatus =
+              selected.operational_status ||
+              (selected.is_available ? "DISPONIBLE" : "NO_DISPONIBLE");
+            const count = selected.active_orders_count || 0;
+
+            if (opStatus === "NO_DISPONIBLE") {
+              return (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Técnico bloqueado administrativamente:</span> El técnico figura como No Disponible. La orden se asignará como carga adicional sin bloquear la creación.
+                  </div>
+                </div>
+              );
+            }
+
+            if (opStatus === "OCUPADO") {
+              return (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Técnico ocupado en terreno:</span> Registra {count > 0 ? `${count} orden(es)` : "otra orden"} en ruta o en sitio. La asignación se guardará como orden adicional sin bloquear la operación.
+                  </div>
+                </div>
+              );
+            }
+
+            if (opStatus === "ASIGNADO") {
+              return (
+                <div className="mt-2 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Técnico con asignaciones previas:</span> Ya tiene {count} orden(es) confirmada(s) en cola. Se sumará esta nueva orden sin restricciones.
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Técnico disponible para asignación inmediata (sin órdenes en curso).</span>
+              </div>
+            );
+          })()}
           {availableTechs.length === 0 && (
             <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-md p-2">
               No hay técnicos registrados en la base de datos. La orden se guardará sin técnico asignado.

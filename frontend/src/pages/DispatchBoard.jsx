@@ -1751,12 +1751,36 @@ export default function DispatchBoard() {
   const totalCycleOrders =
     activeOrdersCount + completedOrdersCount + statusCounts.canceladas;
 
-  // Técnicos disponibles y técnicos con órdenes activas asignadas (sin fallbacks hardcodeados)
+  // Técnicos disponibles y técnicos en terreno calculados de forma dinámica y única
   const techStats = useMemo(() => {
+    // Técnicos realmente disponibles: habilitados y sin órdenes activas en curso
     const availableCount =
       techniciansList.length > 0
-        ? techniciansList.filter((t) => t.is_available !== false).length
-        : kpis?.technicians_in_field ?? 0;
+        ? techniciansList.filter((t) =>
+            t.operational_status
+              ? t.operational_status === "DISPONIBLE"
+              : t.is_available !== false
+          ).length
+        : 0;
+
+    // Técnicos únicos en terreno (con orden en ruta o en sitio)
+    const inFieldFromList = techniciansList.filter(
+      (t) =>
+        t.operational_status === "OCUPADO" ||
+        ["EN_RUTA", "EN_SITIO"].includes(t.active_order_status)
+    ).length;
+
+    const enTransitoTasks = columns.find((c) => c.id === "en-transito")?.tasks || [];
+    const uniqueInFieldFromColumns = new Set(
+      enTransitoTasks
+        .map((t) => t.assigneeName || t.assignee)
+        .filter((name) => name && name !== "Sin asignar")
+    ).size;
+
+    const inFieldCount =
+      techniciansList.length > 0
+        ? inFieldFromList
+        : (kpis?.technicians_in_field ?? uniqueInFieldFromColumns);
 
     const activeTasks = [
       ...(columns.find((c) => c.id === "asignada")?.tasks || []),
@@ -1769,6 +1793,7 @@ export default function DispatchBoard() {
     );
     return {
       availableCount,
+      inFieldCount,
       assignedActiveCount: activeTechNames.size,
     };
   }, [techniciansList, kpis, columns]);
@@ -1843,7 +1868,7 @@ export default function DispatchBoard() {
       },
       {
         label: "Técnicos en Terreno",
-        value: `${statusCounts.enRuta} en ruta`,
+        value: `${techStats.inFieldCount} en ruta`,
         delta: `${techStats.availableCount} técnicos disponibles en total`,
         icon: Users,
       },

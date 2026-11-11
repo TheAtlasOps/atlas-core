@@ -2,7 +2,7 @@ import uuid
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional, Tuple, Dict, Union
+from typing import List, Optional, Tuple, Dict, Union, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlalchemy.orm import selectinload
@@ -521,9 +521,12 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
     )
     active_orders = active_res.scalar() or 0
 
-    # 2. Técnicos en campo (disponibles en plataforma)
+    # 2. Técnicos en campo (técnicos únicos con órdenes en ruta o sitio)
     tech_res = await db.execute(
-        select(func.count(Technician.id)).where(Technician.is_available == True)
+        select(func.count(func.distinct(WorkOrder.technician_id))).where(
+            WorkOrder.status.in_([OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO]),
+            WorkOrder.technician_id.isnot(None),
+        )
     )
     technicians_in_field = tech_res.scalar() or 0
 
@@ -566,8 +569,51 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
     )
 
 
+def _calculate_technician_operational_status(
+    is_available: bool,
+    tech_orders: List[WorkOrder],
+) -> Tuple[str, Optional[WorkOrder], List[Dict[str, Any]]]:
+    """
+    Calcula el estado operativo según prioridad estricta:
+    NO_DISPONIBLE > OCUPADO > ASIGNADO > DISPONIBLE
+    """
+    has_in_field = any(
+        o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
+        for o in tech_orders
+    )
+    has_confirmed = any(
+        o.status == OrderStatusEnum.CONFIRMADA for o in tech_orders
+    )
+
+    if not is_available:
+        status_str = "NO_DISPONIBLE"
+    elif has_in_field:
+        status_str = "OCUPADO"
+    elif has_confirmed:
+        status_str = "ASIGNADO"
+    else:
+        status_str = "DISPONIBLE"
+
+    in_field = [
+        o for o in tech_orders
+        if o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
+    ]
+    primary = in_field[0] if in_field else (tech_orders[0] if tech_orders else None)
+
+    orders_summary = [
+        {
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "status": o.status.value,
+            "title": o.title,
+        }
+        for o in tech_orders
+    ]
+    return status_str, primary, orders_summary
+
+
 async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
-    """Retorna el listado de técnicos activos consultando la base de datos con su estado operativo y ubicación."""
+    """Retorna el listado de técnicos con su estado operativo automático, órdenes activas y ubicación."""
     result = await db.execute(
         select(Technician).options(selectinload(Technician.user))
     )
@@ -575,17 +621,27 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
 
     active_orders_res = await db.execute(
         select(WorkOrder).where(
-            WorkOrder.status.in_([OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO])
+            WorkOrder.status.in_([
+                OrderStatusEnum.CONFIRMADA,
+                OrderStatusEnum.EN_RUTA,
+                OrderStatusEnum.EN_SITIO,
+            ]),
+            WorkOrder.technician_id.isnot(None),
         )
     )
     active_orders = active_orders_res.scalars().all()
-    active_by_tech = {o.technician_id: o for o in active_orders if o.technician_id}
+    orders_by_tech: Dict[uuid.UUID, List[WorkOrder]] = {}
+    for o in active_orders:
+        orders_by_tech.setdefault(o.technician_id, []).append(o)
 
     items = []
     for t in technicians:
-        active_order = active_by_tech.get(t.id)
+        tech_orders = orders_by_tech.get(t.id, [])
+        op_status, primary_order, orders_summary = _calculate_technician_operational_status(
+            t.is_available, tech_orders
+        )
         # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
-        is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+        is_en_ruta = primary_order is not None and primary_order.status == OrderStatusEnum.EN_RUTA
         has_fresh_location = is_en_ruta and t.last_location_at is not None
 
         items.append(
@@ -597,12 +653,15 @@ async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:
                 phone=t.user.phone if t.user else None,
                 vehicle_plate=t.vehicle_plate,
                 is_available=t.is_available,
+                operational_status=op_status,
+                active_orders_count=len(tech_orders),
+                active_orders=orders_summary,
                 current_lat=t.current_lat if has_fresh_location else None,
                 current_lng=t.current_lng if has_fresh_location else None,
                 last_location_at=t.last_location_at if has_fresh_location else None,
-                active_order_id=active_order.id if active_order else None,
-                active_order_number=active_order.order_number if active_order else None,
-                active_order_status=active_order.status.value if active_order else None,
+                active_order_id=primary_order.id if primary_order else None,
+                active_order_number=primary_order.order_number if primary_order else None,
+                active_order_status=primary_order.status.value if primary_order else None,
             )
         )
     return items
@@ -617,17 +676,26 @@ async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocatio
 
     active_orders_res = await db.execute(
         select(WorkOrder).where(
-            WorkOrder.status.in_([OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO])
+            WorkOrder.status.in_([
+                OrderStatusEnum.CONFIRMADA,
+                OrderStatusEnum.EN_RUTA,
+                OrderStatusEnum.EN_SITIO,
+            ]),
+            WorkOrder.technician_id.isnot(None),
         )
     )
     active_orders = active_orders_res.scalars().all()
-    active_by_tech = {o.technician_id: o for o in active_orders if o.technician_id}
+    orders_by_tech: Dict[uuid.UUID, List[WorkOrder]] = {}
+    for o in active_orders:
+        orders_by_tech.setdefault(o.technician_id, []).append(o)
 
     items = []
     for t in technicians:
-        active_order = active_by_tech.get(t.id)
-        # Privacidad estricta: sólo exponer coordenadas en tiempo real durante órdenes EN_RUTA autorizadas
-        is_en_ruta = active_order is not None and active_order.status == OrderStatusEnum.EN_RUTA
+        tech_orders = orders_by_tech.get(t.id, [])
+        op_status, primary_order, _ = _calculate_technician_operational_status(
+            t.is_available, tech_orders
+        )
+        is_en_ruta = primary_order is not None and primary_order.status == OrderStatusEnum.EN_RUTA
         has_fresh_location = is_en_ruta and t.last_location_at is not None
 
         items.append(
@@ -639,10 +707,12 @@ async def list_technicians_locations(db: AsyncSession) -> List[TechnicianLocatio
                 current_lat=t.current_lat if has_fresh_location else None,
                 current_lng=t.current_lng if has_fresh_location else None,
                 last_location_at=t.last_location_at if has_fresh_location else None,
-                active_order_id=active_order.id if active_order else None,
-                active_order_number=active_order.order_number if active_order else None,
-                active_order_status=active_order.status.value if active_order else None,
+                active_order_id=primary_order.id if primary_order else None,
+                active_order_number=primary_order.order_number if primary_order else None,
+                active_order_status=primary_order.status.value if primary_order else None,
                 is_available=t.is_available,
+                operational_status=op_status,
+                active_orders_count=len(tech_orders),
             )
         )
     return items
@@ -783,11 +853,14 @@ async def create_technician(db: AsyncSession, tech_in: TechnicianCreate) -> Tech
         phone=new_user.phone,
         vehicle_plate=new_tech.vehicle_plate,
         is_available=new_tech.is_available,
+        operational_status="DISPONIBLE" if new_tech.is_available else "NO_DISPONIBLE",
+        active_orders_count=0,
+        active_orders=[],
     )
 
 
 async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.UUID) -> TechnicianSummary:
-    """Alterna el estado de disponibilidad en campo de un técnico."""
+    """Alterna el estado de habilitación/bloqueo administrativo (licencia/permiso) de un técnico."""
     result = await db.execute(
         select(Technician).options(selectinload(Technician.user)).where(Technician.id == technician_id)
     )
@@ -799,6 +872,22 @@ async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.U
     await db.commit()
     await db.refresh(tech)
 
+    # Recalcular estado operativo considerando órdenes activas remanentes
+    active_res = await db.execute(
+        select(WorkOrder).where(
+            WorkOrder.technician_id == tech.id,
+            WorkOrder.status.in_([
+                OrderStatusEnum.CONFIRMADA,
+                OrderStatusEnum.EN_RUTA,
+                OrderStatusEnum.EN_SITIO,
+            ]),
+        )
+    )
+    tech_orders = active_res.scalars().all()
+    op_status, primary_order, orders_summary = _calculate_technician_operational_status(
+        tech.is_available, tech_orders
+    )
+
     return TechnicianSummary(
         id=tech.id,
         full_name=tech.user.full_name if tech.user else "Técnico",
@@ -807,6 +896,12 @@ async def toggle_technician_availability(db: AsyncSession, technician_id: uuid.U
         phone=tech.user.phone if tech.user else None,
         vehicle_plate=tech.vehicle_plate,
         is_available=tech.is_available,
+        operational_status=op_status,
+        active_orders_count=len(tech_orders),
+        active_orders=orders_summary,
+        active_order_id=primary_order.id if primary_order else None,
+        active_order_number=primary_order.order_number if primary_order else None,
+        active_order_status=primary_order.status.value if primary_order else None,
     )
 
 
