@@ -128,6 +128,163 @@ async def get_order_by_id(
     return result.scalar_one_or_none()
 
 
+def _calculate_technician_operational_status(
+    is_available: bool,
+    tech_orders: List[WorkOrder],
+) -> Tuple[str, Optional[WorkOrder], List[Dict[str, Any]]]:
+    """
+    Calcula el estado operativo según prioridad estricta:
+    NO_DISPONIBLE > OCUPADO > ASIGNADO > DISPONIBLE
+    """
+    has_in_field = any(
+        o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
+        for o in tech_orders
+    )
+    has_confirmed = any(
+        o.status == OrderStatusEnum.CONFIRMADA for o in tech_orders
+    )
+
+    if not is_available:
+        status_str = "NO_DISPONIBLE"
+    elif has_in_field:
+        status_str = "OCUPADO"
+    elif has_confirmed:
+        status_str = "ASIGNADO"
+    else:
+        status_str = "DISPONIBLE"
+
+    in_field = [
+        o for o in tech_orders
+        if o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
+    ]
+    primary = in_field[0] if in_field else (tech_orders[0] if tech_orders else None)
+
+    orders_summary = [
+        {
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "status": o.status.value,
+            "title": o.title,
+        }
+        for o in tech_orders
+    ]
+    return status_str, primary, orders_summary
+
+
+def _is_future_datetime(target_dt: Optional[datetime], now_utc: datetime) -> bool:
+    """Verifica si una fecha/hora programada o ETA es estrictamente posterior al momento actual."""
+    if target_dt is None:
+        return False
+    if target_dt.tzinfo is None:
+        target_dt = target_dt.replace(tzinfo=timezone.utc)
+    return target_dt > now_utc
+
+
+def check_assignment_rules(
+    technician_is_available: bool,
+    technician_active_orders: List[WorkOrder],
+    scheduled_date: Optional[datetime] = None,
+    eta: Optional[datetime] = None,
+    confirm_assignment: bool = False,
+    now_utc: Optional[datetime] = None,
+) -> str:
+    """
+    Evalúa las reglas de asignación según el estado operativo:
+    - DISPONIBLE: permitido normalmente.
+    - ASIGNADO: requiere advertencia y confirmación explícita del coordinador.
+    - OCUPADO: bloquea asignación inmediata; permite visitas futuras programadas con confirmación explícita.
+    - NO_DISPONIBLE: bloquea cualquier asignación hasta que sea habilitado administrativamente.
+
+    Retorna el operational_status validado o levanta HTTPException 409.
+    """
+    op_status, _, _ = _calculate_technician_operational_status(
+        is_available=technician_is_available,
+        tech_orders=technician_active_orders,
+    )
+
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+
+    target_dt = scheduled_date or eta
+    is_future = _is_future_datetime(target_dt, now_utc)
+
+    if op_status == "NO_DISPONIBLE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El técnico seleccionado se encuentra bloqueado administrativamente (No disponible). No se permiten nuevas asignaciones hasta que sea habilitado.",
+        )
+
+    if op_status == "OCUPADO":
+        if not is_future:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El técnico seleccionado está actualmente ocupado (en ruta o en sitio). Las asignaciones inmediatas están bloqueadas; solo se permiten visitas futuras programadas.",
+            )
+        if not confirm_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El técnico seleccionado está actualmente ocupado. Asignar una visita futura programada requiere advertencia y confirmación explícita del coordinador tras revisar su agenda.",
+            )
+
+    if op_status == "ASIGNADO":
+        if not confirm_assignment:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El técnico seleccionado ya tiene órdenes asignadas pendientes. Asignar una orden adicional requiere advertencia y confirmación explícita del coordinador.",
+            )
+
+    return op_status
+
+
+async def validate_technician_assignment_rules(
+    db: AsyncSession,
+    technician_id: uuid.UUID,
+    scheduled_date: Optional[datetime] = None,
+    eta: Optional[datetime] = None,
+    confirm_assignment: bool = False,
+    exclude_order_id: Optional[uuid.UUID] = None,
+    now_utc: Optional[datetime] = None,
+) -> Technician:
+    """
+    Recupera el perfil del técnico y sus órdenes activas, y valida las reglas de asignación.
+    """
+    tech_res = await db.execute(
+        select(Technician).where(Technician.id == technician_id)
+    )
+    technician = tech_res.scalar_one_or_none()
+    if not technician:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Técnico con ID {technician_id} no encontrado",
+        )
+
+    active_conditions = [
+        WorkOrder.technician_id == technician.id,
+        WorkOrder.status.in_([
+            OrderStatusEnum.CONFIRMADA,
+            OrderStatusEnum.EN_RUTA,
+            OrderStatusEnum.EN_SITIO,
+        ]),
+    ]
+    if exclude_order_id:
+        active_conditions.append(WorkOrder.id != exclude_order_id)
+
+    active_orders_res = await db.execute(
+        select(WorkOrder).where(and_(*active_conditions))
+    )
+    tech_orders = active_orders_res.scalars().all()
+
+    check_assignment_rules(
+        technician_is_available=technician.is_available,
+        technician_active_orders=tech_orders,
+        scheduled_date=scheduled_date,
+        eta=eta,
+        confirm_assignment=confirm_assignment,
+        now_utc=now_utc,
+    )
+    return technician
+
+
 async def create_order(
     db: AsyncSession, order_in: WorkOrderCreate, creator_user: User
 ) -> WorkOrder:
@@ -190,14 +347,17 @@ async def create_order(
     else:
         order_number = order_in.order_number
 
-    # 3. Validar técnico si viene provisto
+    # 3. Validar técnico si viene provisto y aplicar reglas de asignación según disponibilidad operativa
     resolved_tech_id = None
     if order_in.technician_id:
-        tech_res = await db.execute(
-            select(Technician.id).where(Technician.id == order_in.technician_id)
+        await validate_technician_assignment_rules(
+            db=db,
+            technician_id=order_in.technician_id,
+            scheduled_date=order_in.scheduled_date,
+            eta=order_in.eta,
+            confirm_assignment=order_in.confirm_assignment,
         )
-        if tech_res.scalar_one_or_none() is not None:
-            resolved_tech_id = order_in.technician_id
+        resolved_tech_id = order_in.technician_id
 
     # 4. Determinar estado inicial
     initial_status = OrderStatusEnum.CONFIRMADA if resolved_tech_id else OrderStatusEnum.IDLE
@@ -380,21 +540,22 @@ async def assign_technician(
             detail=f"Orden con ID {order_id} no encontrada"
         )
 
-    # Validar existencia del técnico
-    tech_res = await db.execute(
-        select(Technician).where(Technician.id == assign_data.technician_id)
+    # Validar reglas de asignación según disponibilidad operativa
+    technician = await validate_technician_assignment_rules(
+        db=db,
+        technician_id=assign_data.technician_id,
+        scheduled_date=assign_data.scheduled_date or order.scheduled_date,
+        eta=assign_data.eta or order.eta,
+        confirm_assignment=assign_data.confirm_assignment,
+        exclude_order_id=order.id,
     )
-    technician = tech_res.scalar_one_or_none()
-    if not technician:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Técnico con ID {assign_data.technician_id} no encontrado"
-        )
 
     now_utc = datetime.now(timezone.utc)
     order.technician_id = assign_data.technician_id
     if assign_data.eta:
         order.eta = assign_data.eta
+    if assign_data.scheduled_date:
+        order.scheduled_date = assign_data.scheduled_date
 
     # Si estaba en IDLE, avanza automáticamente a CONFIRMADA
     if order.status == OrderStatusEnum.IDLE:
@@ -567,49 +728,6 @@ async def get_dispatch_kpis(db: AsyncSession) -> DispatchKPIsResponse:
         delayed_orders=delayed_orders,
         status_distribution=status_distribution,
     )
-
-
-def _calculate_technician_operational_status(
-    is_available: bool,
-    tech_orders: List[WorkOrder],
-) -> Tuple[str, Optional[WorkOrder], List[Dict[str, Any]]]:
-    """
-    Calcula el estado operativo según prioridad estricta:
-    NO_DISPONIBLE > OCUPADO > ASIGNADO > DISPONIBLE
-    """
-    has_in_field = any(
-        o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
-        for o in tech_orders
-    )
-    has_confirmed = any(
-        o.status == OrderStatusEnum.CONFIRMADA for o in tech_orders
-    )
-
-    if not is_available:
-        status_str = "NO_DISPONIBLE"
-    elif has_in_field:
-        status_str = "OCUPADO"
-    elif has_confirmed:
-        status_str = "ASIGNADO"
-    else:
-        status_str = "DISPONIBLE"
-
-    in_field = [
-        o for o in tech_orders
-        if o.status in (OrderStatusEnum.EN_RUTA, OrderStatusEnum.EN_SITIO)
-    ]
-    primary = in_field[0] if in_field else (tech_orders[0] if tech_orders else None)
-
-    orders_summary = [
-        {
-            "id": str(o.id),
-            "order_number": o.order_number,
-            "status": o.status.value,
-            "title": o.title,
-        }
-        for o in tech_orders
-    ]
-    return status_str, primary, orders_summary
 
 
 async def list_technicians(db: AsyncSession) -> List[TechnicianSummary]:

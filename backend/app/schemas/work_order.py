@@ -188,6 +188,7 @@ class WorkOrderCreate(WorkOrderBase):
     client_name: Optional[str] = None
     technician_id: Optional[uuid.UUID] = None
     order_number: Optional[str] = None  # Si es None, el servicio genera uno secuencial
+    confirm_assignment: bool = False
 
 
 class WorkOrderUpdate(BaseModel):
@@ -216,6 +217,8 @@ class WorkOrderAssign(BaseModel):
     """Payload para asignación o reasignación de técnico."""
     technician_id: uuid.UUID
     eta: Optional[datetime] = None
+    scheduled_date: Optional[datetime] = None
+    confirm_assignment: bool = False
 
 
 class AuditApprovalRequest(BaseModel):
