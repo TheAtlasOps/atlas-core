@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Lock, Mail, Eye, EyeOff, ShieldCheck, ArrowRight, AlertCircle, Sparkles } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import atlasLogo from "../assets/atlas-logo.png";
 
 export default function Login() {
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -54,8 +55,12 @@ export default function Login() {
       <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white/80 dark:border-slate-800/80 dark:bg-slate-900/80 p-8 shadow-2xl backdrop-blur-xl transition-all duration-300 animate-in fade-in zoom-in-95">
         {/* Cabecera / Branding */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-orange-600 to-amber-500 shadow-lg shadow-orange-500/25 ring-1 ring-white/20">
-            <span className="text-2xl">🌍</span>
+          <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center">
+            <img
+              src={atlasLogo}
+              alt="Atlas FSM Logo"
+              className="h-16 w-16 rounded-2xl object-contain shadow-lg shadow-orange-500/15"
+            />
           </div>
 
           <div className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400 mb-2">

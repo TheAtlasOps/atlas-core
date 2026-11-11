@@ -1,5 +1,6 @@
 import { LayoutDashboard, ClipboardList, Database, Link2, Settings, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import atlasLogo from "../../assets/atlas-logo.png";
 
 const navItems = [
   { label: "Tablero de Despacho", icon: LayoutDashboard, path: "/" },
@@ -13,12 +14,12 @@ const navItems = [
 export default function Sidebar() {
   return (
     <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-gray-700 dark:bg-[#1e1e1e]">
-      <div className="flex items-center gap-2 px-6 h-16 border-b border-border">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-          <span className="text-primary-foreground font-bold text-lg leading-none">
-            A
-          </span>
-        </div>
+      <div className="flex items-center gap-3 px-6 h-16 border-b border-border">
+        <img
+          src={atlasLogo}
+          alt="Atlas FSM Logo"
+          className="h-9 w-9 rounded-xl object-contain shadow-xs shrink-0"
+        />
         <span className="text-lg font-semibold tracking-tight text-foreground">
           Atlas
         </span>
