@@ -17,6 +17,8 @@ export type Visit = {
   time: string;
   /** Fecha y hora programada ISO original entregada por la API (o null si no tiene) */
   scheduledDate: string | null;
+  /** Fecha y hora de finalización real ISO entregada por la API (o null si no tiene/no completada) */
+  completedAt: string | null;
   client: string;
   /** Etiqueta legible del tipo de servicio, ej. "Instalación de fibra" */
   service: string;

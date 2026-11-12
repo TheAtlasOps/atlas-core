@@ -35,6 +35,7 @@ export type ApiOrder = {
   client_id: string;
   technician_id: string | null;
   scheduled_date: string; // ISO 8601
+  completed_at?: string | null; // ISO 8601 de finalización real
   eta: string | null;
   address_override: string | null;
   comuna_override: string | null;

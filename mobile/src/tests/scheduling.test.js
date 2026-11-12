@@ -8,9 +8,11 @@ import {
   formatChileanDate,
   formatChileanSchedule,
   getSchedulingInfo,
+  getCompletionInfo,
   sortPendingVisits,
   sortHistoryVisits,
 } from '../utils/scheduling.ts';
+import { orderToVisit } from '../api/mappers.ts';
 
 test('parseDateSafe maneja valores nulos, vacíos e inválidos', () => {
   assert.equal(parseDateSafe(null), null);
@@ -174,4 +176,109 @@ test('sortHistoryVisits ordena las visitas completadas de más reciente a más a
   assert.equal(sorted[0].code, 'OT-002'); // 10 nov
   assert.equal(sorted[1].code, 'OT-003'); // 05 nov
   assert.equal(sorted[2].code, 'OT-001'); // 01 nov
+});
+
+test('getCompletionInfo formatea «Finalizada · DD mes · HH:mm hrs» con fecha real en America/Santiago (Chile)', () => {
+  // 19:30 UTC en noviembre (Chile UTC-3) corresponde a las 16:30 hrs
+  const completedAt = '2026-11-10T19:30:00Z';
+  const info = getCompletionInfo(completedAt);
+
+  assert.equal(info.label, 'Finalizada');
+  assert.equal(info.hasCompletionDate, true);
+  assert.match(info.formattedDate, /10.*nov/i);
+  assert.equal(info.formattedTime, '16:30 hrs');
+  assert.match(info.displayDateTime, /10.*nov.*16:30 hrs/i);
+  assert.match(info.fullText, /Finalizada · 10.*nov.*16:30 hrs/i);
+
+  // Asegurar que no se devuelven etiquetas temporales de órdenes pendientes
+  assert.notEqual(info.label, 'Próxima');
+  assert.notEqual(info.label, 'Hoy');
+  assert.notEqual(info.label, 'Atrasada');
+});
+
+test('getCompletionInfo retorna únicamente «Finalizada» cuando no existe fecha de finalización real', () => {
+  for (const emptyVal of [null, undefined, '', '   ', 'fecha-invalida']) {
+    const info = getCompletionInfo(emptyVal);
+
+    assert.equal(info.label, 'Finalizada');
+    assert.equal(info.hasCompletionDate, false);
+    assert.equal(info.displayDateTime, null);
+    assert.equal(info.formattedDate, null);
+    assert.equal(info.formattedTime, null);
+    assert.equal(info.fullText, 'Finalizada');
+
+    // Sin etiquetas temporales
+    assert.notEqual(info.label, 'Próxima');
+    assert.notEqual(info.label, 'Hoy');
+    assert.notEqual(info.label, 'Atrasada');
+  }
+});
+
+test('sortHistoryVisits prioriza fecha de finalización real (completedAt) sobre scheduledDate', () => {
+  // v1 fue programada el 10 nov pero finalizada el 12 nov
+  const v1 = {
+    id: '1',
+    code: 'OT-001',
+    status: 'completada',
+    scheduledDate: '2026-11-10T10:00:00Z',
+    completedAt: '2026-11-12T18:00:00Z',
+  };
+  // v2 fue programada el 11 nov pero finalizada el 11 nov
+  const v2 = {
+    id: '2',
+    code: 'OT-002',
+    status: 'completada',
+    scheduledDate: '2026-11-11T10:00:00Z',
+    completedAt: '2026-11-11T18:00:00Z',
+  };
+  // v3 completada sin completed_at (fallback a scheduledDate)
+  const v3 = {
+    id: '3',
+    code: 'OT-003',
+    status: 'completada',
+    scheduledDate: '2026-11-08T10:00:00Z',
+    completedAt: null,
+  };
+
+  const sorted = sortHistoryVisits([v3, v2, v1]);
+
+  assert.equal(sorted[0].code, 'OT-001'); // 12 nov (más reciente)
+  assert.equal(sorted[1].code, 'OT-002'); // 11 nov
+  assert.equal(sorted[2].code, 'OT-003'); // 08 nov (fallback)
+});
+
+test('orderToVisit mapea completed_at del backend hacia completedAt en Visit', () => {
+  const mockApiOrder = {
+    id: 'wo-uuid-001',
+    order_number: 'OT-0099',
+    title: 'Visita completada',
+    description: null,
+    service_type: 'INSTALACION_FIBRA',
+    priority: 'ALTA',
+    status: 'COMPLETADA',
+    client_id: 'client-uuid-001',
+    technician_id: 'tech-uuid-001',
+    scheduled_date: '2026-11-09T14:00:00Z',
+    completed_at: '2026-11-09T16:45:00Z',
+    eta: null,
+    address_override: null,
+    comuna_override: null,
+    client: {
+      id: 'client-uuid-001',
+      business_name: 'Empresa Test',
+      contact_person: null,
+      contact_phone: '+56911112222',
+      contact_email: 'test@empresa.cl',
+      address: 'Av. Providencia 1234',
+      comuna: 'Providencia',
+    },
+    items: [],
+  };
+
+  const visit = orderToVisit(mockApiOrder);
+
+  assert.ok(visit !== null);
+  assert.equal(visit.status, 'completada');
+  assert.equal(visit.scheduledDate, '2026-11-09T14:00:00Z');
+  assert.equal(visit.completedAt, '2026-11-09T16:45:00Z');
 });

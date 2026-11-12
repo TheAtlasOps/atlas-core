@@ -16,6 +16,15 @@ export interface ScheduleInfo {
   isUnscheduled: boolean;
 }
 
+export interface CompletionInfo {
+  label: 'Finalizada';
+  fullText: string;
+  displayDateTime: string | null;
+  formattedDate: string | null;
+  formattedTime: string | null;
+  hasCompletionDate: boolean;
+}
+
 const CHILE_TZ = 'America/Santiago';
 
 /**
@@ -224,13 +233,49 @@ export function sortPendingVisits(visits: Visit[], now: Date = new Date()): Visi
 }
 
 /**
+ * Formatea la información de finalización de una orden completada para el historial.
+ * Utiliza la fecha real de finalización registrada en el backend (`completed_at`).
+ * Si no existe fecha de finalización o no es válida, retorna `displayDateTime = null` y `fullText = 'Finalizada'`,
+ * sin inventar fechas ni utilizar la fecha programada como sustituto.
+ */
+export function getCompletionInfo(completedAt: string | Date | null | undefined): CompletionInfo {
+  const date = parseDateSafe(completedAt);
+  if (!date) {
+    return {
+      label: 'Finalizada',
+      fullText: 'Finalizada',
+      displayDateTime: null,
+      formattedDate: null,
+      formattedTime: null,
+      hasCompletionDate: false,
+    };
+  }
+
+  const formattedDate = formatChileanDate(date);
+  const formattedTime = formatChileanTime(date);
+  const displayDateTime = `${formattedDate} · ${formattedTime}`;
+  const fullText = `Finalizada · ${displayDateTime}`;
+
+  return {
+    label: 'Finalizada',
+    fullText,
+    displayDateTime,
+    formattedDate,
+    formattedTime,
+    hasCompletionDate: true,
+  };
+}
+
+/**
  * Ordena las visitas del historial («Completadas»):
- * De la más reciente a la más antigua.
+ * De la más recientemente finalizada a la más antigua.
+ * Prioriza la fecha real de finalización (`completedAt`), y utiliza `scheduledDate` como fallback
+ * para mantener consistencia en órdenes completadas que carezcan de marca de finalización.
  */
 export function sortHistoryVisits(visits: Visit[]): Visit[] {
   return visits.slice().sort((a, b) => {
-    const dateA = parseDateSafe(a.scheduledDate);
-    const dateB = parseDateSafe(b.scheduledDate);
+    const dateA = parseDateSafe(a.completedAt || a.scheduledDate);
+    const dateB = parseDateSafe(b.completedAt || b.scheduledDate);
 
     if (dateA && dateB) {
       return dateB.getTime() - dateA.getTime();
