@@ -183,4 +183,41 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
       "Debe permitir abrir auditoría o detalle de orden al hacer clic en fila"
     );
   });
+
+  it("6. Inicialización segura de hooks en DispatchBoard: todos los useState se declaran antes de useEffect evitando TDZ", () => {
+    // Buscar la función DispatchBoard
+    const dbFuncIdx = dispatchBoardCode.indexOf("export default function DispatchBoard()");
+    assert.ok(dbFuncIdx !== -1, "Debe existir la exportación de DispatchBoard");
+    const dbBody = dispatchBoardCode.substring(dbFuncIdx);
+
+    // Encontrar todos los useState dentro de DispatchBoard
+    const useStateMatches = [...dbBody.matchAll(/const \[[^\]]+\]\s*=\s*useState\(/g)];
+    assert.ok(useStateMatches.length >= 10, "DispatchBoard debe contener sus estados useState");
+    const lastUseStatePos = Math.max(...useStateMatches.map((m) => m.index));
+
+    // Encontrar el primer useEffect dentro de DispatchBoard
+    const firstUseEffectMatch = dbBody.match(/useEffect\(/);
+    assert.ok(firstUseEffectMatch, "DispatchBoard debe contener useEffect");
+    const firstUseEffectPos = firstUseEffectMatch.index;
+
+    // Verificar que el último useState está ANTES del primer useEffect en DispatchBoard
+    assert.ok(
+      lastUseStatePos < firstUseEffectPos,
+      `Todos los useState (último en índice ${lastUseStatePos}) deben declararse antes del primer useEffect (índice ${firstUseEffectPos}) para prevenir ReferenceError / TDZ`
+    );
+
+    // Verificar que dashboardOrders esté declarado antes de su primer uso en useEffect
+    const dashboardOrdersDeclMatch = dbBody.match(/const \[dashboardOrders,\s*setDashboardOrders\]\s*=\s*useState/);
+    assert.ok(dashboardOrdersDeclMatch, "dashboardOrders debe estar declarado");
+    const dashboardOrdersDeclPos = dashboardOrdersDeclMatch.index;
+
+    const dashboardOrdersUseMatch = dbBody.match(/dashboardOrders\.find\(/);
+    assert.ok(dashboardOrdersUseMatch, "dashboardOrders se utiliza en tracking");
+    const dashboardOrdersUsePos = dashboardOrdersUseMatch.index;
+
+    assert.ok(
+      dashboardOrdersDeclPos < dashboardOrdersUsePos,
+      "dashboardOrders debe declararse estrictamente antes de ser leído en useEffect o sus dependencias"
+    );
+  });
 });

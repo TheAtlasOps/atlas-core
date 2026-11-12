@@ -1764,68 +1764,6 @@ export default function DispatchBoard() {
   const [statusFilter, setStatusFilter] = useState(null);
   const [serviceFilter, setServiceFilter] = useState(null);
 
-  // Sincronizar seguimiento desde URL query param (?tracking=<orderNumber>)
-  useEffect(() => {
-    const trackingParam = searchParams.get("tracking");
-    if (!trackingParam) return;
-
-    let target = null;
-    if (Array.isArray(dashboardOrders)) {
-      target = dashboardOrders.find(
-        (o) =>
-          String(o.id) === trackingParam ||
-          String(o.order_number) === trackingParam ||
-          String(o.orderNumber) === trackingParam
-      );
-    }
-    if (!target && Array.isArray(visitsList)) {
-      target = visitsList.find(
-        (v) =>
-          String(v.id) === trackingParam ||
-          String(v.orderId) === trackingParam ||
-          String(v.order_number) === trackingParam
-      );
-    }
-    if (!target && Array.isArray(columns)) {
-      for (const col of columns) {
-        const found = col.tasks?.find(
-          (t) =>
-            String(t.id) === trackingParam ||
-            String(t.orderId) === trackingParam ||
-            String(t.order_number) === trackingParam
-        );
-        if (found) {
-          target = found;
-          break;
-        }
-      }
-    }
-
-    if (target && isEnRutaStatus(target.status)) {
-      startTracking(target);
-      setSelectedTrackingOrder(target);
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          next.delete("tracking");
-          return next;
-        },
-        { replace: true }
-      );
-    }
-  }, [searchParams, dashboardOrders, visitsList, columns, setSearchParams]);
-
-  // Si una orden en ruta con coordenadas válidas es seleccionada, activar su seguimiento en el mapa principal
-  useEffect(() => {
-    if (selectedOrder && isEnRutaStatus(selectedOrder.status)) {
-      const { isValid } = extractOrderCoordinates(selectedOrder);
-      if (isValid) {
-        startTracking(selectedOrder);
-        setSelectedTrackingOrder(selectedOrder);
-      }
-    }
-  }, [selectedOrder]);
-
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
   const [dashboardOrders, setDashboardOrders] = useState([]);
@@ -2052,6 +1990,68 @@ export default function DispatchBoard() {
       syncOrdersWithTracking(dashboardOrders);
     }
   }, [dashboardOrders]);
+
+  // Sincronizar seguimiento desde URL query param (?tracking=<orderNumber>)
+  useEffect(() => {
+    const trackingParam = searchParams.get("tracking");
+    if (!trackingParam) return;
+
+    let target = null;
+    if (Array.isArray(dashboardOrders)) {
+      target = dashboardOrders.find(
+        (o) =>
+          String(o.id) === trackingParam ||
+          String(o.order_number) === trackingParam ||
+          String(o.orderNumber) === trackingParam
+      );
+    }
+    if (!target && Array.isArray(visitsList)) {
+      target = visitsList.find(
+        (v) =>
+          String(v.id) === trackingParam ||
+          String(v.orderId) === trackingParam ||
+          String(v.order_number) === trackingParam
+      );
+    }
+    if (!target && Array.isArray(columns)) {
+      for (const col of columns) {
+        const found = col.tasks?.find(
+          (t) =>
+            String(t.id) === trackingParam ||
+            String(t.orderId) === trackingParam ||
+            String(t.order_number) === trackingParam
+        );
+        if (found) {
+          target = found;
+          break;
+        }
+      }
+    }
+
+    if (target && isEnRutaStatus(target.status)) {
+      startTracking(target);
+      setSelectedTrackingOrder(target);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("tracking");
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, dashboardOrders, visitsList, columns, setSearchParams]);
+
+  // Si una orden en ruta con coordenadas válidas es seleccionada, activar su seguimiento en el mapa principal
+  useEffect(() => {
+    if (selectedOrder && isEnRutaStatus(selectedOrder.status)) {
+      const { isValid } = extractOrderCoordinates(selectedOrder);
+      if (isValid) {
+        startTracking(selectedOrder);
+        setSelectedTrackingOrder(selectedOrder);
+      }
+    }
+  }, [selectedOrder]);
 
   // Polling silencioso en segundo plano para actualizar telemetría GPS cada 30s sin recargar la pantalla
   useEffect(() => {
