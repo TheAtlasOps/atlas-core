@@ -10,6 +10,8 @@ import {
   fetchStreetRoute,
   FALLBACK_DEMO_COORDINATES,
   FALLBACK_DEMO_METRICS,
+  FALLBACK_DEMO_DESTINATION,
+  matchesFallbackRoute,
 } from "../lib/routeSimulation.js";
 
 test("calculateBearing determina la orientación angular correcta", () => {
@@ -102,7 +104,7 @@ test("fetchStreetRoute procesa respuesta GeoJSON de OSRM y mapea [lat, lng]", as
   }
 });
 
-test("fetchStreetRoute activa fallback determinista seguro si la red u OSRM falla", async () => {
+test("fetchStreetRoute activa fallback determinista seguro si la red u OSRM falla para la ruta demo", async () => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async () => {
@@ -110,11 +112,57 @@ test("fetchStreetRoute activa fallback determinista seguro si la red u OSRM fall
   };
 
   try {
-    const result = await fetchStreetRoute(DEMO_ORIGIN, { lat: -33.4535, lng: -70.6605 });
+    const result = await fetchStreetRoute(DEMO_ORIGIN, FALLBACK_DEMO_DESTINATION);
     assert.equal(result.isFallback, true);
     assert.equal(result.distanceMeters, FALLBACK_DEMO_METRICS.distanceMeters);
     assert.deepEqual(result.coordinates, FALLBACK_DEMO_COORDINATES);
     assert.ok(result.interpolatedCoordinates.length > 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("matchesFallbackRoute valida con precisión de tolerancia origen y destino de respaldo", () => {
+  // Coincidencia exacta
+  assert.equal(matchesFallbackRoute(DEMO_ORIGIN, FALLBACK_DEMO_DESTINATION), true);
+
+  // Coincidencia dentro de la tolerancia de ~350m
+  const nearOrigin = { lat: DEMO_ORIGIN.lat + 0.001, lng: DEMO_ORIGIN.lng - 0.001 };
+  const nearDest = { lat: FALLBACK_DEMO_DESTINATION.lat - 0.001, lng: FALLBACK_DEMO_DESTINATION.lng + 0.001 };
+  assert.equal(matchesFallbackRoute(nearOrigin, nearDest), true);
+
+  // Destino fuera de la tolerancia (Las Condes / Vitacura / Maipú)
+  const differentDest = { lat: -33.4000, lng: -70.5500 };
+  assert.equal(matchesFallbackRoute(DEMO_ORIGIN, differentDest), false);
+
+  // Origen fuera de la tolerancia
+  const differentOrigin = { lat: -33.5000, lng: -70.7000 };
+  assert.equal(matchesFallbackRoute(differentOrigin, FALLBACK_DEMO_DESTINATION), false);
+
+  // Coordenadas nulas o inválidas
+  assert.equal(matchesFallbackRoute(null, FALLBACK_DEMO_DESTINATION), false);
+  assert.equal(matchesFallbackRoute(DEMO_ORIGIN, null), false);
+  assert.equal(matchesFallbackRoute({}, {}), false);
+});
+
+test("fetchStreetRoute rechaza con error si OSRM falla y el destino no coincide con la ruta demo", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => {
+    throw new Error("OSRM service unavailable");
+  };
+
+  const differentDest = { lat: -33.4050, lng: -70.5750 }; // Las Condes
+
+  try {
+    await assert.rejects(
+      async () => {
+        await fetchStreetRoute(DEMO_ORIGIN, differentDest);
+      },
+      {
+        message: /No fue posible calcular la ruta vial por calles en este momento/i,
+      }
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

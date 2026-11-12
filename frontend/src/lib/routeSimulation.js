@@ -47,6 +47,44 @@ export const FALLBACK_DEMO_METRICS = {
   durationSeconds: 780, // ~13 minutos en tráfico normal
 };
 
+// Destino predefinido de la ruta de demostración de respaldo (Santiago Centro)
+export const FALLBACK_DEMO_DESTINATION = {
+  lat: -33.4535,
+  lng: -70.6605,
+};
+
+/**
+ * Tolerancia máxima en grados para considerar que un origen y destino
+ * corresponden exclusivamente al recorrido de demostración de respaldo (~350 metros).
+ */
+export const FALLBACK_TOLERANCE_DEG = 0.0035;
+
+/**
+ * Verifica si el par origen/destino coincide con el recorrido predefinido de respaldo
+ * dentro de un margen estricto de tolerancia.
+ */
+export function matchesFallbackRoute(origin, destination, toleranceDeg = FALLBACK_TOLERANCE_DEG) {
+  if (
+    !Number.isFinite(origin?.lat) ||
+    !Number.isFinite(origin?.lng) ||
+    !Number.isFinite(destination?.lat) ||
+    !Number.isFinite(destination?.lng)
+  ) {
+    return false;
+  }
+  const dOriginLat = Math.abs(origin.lat - DEMO_ORIGIN.lat);
+  const dOriginLng = Math.abs(origin.lng - DEMO_ORIGIN.lng);
+  const dDestLat = Math.abs(destination.lat - FALLBACK_DEMO_DESTINATION.lat);
+  const dDestLng = Math.abs(destination.lng - FALLBACK_DEMO_DESTINATION.lng);
+
+  return (
+    dOriginLat <= toleranceDeg &&
+    dOriginLng <= toleranceDeg &&
+    dDestLat <= toleranceDeg &&
+    dDestLng <= toleranceDeg
+  );
+}
+
 /**
  * Calcula el ángulo de rumbo (bearing en grados 0-360) entre dos coordenadas [lat, lng].
  * Permite orientar el icono del vehículo según el sentido de avance en la calle.
@@ -144,8 +182,8 @@ export async function fetchStreetRoute(origin, destination, { timeoutMs = 4500 }
     // (o si se especificó el origen demo)
     console.warn("[ATLAS Route Simulation] Error consultando OSRM:", err.message);
 
-    // Usar fallback de demostración si el destino está en el área metropolitana de Santiago
-    if (FALLBACK_DEMO_COORDINATES && FALLBACK_DEMO_COORDINATES.length > 0) {
+    // Limitar el fallback offline exclusivamente al origen y destino predefinidos de esa ruta
+    if (matchesFallbackRoute(origin, destination)) {
       return {
         coordinates: FALLBACK_DEMO_COORDINATES,
         interpolatedCoordinates: interpolateRoute(FALLBACK_DEMO_COORDINATES, 260),

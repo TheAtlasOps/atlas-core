@@ -142,8 +142,8 @@ export default function RouteSimulationModal({ order, onClose }) {
     const { lat, lng, isValid } = extractOrderCoordinates(order);
     if (isValid) return { lat, lng };
 
-    // Si la orden no tiene coordenadas directas pero es la orden de prueba central
-    return { lat: -33.4535, lng: -70.6605 }; // Santiago Centro
+    // Si la orden no tiene coordenadas válidas, no usar destino ficticio
+    return null;
   }, [order]);
 
   // Estado de ruta
@@ -163,7 +163,9 @@ export default function RouteSimulationModal({ order, onClose }) {
   // Cargar ruta al abrir modal
   const loadRoute = useCallback(async () => {
     if (!destinationCoords) {
-      setRouteError("La orden de trabajo no posee coordenadas geográficas válidas.");
+      setRouteError(
+        "Esta orden de trabajo no cuenta con coordenadas geográficas registradas. No es posible iniciar la simulación de ruta sin un destino válido."
+      );
       setIsLoadingRoute(false);
       return;
     }
@@ -289,6 +291,7 @@ export default function RouteSimulationModal({ order, onClose }) {
 
   // ─── Controladores de usuario ──────────────────────────────────────────────
   function handlePlayPause() {
+    if (!routeData || !destinationCoords) return;
     if (simStatus === "EN_RUTA") {
       setSimStatus("PAUSADO");
     } else if (simStatus === "LLEGADA_AL_SITIO") {
@@ -419,18 +422,20 @@ export default function RouteSimulationModal({ order, onClose }) {
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center">
               <AlertCircle className="h-10 w-10 text-red-500 mb-2" />
               <p className="text-sm font-bold text-slate-800 dark:text-gray-200">
-                No se pudo trazar la ruta
+                {destinationCoords ? "No se pudo trazar la ruta" : "Coordenadas no disponibles"}
               </p>
               <p className="text-xs text-slate-500 dark:text-gray-400 max-w-md mt-1 mb-4">
                 {routeError}
               </p>
-              <button
-                type="button"
-                onClick={loadRoute}
-                className="px-4 py-2 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors"
-              >
-                Reintentar cálculo de ruta
-              </button>
+              {destinationCoords && (
+                <button
+                  type="button"
+                  onClick={loadRoute}
+                  className="px-4 py-2 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors cursor-pointer"
+                >
+                  Reintentar cálculo de ruta
+                </button>
+              )}
             </div>
           ) : (
             <>
@@ -439,11 +444,12 @@ export default function RouteSimulationModal({ order, onClose }) {
                 zoom={13}
                 style={{ height: "100%", width: "100%", background: isDark ? "#0f172a" : "#f1f5f9" }}
                 scrollWheelZoom={true}
-                attributionControl={false}
+                attributionControl={true}
               >
                 <TileLayer
                   url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                   maxZoom={19}
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
                 />
                 <RouteBoundsFitter points={routeData?.coordinates || []} />
 
