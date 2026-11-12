@@ -22,7 +22,7 @@ import {
   setOnTrackingCompleted,
 } from "../lib/routeTrackingManager.js";
 import { DEMO_ORIGIN, FALLBACK_DEMO_COORDINATES } from "../lib/routeSimulation.js";
-import { hasVerifiedRecentGps } from "../lib/mapClustering.js";
+import { hasVerifiedRecentGps, getMapSummaryCounters } from "../lib/mapClustering.js";
 
 test("getSafeClientName previene Minified React Error #31 extrayendo siempre un string", () => {
   // Caso objeto complejo (FastAPI / Neon real)
@@ -393,4 +393,53 @@ test("hasVerifiedRecentGps solo acepta coordenadas con timestamp reciente (<10m)
     lastLocationAt: new Date().toISOString(),
   };
   assert.equal(hasVerifiedRecentGps(invalidCoordsTech), false, "Debe rechazar coordenadas inválidas");
+});
+
+test("getMapSummaryCounters descarta técnicos sin GPS auténtico/reciente y no incrementa el contador", () => {
+  const seedTechWithoutTimestamp = {
+    id: "tech-seed",
+    name: "Tomás Pérez",
+    initials: "TP",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: null,
+  };
+
+  const staleTech = {
+    id: "tech-stale",
+    name: "Técnico Antiguo",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: new Date(Date.now() - 7200000).toISOString(), // 2 horas atrás
+  };
+
+  const liveRecentTech = {
+    id: "tech-live",
+    name: "Técnico en Vivo",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: new Date(Date.now() - 60000).toISOString(), // 1 min atrás
+  };
+
+  const mockOrder = {
+    id: 1,
+    orderNumber: "OT-001",
+    status: "EN_RUTA",
+    lat: -33.42,
+    lng: -70.61,
+  };
+
+  // Solo con técnicos seed o sin timestamp -> techGpsCount debe ser 0
+  const countersSeed = getMapSummaryCounters([mockOrder], [seedTechWithoutTimestamp, staleTech], "TODAS");
+  assert.equal(countersSeed.techGpsCount, 0, "No debe contar técnicos seed o con timestamp nulo/antiguo");
+  assert.ok(countersSeed.summaryText.includes("0 técnicos con GPS activo"));
+
+  // Al incluir un técnico con GPS reciente verificado (<10 min) -> techGpsCount es 1
+  const countersWithLive = getMapSummaryCounters(
+    [mockOrder],
+    [seedTechWithoutTimestamp, staleTech, liveRecentTech],
+    "TODAS"
+  );
+  assert.equal(countersWithLive.techGpsCount, 1, "Solo debe contar al técnico con señal reciente verificada");
+  assert.ok(countersWithLive.summaryText.includes("1 técnico con GPS activo"));
 });

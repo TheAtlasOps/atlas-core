@@ -21,6 +21,9 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
   Navigation,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
@@ -38,6 +41,7 @@ import {
   getSafeOrderId,
   getSafeTechnicianName,
   startTracking,
+  restartTracking,
   formatCountdown,
   useRouteTracking,
 } from "../lib/routeTrackingManager";
@@ -235,49 +239,262 @@ function TrackingMapLayer({ snapshot, isDark }) {
   );
 }
 
-// ── Tarjeta compacta flotante sobre el mapa de despacho ───────────────────────
-function TrackingFloatingCard({ snapshot, order, onOpenModal, onClose }) {
+// ── Tarjeta de telemetría flotante sobre el mapa de despacho (Oscuro y Naranja) ─
+function TrackingFloatingCard({
+  snapshot,
+  order,
+  onOpenModal,
+  onClose,
+  isExpandedView = false,
+}) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
   if (!snapshot || !order) return null;
   const isArrived = Boolean(snapshot.isArrived);
 
+  // Estado contraído (Píldora discreta sin bloquear marcadores del mapa)
+  if (isCollapsed) {
+    return (
+      <div className="absolute bottom-3 left-3 z-[400] animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(false)}
+          className="flex items-center gap-2 rounded-full border border-orange-500/40 bg-slate-950/95 text-white px-3 py-1.5 shadow-2xl backdrop-blur-md hover:border-orange-500/70 hover:bg-slate-900 transition-all cursor-pointer group"
+          title="Expandir telemetría de seguimiento"
+        >
+          <img
+            src="/truck-atlas.png"
+            alt="Camioneta ATLAS"
+            className="h-4 w-auto object-contain shrink-0"
+          />
+          <span className="font-bold text-[11px] text-orange-400">
+            {snapshot.orderNumber}
+          </span>
+          <span className="text-slate-500 text-[10px]">·</span>
+          <span className="font-mono text-[10px] text-slate-200">
+            {isArrived
+              ? "Llegada al sitio"
+              : formatCountdown(snapshot.remainingSeconds || 0)}
+          </span>
+          <span className="text-slate-500 text-[10px]">·</span>
+          <span className="text-[10px] font-semibold text-slate-300">
+            {snapshot.progressPercent || 0}%
+          </span>
+          <ChevronUp className="h-3.5 w-3.5 text-orange-400 group-hover:-translate-y-0.5 transition-transform shrink-0" />
+        </button>
+      </div>
+    );
+  }
+
+  // Vista ampliada dentro del modal de mapa completo
+  if (isExpandedView) {
+    return (
+      <div className="absolute bottom-4 left-4 z-[400] w-full max-w-sm sm:max-w-md rounded-2xl border border-orange-500/40 bg-slate-950/95 shadow-2xl backdrop-blur-md p-4 text-xs text-white animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2.5">
+          <div className="flex items-center gap-2 truncate">
+            <span
+              className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                isArrived
+                  ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                  : "bg-orange-500 animate-pulse shadow-[0_0_8px_#f97316]"
+              }`}
+            />
+            <span className="font-extrabold text-sm text-white truncate">
+              Seguimiento {snapshot.orderNumber}
+            </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-orange-500/20 text-orange-400 border border-orange-500/40">
+              Demo OSRM
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(true)}
+              className="text-slate-400 hover:text-white p-1 rounded hover:bg-white/10 transition-colors cursor-pointer"
+              title="Minimizar tarjeta"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-slate-400 hover:text-white p-1 rounded hover:bg-white/10 transition-colors cursor-pointer"
+                title="Cerrar seguimiento"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Cliente y Técnico */}
+        <div className="text-xs text-slate-300">
+          <span className="font-bold text-white text-[13px]">{snapshot.clientName}</span>
+          {snapshot.clientAddress && (
+            <span className="block text-[11px] text-slate-400 truncate mt-0.5">
+              {snapshot.clientAddress}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center justify-between text-[11px] text-slate-300 mt-1 border-t border-slate-800/80 pt-1.5">
+          <span>
+            Especialista: <strong className="text-orange-400">{snapshot.technicianName}</strong>
+          </span>
+          <span className="text-slate-400 font-mono text-[10px]">Camioneta ATLAS FSM</span>
+        </div>
+
+        {/* Barra de progreso con gradiente y porcentaje */}
+        <div className="mt-2.5 space-y-1">
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-slate-400 font-medium">Progreso del recorrido</span>
+            <span className="font-bold text-orange-400 font-mono">
+              {snapshot.progressPercent || 0}%
+            </span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+            <div
+              className={`h-full transition-all duration-200 ${
+                isArrived
+                  ? "bg-emerald-500 shadow-[0_0_10px_#10b981]"
+                  : "bg-gradient-to-r from-orange-600 via-orange-500 to-amber-400 shadow-[0_0_10px_#f97316]"
+              }`}
+              style={{ width: `${snapshot.progressPercent || 0}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Grilla de 4 métricas */}
+        <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-[10px] text-center">
+          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-1.5">
+            <span className="block text-slate-400">Estado</span>
+            <span
+              className={`font-bold truncate block mt-0.5 ${
+                isArrived ? "text-emerald-400" : "text-orange-400"
+              }`}
+            >
+              {isArrived ? "En sitio" : "En ruta"}
+            </span>
+          </div>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-1.5">
+            <span className="block text-slate-400">ETA</span>
+            <span className="font-bold text-white block mt-0.5 font-mono">
+              {isArrived ? "0:00" : formatCountdown(snapshot.remainingSeconds || 0)}
+            </span>
+          </div>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-1.5">
+            <span className="block text-slate-400">Distancia</span>
+            <span className="font-bold text-white block mt-0.5 font-mono">
+              {isArrived ? "0 m" : formatDistance(snapshot.remainingDistanceMeters || 0)}
+            </span>
+          </div>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-1.5">
+            <span className="block text-slate-400">Velocidad</span>
+            <span className="font-bold text-slate-300 block mt-0.5 font-mono">
+              {isArrived ? "0 km/h" : "~38 km/h"}
+            </span>
+          </div>
+        </div>
+
+        {/* Mensaje de estado operativo */}
+        <div
+          className={`mt-2.5 rounded-lg px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 ${
+            isArrived
+              ? "bg-emerald-950/50 border border-emerald-500/30 text-emerald-300"
+              : "bg-orange-950/40 border border-orange-500/30 text-orange-300"
+          }`}
+        >
+          <Navigation
+            className={`h-3.5 w-3.5 shrink-0 ${
+              isArrived ? "text-emerald-400" : "text-orange-400"
+            }`}
+          />
+          <span>
+            {isArrived
+              ? "¡Vehículo en destino! Esperando confirmación de ingreso a faena."
+              : "Desplazamiento vial continuo asistido por motor OSRM"}
+          </span>
+        </div>
+
+        {/* Acciones */}
+        <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+          {isArrived && (
+            <button
+              type="button"
+              onClick={() => restartTracking(snapshot.orderId)}
+              className="flex-1 py-1.5 px-3 rounded-lg bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Repetir demo</span>
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer border border-slate-700"
+            >
+              Cerrar seguimiento
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Vista compacta en mapa pequeño (ActiveZonesCard)
   return (
-    <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-[400] rounded-xl border border-slate-200/90 dark:border-gray-800/90 bg-white/95 dark:bg-gray-900/95 shadow-xl backdrop-blur-md p-2.5 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-gray-800 pb-1.5 mb-1.5">
+    <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-[400] rounded-xl border border-orange-500/30 bg-slate-950/95 text-white shadow-2xl backdrop-blur-md p-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-1.5">
         <div className="flex items-center gap-1.5 truncate">
           <span
             className={`h-2 w-2 rounded-full shrink-0 ${
-              isArrived ? "bg-emerald-500" : "bg-orange-500 animate-pulse"
+              isArrived
+                ? "bg-emerald-400 shadow-[0_0_6px_#34d399]"
+                : "bg-orange-500 animate-pulse shadow-[0_0_6px_#f97316]"
             }`}
           />
-          <span className="font-bold text-[11px] text-slate-900 dark:text-white truncate">
+          <span className="font-bold text-[11px] text-white truncate">
             Seguimiento {snapshot.orderNumber}
           </span>
-          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-orange-500/20 text-orange-400 border border-orange-500/30">
             Demo
           </span>
         </div>
-        {onClose && (
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 p-0.5 rounded cursor-pointer"
-            title="Cerrar seguimiento y volver a mapa general"
+            onClick={() => setIsCollapsed(true)}
+            className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+            title="Minimizar tarjeta"
           >
-            <X className="h-3.5 w-3.5" />
+            <ChevronDown className="h-3.5 w-3.5" />
           </button>
-        )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+              title="Cerrar seguimiento"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="text-[11px] truncate text-slate-700 dark:text-gray-300">
-        <span className="font-semibold">{snapshot.clientName}</span> ·{" "}
-        <span className="text-slate-500 dark:text-gray-400">Especialista: {snapshot.technicianName}</span>
+      <div className="text-[11px] truncate text-slate-300">
+        <span className="font-semibold text-white">{snapshot.clientName}</span> ·{" "}
+        <span className="text-slate-400">Técnico: {snapshot.technicianName}</span>
       </div>
 
       {/* Barra de progreso */}
-      <div className="w-full h-1 rounded-full bg-slate-100 dark:bg-gray-800 overflow-hidden my-1.5">
+      <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden my-2">
         <div
           className={`h-full transition-all duration-150 ${
-            isArrived ? "bg-emerald-500" : "bg-orange-500"
+            isArrived
+              ? "bg-emerald-500 shadow-[0_0_6px_#10b981]"
+              : "bg-gradient-to-r from-orange-600 to-orange-400 shadow-[0_0_6px_#f97316]"
           }`}
           style={{ width: `${snapshot.progressPercent || 0}%` }}
         />
@@ -285,33 +502,37 @@ function TrackingFloatingCard({ snapshot, order, onOpenModal, onClose }) {
 
       {/* Métricas compactas */}
       <div className="grid grid-cols-3 gap-1 text-[10px] py-0.5 text-center">
-        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+        <div className="bg-slate-900/90 border border-slate-800 rounded p-1">
           <span className="block text-slate-400">Estado</span>
-          <span className="font-bold text-slate-800 dark:text-gray-200 truncate block">
-            {isArrived ? "Finalizado" : "En ruta"}
+          <span
+            className={`font-bold truncate block ${
+              isArrived ? "text-emerald-400" : "text-orange-400"
+            }`}
+          >
+            {isArrived ? "En sitio" : "En ruta"}
           </span>
         </div>
-        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+        <div className="bg-slate-900/90 border border-slate-800 rounded p-1">
           <span className="block text-slate-400">Tiempo</span>
-          <span className="font-bold text-slate-800 dark:text-gray-200 block">
+          <span className="font-bold text-white block font-mono">
             {isArrived ? "0:00" : formatCountdown(snapshot.remainingSeconds || 0)}
           </span>
         </div>
-        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+        <div className="bg-slate-900/90 border border-slate-800 rounded p-1">
           <span className="block text-slate-400">Distancia</span>
-          <span className="font-bold text-slate-800 dark:text-gray-200 block">
+          <span className="font-bold text-white block font-mono">
             {isArrived ? "0 m" : formatDistance(snapshot.remainingDistanceMeters || 0)}
           </span>
         </div>
       </div>
 
       {/* Botones de acción */}
-      <div className="flex items-center gap-1.5 mt-2 pt-1 border-t border-slate-100 dark:border-gray-800">
+      <div className="flex items-center gap-1.5 mt-2.5 pt-1.5 border-t border-slate-800">
         {onOpenModal && (
           <button
             type="button"
             onClick={() => onOpenModal(order)}
-            className="flex-1 py-1 px-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+            className="flex-1 py-1.5 px-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-md"
           >
             <Maximize2 className="h-3 w-3" />
             <span>Ver visor ampliado</span>
@@ -321,7 +542,7 @@ function TrackingFloatingCard({ snapshot, order, onOpenModal, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="py-1 px-2 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-300 font-semibold text-[10px] transition-colors cursor-pointer"
+            className="py-1.5 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[10px] transition-colors cursor-pointer border border-slate-700"
           >
             Cerrar ruta
           </button>
@@ -628,7 +849,6 @@ export function ActiveZonesCard({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        if (isExpanded) setIsExpanded(false);
                                         onSimulateRoute(o);
                                       }}
                                       className="mt-1 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[10px] font-bold py-1 px-2 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
@@ -684,7 +904,6 @@ export function ActiveZonesCard({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (isExpanded) setIsExpanded(false);
                                       onSimulateRoute(o);
                                     }}
                                     className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[11px] font-bold py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
@@ -749,12 +968,13 @@ export function ActiveZonesCard({
                 })}
               </MapContainer>
 
-              {/* Tarjeta flotante compacta con telemetría de seguimiento */}
+              {/* Tarjeta flotante compacta con telemetría de seguimiento (Mapa Pequeño) */}
               <TrackingFloatingCard
                 snapshot={trackingSnapshot}
                 order={trackingOrder}
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}
+                isExpandedView={false}
               />
             </div>
             <div className="flex flex-wrap gap-2.5 items-center text-xs">
@@ -914,7 +1134,6 @@ export function ActiveZonesCard({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setIsExpanded(false);
                                         onSimulateRoute(o);
                                       }}
                                       className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
@@ -964,7 +1183,6 @@ export function ActiveZonesCard({
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      setIsExpanded(false);
                                       onSimulateRoute(o);
                                     }}
                                     className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
@@ -1018,12 +1236,13 @@ export function ActiveZonesCard({
                 })}
               </MapContainer>
 
-              {/* Tarjeta flotante con telemetría de seguimiento en vista expandida */}
+              {/* Tarjeta flotante con telemetría de seguimiento (Mapa Ampliado) */}
               <TrackingFloatingCard
                 snapshot={trackingSnapshot}
                 order={trackingOrder}
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}
+                isExpandedView={true}
               />
             </div>
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">

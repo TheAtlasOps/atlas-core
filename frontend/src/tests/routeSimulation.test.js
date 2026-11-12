@@ -12,6 +12,7 @@ import {
   FALLBACK_DEMO_METRICS,
   FALLBACK_DEMO_DESTINATION,
   matchesFallbackRoute,
+  makeVehicleIcon,
 } from "../lib/routeSimulation.js";
 
 test("calculateBearing determina la orientación angular correcta", () => {
@@ -166,4 +167,34 @@ test("fetchStreetRoute rechaza con error si OSRM falla y el destino no coincide 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("makeVehicleIcon genera la camioneta ATLAS 3D isométrica, baliza y orientación sin emojis", () => {
+  const mockL = {
+    divIcon: (opts) => opts,
+  };
+
+  // 1. Rumbo Este (90°): scaleX(1) y tilt neutro
+  const iconEast = makeVehicleIcon(90, true, false, mockL);
+  assert.ok(iconEast.html.includes('src="/truck-atlas.png"'), "Debe incluir el asset local /truck-atlas.png");
+  assert.ok(iconEast.html.includes("scaleX(1)"), "Rumbo Este debe orientar a la derecha con scaleX(1)");
+  assert.ok(iconEast.html.includes("rotate(0deg)"), "Rumbo horizontal debe tener tilt 0deg");
+  assert.ok(iconEast.html.includes("atlasBeaconStrobe"), "Vehículo en movimiento debe tener baliza activa");
+  assert.ok(!iconEast.html.includes("🚐"), "No debe contener emojis de vehículo");
+
+  // 2. Rumbo Oeste (270°): scaleX(-1) para invertir horizontalmente sin quedar boca abajo
+  const iconWest = makeVehicleIcon(270, true, false, mockL);
+  assert.ok(iconWest.html.includes("scaleX(-1)"), "Rumbo Oeste debe invertir con scaleX(-1)");
+  assert.ok(iconWest.html.includes("rotate(0deg)"), "Rumbo 270° debe tener tilt neutro 0deg");
+
+  // 3. Rumbo Norte (0°): cabeceo hacia arriba
+  const iconNorth = makeVehicleIcon(0, true, false, mockL);
+  assert.ok(iconNorth.html.includes("rotate(-18deg)"), "Rumbo Norte debe inclinar hacia arriba (-18deg)");
+
+  // 4. Estado Llegada (isArrived = true): insignia de check y sin baliza
+  const iconArrived = makeVehicleIcon(90, false, true, mockL);
+  assert.ok(iconArrived.html.includes("✓"), "Al arribar debe mostrar la insignia con check verde");
+  assert.ok(!iconArrived.html.includes("atlasBeaconStrobe"), "Al arribar no debe parpadear la baliza de traslado");
+  assert.deepEqual(iconArrived.iconSize, [52, 38]);
+  assert.deepEqual(iconArrived.iconAnchor, [26, 19]);
 });
