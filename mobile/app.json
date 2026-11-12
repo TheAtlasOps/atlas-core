@@ -2,7 +2,7 @@
   "expo": {
     "name": "atlas-app-tecnico",
     "slug": "atlas-fsm-mobile",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "cl.atlasfsm.tecnico",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#0B0F17",
         "foregroundImage": "./assets/android-icon-foreground.png",
