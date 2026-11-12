@@ -68,6 +68,7 @@ export function orderToVisit(o: ApiOrder): Visit | null {
     code: o.order_number,
     time: formatChileanSchedule(o.scheduled_date),
     scheduledDate: o.scheduled_date || null,
+    completedAt: o.completed_at || null,
     client: o.client?.business_name ?? 'Cliente sin datos',
     service: labelFor(o.service_type),
     serviceType: o.service_type,

@@ -10,6 +10,7 @@ import { SERVICE_COLOR, SERVICE_ICON } from '../data/mockData';
 import type { Visit } from '../types';
 import {
   getSchedulingInfo,
+  getCompletionInfo,
   sortPendingVisits,
   sortHistoryVisits,
 } from '../utils/scheduling';
@@ -72,17 +73,19 @@ export function AgendaScreen({
     const accentColor = SERVICE_COLOR[v.serviceType] || colors.brand;
     const iconName    = SERVICE_ICON[v.serviceType] || 'tool';
     const isCompleted = v.status === 'completada';
-    const schedule    = getSchedulingInfo(v.scheduledDate, v.status, today);
+    const completion  = isCompleted ? getCompletionInfo(v.completedAt) : null;
+    const schedule    = !isCompleted ? getSchedulingInfo(v.scheduledDate, v.status, today) : null;
 
-    // Color del icono del badge de programación
-    const badgeIconColor =
-      schedule.category === 'ATRASADA'
+    // Color del icono del badge de programación (solo órdenes pendientes)
+    const badgeIconColor = schedule
+      ? schedule.category === 'ATRASADA'
         ? colors.red
         : schedule.category === 'HOY'
         ? colors.brandText
         : schedule.category === 'PROXIMA'
         ? colors.blue
-        : colors.text3;
+        : colors.text3
+      : colors.green;
 
     return (
       <TouchableOpacity
@@ -99,27 +102,52 @@ export function AgendaScreen({
           style={{ backgroundColor: isCompleted ? colors.green : accentColor }}
         />
 
-        {/* Cabecera de la tarjeta: Badge de programación + Estado */}
+        {/* Cabecera de la tarjeta: Badge de programación/finalización + Estado */}
         <View className="flex-row items-center justify-between mb-2">
-          <View className="flex-row items-center flex-1 mr-2">
+          {isCompleted && completion ? (
             <View
-              className={`flex-row items-center px-2 py-0.5 rounded-full border mr-2 ${schedule.badgeClass}`}
+              className="flex-row items-center flex-1 mr-2"
+              accessibilityLabel={completion.fullText}
             >
-              <Feather
-                name={schedule.iconName}
-                size={10}
-                color={badgeIconColor}
-                style={{ marginRight: 4 }}
-              />
-              <Text className={`text-[10px] font-bold ${schedule.textClass}`}>
-                {schedule.label}
+              <View className="flex-row items-center px-2 py-0.5 rounded-full border mr-2 bg-green-dim border-green/30">
+                <Feather
+                  name="check"
+                  size={10}
+                  color={colors.green}
+                  style={{ marginRight: 4 }}
+                />
+                <Text className="text-[10px] font-bold text-green">
+                  {completion.label}
+                </Text>
+              </View>
+
+              {completion.displayDateTime ? (
+                <Text className="font-mono text-[11px] text-text2 flex-shrink" numberOfLines={1}>
+                  {completion.displayDateTime}
+                </Text>
+              ) : null}
+            </View>
+          ) : schedule ? (
+            <View className="flex-row items-center flex-1 mr-2">
+              <View
+                className={`flex-row items-center px-2 py-0.5 rounded-full border mr-2 ${schedule.badgeClass}`}
+              >
+                <Feather
+                  name={schedule.iconName}
+                  size={10}
+                  color={badgeIconColor}
+                  style={{ marginRight: 4 }}
+                />
+                <Text className={`text-[10px] font-bold ${schedule.textClass}`}>
+                  {schedule.label}
+                </Text>
+              </View>
+
+              <Text className="font-mono text-[11px] text-text2 flex-shrink" numberOfLines={1}>
+                {schedule.displayDateTime}
               </Text>
             </View>
-
-            <Text className="font-mono text-[11px] text-text2 flex-shrink" numberOfLines={1}>
-              {schedule.displayDateTime}
-            </Text>
-          </View>
+          ) : null}
 
           <StatusBadge status={v.status} />
         </View>
