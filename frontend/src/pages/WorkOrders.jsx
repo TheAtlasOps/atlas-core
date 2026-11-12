@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Filter, Plus, Inbox, Search, X, CheckCircle2, Cpu } from "lucide-react";
 import TaskCard from "../components/ui/TaskCard";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
@@ -158,6 +158,8 @@ export default function WorkOrders() {
     totalOrders,
     auditedOrders,
   } = useWorkOrders();
+
+  const navigate = useNavigate();
 
   const [isLoading, setIsLoading] = useState(true);
   useEffect(() => {
@@ -323,6 +325,11 @@ export default function WorkOrders() {
           setSelectedOrder(null);
           setEditingOrder(order);
           setIsModalOpen(true);
+        }}
+        onSimulateRoute={(order) => {
+          setSelectedOrder(null);
+          const orderNum = order.order_number || order.orderNumber || order.id;
+          navigate(`/dashboard?tracking=${encodeURIComponent(orderNum)}`);
         }}
       />
 

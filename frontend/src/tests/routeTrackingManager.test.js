@@ -8,17 +8,21 @@ import {
   getSafeAddress,
   getSafeOrderNumber,
   getSafeOrderId,
+  getSafeTechnicianName,
   isEnRutaStatus,
   formatCountdown,
   startTracking,
+  restartTracking,
   stopTracking,
   getTracking,
   hasActiveTracking,
   computeTrackingSnapshot,
   syncOrdersWithTracking,
   resetAllTrackings,
+  setOnTrackingCompleted,
 } from "../lib/routeTrackingManager.js";
 import { DEMO_ORIGIN, FALLBACK_DEMO_COORDINATES } from "../lib/routeSimulation.js";
+import { hasVerifiedRecentGps } from "../lib/mapClustering.js";
 
 test("getSafeClientName previene Minified React Error #31 extrayendo siempre un string", () => {
   // Caso objeto complejo (FastAPI / Neon real)
@@ -244,4 +248,149 @@ test("syncOrdersWithTracking inicia seguimiento en EN_RUTA y lo detiene al cambi
   syncOrdersWithTracking(updatedOrders);
   // El seguimiento de OT-A debe haberse detenido automáticamente
   assert.equal(hasActiveTracking("OT-A"), false);
+});
+
+test("getSafeTechnicianName extrae el nombre del técnico de diversas estructuras y previene fallos de React", () => {
+  // Caso 1: objeto anidado assigned_technician con user
+  const orderWithNestedTech = {
+    assigned_technician: {
+      user: { first_name: "Tomás", last_name: "Pérez" },
+    },
+  };
+  assert.equal(getSafeTechnicianName(orderWithNestedTech), "Tomás Pérez");
+
+  // Caso 2: technician_summary
+  const orderWithSummary = {
+    technician_summary: { full_name: "Carlos Muñoz" },
+  };
+  assert.equal(getSafeTechnicianName(orderWithSummary), "Carlos Muñoz");
+
+  // Caso 3: string directo
+  const orderWithStringTech = { technician: "Rodrigo Silva" };
+  assert.equal(getSafeTechnicianName(orderWithStringTech), "Rodrigo Silva");
+
+  // Caso 4: nulo o sin técnico
+  assert.equal(getSafeTechnicianName(null), "Especialista en terreno");
+  assert.equal(getSafeTechnicianName({}), "Especialista en terreno");
+});
+
+test("restartTracking reinicia el timestamp startedAt y el ciclo de 180s sin alterar la BD", () => {
+  resetAllTrackings();
+
+  const order = {
+    id: "OT-RESTART-TEST",
+    order_number: "OT-RESTART-TEST",
+    status: "EN_RUTA",
+    lat: -33.4535,
+    lng: -70.6605,
+    client: { business_name: "Cliente Test" },
+  };
+
+  const initialRecord = startTracking(order);
+  const oldStartedAt = initialRecord.startedAt - 200000; // Simular que inició hace tiempo y finalizó
+  initialRecord.startedAt = oldStartedAt;
+  initialRecord.hasNotifiedCompletion = true;
+
+  const snapBefore = computeTrackingSnapshot(initialRecord, Date.now());
+  assert.equal(snapBefore.isArrived, true);
+  assert.equal(snapBefore.progressPercent, 100);
+
+  // Reiniciar la simulación (botón 'Repetir demo')
+  const restartedRecord = restartTracking("OT-RESTART-TEST");
+  assert.ok(restartedRecord);
+  assert.ok(restartedRecord.startedAt > oldStartedAt);
+  assert.equal(restartedRecord.hasNotifiedCompletion, false);
+
+  const snapAfter = computeTrackingSnapshot(restartedRecord, restartedRecord.startedAt + 1000);
+  assert.equal(snapAfter.isArrived, false);
+  assert.ok(snapAfter.progressPercent < 5);
+});
+
+test("setOnTrackingCompleted dispara el callback una sola vez al cumplirse los 180 segundos", () => {
+  let completedCount = 0;
+  let lastCompletedOrderId = null;
+
+  setOnTrackingCompleted((record) => {
+    completedCount += 1;
+    lastCompletedOrderId = record.orderId;
+  });
+
+  const record = {
+    orderId: "OT-CALLBACK-TEST",
+    orderNumber: "OT-CALLBACK-TEST",
+    clientName: "Cliente Callback",
+    address: "Santiago",
+    origin: DEMO_ORIGIN,
+    destination: { lat: -33.4535, lng: -70.6605 },
+    startedAt: 1000000,
+    durationMs: SIMULATION_DURATION_MS,
+    hasNotifiedCompletion: false,
+    routeData: {
+      coordinates: FALLBACK_DEMO_COORDINATES,
+      interpolatedCoordinates: FALLBACK_DEMO_COORDINATES,
+      distanceMeters: 4650,
+      durationSeconds: 780,
+    },
+    isLoadingRoute: false,
+    routeError: null,
+  };
+
+  // 1. A los 90s: no debe dispararse
+  computeTrackingSnapshot(record, 1000000 + 90000);
+  assert.equal(completedCount, 0);
+
+  // 2. A los 180s exactos: debe dispararse una vez
+  computeTrackingSnapshot(record, 1000000 + 180000);
+  assert.equal(completedCount, 1);
+  assert.equal(lastCompletedOrderId, "OT-CALLBACK-TEST");
+
+  // 3. Próximos ticks tras los 180s: NO debe volver a dispararse
+  computeTrackingSnapshot(record, 1000000 + 185000);
+  computeTrackingSnapshot(record, 1000000 + 190000);
+  assert.equal(completedCount, 1);
+
+  // Limpiar callback
+  setOnTrackingCompleted(null);
+});
+
+test("hasVerifiedRecentGps solo acepta coordenadas con timestamp reciente (<10m) y descarta seed o datos obsoletos", () => {
+  // Caso 1: Técnico de seed/demo con coordenadas pero sin timestamp (ej: TP)
+  const seedTechWithoutTimestamp = {
+    id: 1,
+    name: "Tomás Pérez",
+    initials: "TP",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: null,
+  };
+  assert.equal(hasVerifiedRecentGps(seedTechWithoutTimestamp), false, "Debe rechazar técnicos sin timestamp");
+
+  // Caso 2: Coordenadas antiguas de hace varias horas o días
+  const staleTech = {
+    id: 2,
+    name: "Técnico Antiguo",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: new Date(Date.now() - 3600000).toISOString(), // hace 1 hora
+  };
+  assert.equal(hasVerifiedRecentGps(staleTech), false, "Debe rechazar timestamps mayores a 10 minutos");
+
+  // Caso 3: Coordenadas válidas y recientes emitidas hace 2 minutos
+  const liveRecentTech = {
+    id: 3,
+    name: "Técnico en Vivo",
+    lat: -33.4372,
+    lng: -70.6506,
+    lastLocationAt: new Date(Date.now() - 120000).toISOString(), // hace 2 min
+  };
+  assert.equal(hasVerifiedRecentGps(liveRecentTech), true, "Debe aceptar coordenadas recientes con timestamp");
+
+  // Caso 4: Coordenadas inválidas
+  const invalidCoordsTech = {
+    id: 4,
+    lat: "invalid",
+    lng: null,
+    lastLocationAt: new Date().toISOString(),
+  };
+  assert.equal(hasVerifiedRecentGps(invalidCoordsTech), false, "Debe rechazar coordenadas inválidas");
 });
