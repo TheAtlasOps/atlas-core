@@ -21,6 +21,8 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Navigation,
+  Zap,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -30,6 +32,7 @@ import { useTheme } from "../hooks/useTheme";
 import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
+import RouteSimulationModal from "../components/ui/RouteSimulationModal";
 import {
   AVAILABLE_STATUS_FILTERS,
   getMarkerHexByStatus,
@@ -117,6 +120,7 @@ export function ActiveZonesCard({
   markers = [],
   technicianMarkers = [],
   onSelectOrderId,
+  onSimulateRoute,
 }) {
   const { isDark } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -185,15 +189,37 @@ export function ActiveZonesCard({
               )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsExpanded(true)}
-            aria-label="Expandir mapa"
-            title="Expandir mapa a pantalla completa"
-            className="flex items-center justify-center rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors shrink-0"
-          >
-            <Maximize2 className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onSimulateRoute && (
+              <button
+                type="button"
+                onClick={() => {
+                  const sample =
+                    allOrdersList.find(
+                      (o) =>
+                        isValidCoordinate(o.lat, o.lng) ||
+                        isValidCoordinate(o.client?.lat, o.client?.lng)
+                    ) || allOrdersList[0];
+                  if (sample) onSimulateRoute(sample);
+                }}
+                aria-label="Simular ruta de técnico en modo demostración"
+                title="Simular desplazamiento de técnico hacia una orden en modo demo"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 transition-all cursor-pointer shadow-2xs"
+              >
+                <Zap className="h-3.5 w-3.5 text-orange-500" />
+                <span className="hidden sm:inline">Simular ruta (Demo)</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              aria-label="Expandir mapa"
+              title="Expandir mapa a pantalla completa"
+              className="flex items-center justify-center rounded-md p-1.5 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Barra de filtros por estado */}
@@ -354,6 +380,19 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3 w-3 shrink-0" />
                                     </button>
                                   )}
+                                  {onSimulateRoute && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isExpanded) setIsExpanded(false);
+                                        onSimulateRoute(o);
+                                      }}
+                                      className="mt-1 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[10px] font-bold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                    >
+                                      <Navigation className="h-3 w-3 shrink-0 text-orange-600 dark:text-orange-400" />
+                                      <span>Simular ruta</span>
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -391,6 +430,19 @@ export function ActiveZonesCard({
                                   >
                                     <span>Ver detalle de la orden</span>
                                     <ExternalLink className="h-3 w-3 shrink-0" />
+                                  </button>
+                                )}
+                                {onSimulateRoute && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isExpanded) setIsExpanded(false);
+                                      onSimulateRoute(o);
+                                    }}
+                                    className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[11px] font-bold py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                  >
+                                    <Navigation className="h-3 w-3 shrink-0 text-orange-600 dark:text-orange-400" />
+                                    <span>Simular ruta del técnico</span>
                                   </button>
                                 )}
                               </div>
@@ -597,6 +649,19 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                     </button>
                                   )}
+                                  {onSimulateRoute && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsExpanded(false);
+                                        onSimulateRoute(o);
+                                      }}
+                                      className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                    >
+                                      <Navigation className="h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400" />
+                                      <span>Simular ruta del técnico</span>
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -628,6 +693,19 @@ export function ActiveZonesCard({
                                   >
                                     <span>Ver detalle de la orden</span>
                                     <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                                  </button>
+                                )}
+                                {onSimulateRoute && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsExpanded(false);
+                                      onSimulateRoute(o);
+                                    }}
+                                    className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                                  >
+                                    <Navigation className="h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400" />
+                                    <span>Simular ruta del técnico</span>
                                   </button>
                                 )}
                               </div>
@@ -1403,6 +1481,7 @@ export default function DispatchBoard() {
   const [editingOrder, setEditingOrder] = useState(null);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [simulatedOrder, setSimulatedOrder] = useState(null);
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
@@ -2016,6 +2095,10 @@ export default function DispatchBoard() {
           setEditingOrder(order);
           setIsModalOpen(true);
         }}
+        onSimulateRoute={(order) => {
+          setSelectedOrder(null);
+          setSimulatedOrder(order);
+        }}
       />
 
       {/* ── Layout principal ── */}
@@ -2229,6 +2312,7 @@ export default function DispatchBoard() {
                 markers={mapMarkers}
                 technicianMarkers={technicianMarkers}
                 onSelectOrderId={handleSelectOrderId}
+                onSimulateRoute={(order) => setSimulatedOrder(order)}
               />
               <DonutChartCard
                 isLoading={isLoading}
@@ -2276,6 +2360,13 @@ export default function DispatchBoard() {
             error={activityError || apiError}
             onSelectOrderId={handleSelectOrderId}
             onRetry={() => fetchActivityPage(activityPagination.page, activityPagination.size)}
+          />
+        )}
+        {/* ── Modal de simulación de ruta de técnico en modo demostración ── */}
+        {simulatedOrder && (
+          <RouteSimulationModal
+            order={simulatedOrder}
+            onClose={() => setSimulatedOrder(null)}
           />
         )}
       </div>

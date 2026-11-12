@@ -21,6 +21,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Loader2,
+  Navigation,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
@@ -121,6 +122,7 @@ function WorkOrderDetailDrawerContent({
   onClose,
   onOpenInventoryModal,
   onEditOrder,
+  onSimulateRoute,
 }) {
   const {
     hardwareInventory,
@@ -466,6 +468,17 @@ function WorkOrderDetailDrawerContent({
                   title="Editar dirección y ajustar coordenadas de la orden"
                 >
                   Editar ubicación
+                </button>
+              )}
+              {onSimulateRoute && (
+                <button
+                  type="button"
+                  onClick={() => onSimulateRoute(apiOrderDetail || order)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 transition-all cursor-pointer shadow-2xs"
+                  title="Simular desplazamiento de técnico hacia esta orden en mapa interactivo"
+                >
+                  <Navigation className="h-3 w-3 text-orange-500" />
+                  <span>Simular ruta (Demo)</span>
                 </button>
               )}
             </div>
