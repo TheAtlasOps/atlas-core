@@ -24,6 +24,8 @@ import {
   RefreshCw,
   Sparkles,
   Zap,
+  RotateCcw,
+  UserCheck,
 } from "lucide-react";
 import {
   MapContainer,
@@ -37,14 +39,22 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { useTheme } from "../../hooks/useTheme";
-import { DEMO_ORIGIN, formatDistance } from "../../lib/routeSimulation";
+import {
+  DEMO_ORIGIN,
+  formatDistance,
+  makeOriginIcon,
+  makeDestinationIcon,
+  makeVehicleIcon,
+} from "../../lib/routeSimulation";
 import { extractOrderCoordinates } from "../../lib/mapClustering";
 import {
   getSafeOrderId,
   getSafeOrderNumber,
   getSafeClientName,
   getSafeAddress,
+  getSafeTechnicianName,
   startTracking,
+  restartTracking,
   getTracking,
   retryTrackingRoute,
   computeTrackingSnapshot,
@@ -70,84 +80,6 @@ function RouteBoundsFitter({ points }) {
   return null;
 }
 
-// ─── Iconos Leaflet personalizados ──────────────────────────────────────────
-function makeOriginIcon() {
-  return L.divIcon({
-    className: "atlas-sim-origin-icon",
-    html: `
-      <div style="
-        position: relative;
-        width: 34px; height: 34px; border-radius: 10px;
-        background: #0f172a; border: 2px solid #38bdf8;
-        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.6);
-        display: flex; align-items: center; justify-content: center;
-        color: #38bdf8; font-size: 16px;
-      ">
-        🏢
-      </div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -18],
-  });
-}
-
-function makeDestinationIcon(color = "#f97316") {
-  return L.divIcon({
-    className: "atlas-sim-dest-icon",
-    html: `
-      <div style="
-        position: relative;
-        width: 36px; height: 36px; border-radius: 9999px;
-        background: #0f172a; border: 2.5px solid ${color};
-        box-shadow: 0 6px 14px rgba(249, 115, 22, 0.45);
-        display: flex; align-items: center; justify-content: center;
-        color: #ffffff; font-size: 17px;
-      ">
-        📍
-      </div>`,
-    iconSize: [36, 36],
-    iconAnchor: [18, 18],
-    popupAnchor: [0, -20],
-  });
-}
-
-function makeVehicleIcon(bearing = 0, isMoving = false, isArrived = false) {
-  const pulseHtml = isMoving
-    ? `<span style="
-        position: absolute; inset: -6px; border-radius: 9999px;
-        border: 2px solid #f97316; opacity: 0.75;
-        animation: atlasPing 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
-      "></span>`
-    : "";
-
-  const borderColor = isArrived ? "#10b981" : "#f97316";
-  const iconSymbol = isArrived ? "✅" : "🚐";
-
-  return L.divIcon({
-    className: "atlas-sim-vehicle-icon",
-    html: `
-      <div style="
-        position: relative;
-        width: 42px; height: 42px; border-radius: 9999px;
-        background: #0f172a; border: 3px solid ${borderColor};
-        box-shadow: 0 6px 16px rgba(249, 115, 22, 0.55);
-        display: flex; align-items: center; justify-content: center;
-        transform: rotate(${Math.round(bearing)}deg);
-        transition: transform 0.18s ease-out;
-      ">
-        ${pulseHtml}
-        <span style="
-          font-size: 20px;
-          transform: rotate(-${Math.round(bearing)}deg);
-          display: inline-block;
-        ">${iconSymbol}</span>
-      </div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
-    popupAnchor: [0, -22],
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENTE INTERNO DEL VISOR
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -159,6 +91,7 @@ function RouteSimulationModalInner({ order, onClose }) {
   const orderNumber = useMemo(() => getSafeOrderNumber(order), [order]);
   const clientName = useMemo(() => getSafeClientName(order), [order]);
   const clientAddress = useMemo(() => getSafeAddress(order), [order]);
+  const technicianName = useMemo(() => getSafeTechnicianName(order), [order]);
 
   const destinationCoords = useMemo(() => {
     if (!order) return null;
@@ -281,6 +214,15 @@ function RouteSimulationModalInner({ order, onClose }) {
               <p className="text-[11px] text-slate-500 dark:text-gray-400 truncate max-w-xl">
                 {orderNumber} · {clientName} — {clientAddress}
               </p>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  Estado real OT: EN_RUTA
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-gray-300">
+                  <UserCheck className="h-3 w-3 text-slate-400" />
+                  <span>Técnico asignado: <strong>{technicianName}</strong></span>
+                </span>
+              </div>
             </div>
           </div>
 
@@ -384,7 +326,7 @@ function RouteSimulationModalInner({ order, onClose }) {
                 )}
 
                 {/* Marcador Origen: Base ATLAS */}
-                <Marker position={[DEMO_ORIGIN.lat, DEMO_ORIGIN.lng]} icon={makeOriginIcon()}>
+                <Marker position={[DEMO_ORIGIN.lat, DEMO_ORIGIN.lng]} icon={makeOriginIcon(L)}>
                   <Popup>
                     <div className="text-xs">
                       <strong className="block text-slate-900 font-bold">{DEMO_ORIGIN.label}</strong>
@@ -400,7 +342,7 @@ function RouteSimulationModalInner({ order, onClose }) {
                 {destinationCoords && (
                   <Marker
                     position={[destinationCoords.lat, destinationCoords.lng]}
-                    icon={makeDestinationIcon()}
+                    icon={makeDestinationIcon("#f97316", L)}
                   >
                     <Popup>
                       <div className="text-xs">
@@ -417,15 +359,18 @@ function RouteSimulationModalInner({ order, onClose }) {
                 {/* Marcador Móvil: Vehículo simulado */}
                 <Marker
                   position={currentCoord}
-                  icon={makeVehicleIcon(vehicleBearing, !isArrived, isArrived)}
+                  icon={makeVehicleIcon(vehicleBearing, !isArrived, isArrived, L)}
                 >
                   <Popup>
                     <div className="text-xs">
-                      <strong className="block text-slate-900 font-bold">Móvil Técnico ATLAS</strong>
-                      <span className="text-slate-600">
+                      <strong className="block text-slate-900 font-bold">Móvil Técnico · Simulación</strong>
+                      <span className="text-slate-600 block">
                         {isArrived
-                          ? "Llegada simulada al domicilio completada"
-                          : "En desplazamiento continuo asistido por OSRM"}
+                          ? "Simulación finalizada · Pendiente de confirmación de llegada del técnico"
+                          : "En desplazamiento continuo asistido por OSRM (Demo)"}
+                      </span>
+                      <span className="text-[10px] text-orange-600 font-semibold block mt-1">
+                        Especialista: {technicianName}
                       </span>
                     </div>
                   </Popup>
@@ -460,9 +405,12 @@ function RouteSimulationModalInner({ order, onClose }) {
                   }`}
                 />
                 <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
-                  {isArrived ? "Llegada al sitio" : "En ruta hacia el domicilio"}
+                  {isArrived ? "Simulación finalizada" : "En desplazamiento"}
                 </span>
               </div>
+              <span className="text-[10px] text-slate-500 dark:text-gray-400 truncate mt-0.5">
+                {isArrived ? "Pendiente de confirmación de llegada del técnico" : "En ruta hacia el domicilio"}
+              </span>
             </div>
 
             {/* Distancia restante */}
@@ -487,10 +435,10 @@ function RouteSimulationModalInner({ order, onClose }) {
               </div>
               <div className="mt-1">
                 <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
-                  {isArrived ? "¡En sitio!" : formatCountdown(remainingSeconds)}
+                  {isArrived ? "0:00 min" : formatCountdown(remainingSeconds)}
                 </span>
                 <span className="text-[10px] text-slate-400 ml-1">
-                  {isArrived ? "" : `de ${SIMULATION_DURATION_SECONDS}s`}
+                  {isArrived ? "cumplidos" : `de ${SIMULATION_DURATION_SECONDS}s`}
                 </span>
               </div>
             </div>
@@ -533,7 +481,7 @@ function RouteSimulationModalInner({ order, onClose }) {
                 />
                 <span>
                   {isArrived
-                    ? "Llegada simulada al sitio cumplida"
+                    ? "Simulación finalizada · Pendiente de confirmación de llegada del técnico"
                     : "Seguimiento automático activo · Duración fija 3 min"}
                 </span>
               </div>
@@ -546,6 +494,22 @@ function RouteSimulationModalInner({ order, onClose }) {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Botón Repetir demo cuando ha finalizado */}
+              {isArrived && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (orderId) {
+                      restartTracking(orderId);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-orange-500 hover:bg-orange-600 text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>Repetir demo</span>
+                </button>
+              )}
+
               <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Simulación en frontend · Sin alterar base de datos</span>

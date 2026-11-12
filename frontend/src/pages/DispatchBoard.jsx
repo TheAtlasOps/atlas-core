@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Sparkles,
   ArrowUpRight,
@@ -23,7 +23,7 @@ import {
   ChevronRight,
   Navigation,
 } from "lucide-react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import KpiGrid from "../components/layout/KpiGrid";
@@ -32,7 +32,22 @@ import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
 import RouteSimulationModal from "../components/ui/RouteSimulationModal";
-import { isEnRutaStatus, syncOrdersWithTracking } from "../lib/routeTrackingManager";
+import {
+  isEnRutaStatus,
+  syncOrdersWithTracking,
+  getSafeOrderId,
+  getSafeTechnicianName,
+  startTracking,
+  formatCountdown,
+  useRouteTracking,
+} from "../lib/routeTrackingManager";
+import {
+  DEMO_ORIGIN,
+  formatDistance,
+  makeOriginIcon,
+  makeDestinationIcon,
+  makeVehicleIcon,
+} from "../lib/routeSimulation";
 import {
   AVAILABLE_STATUS_FILTERS,
   getMarkerHexByStatus,
@@ -42,7 +57,8 @@ import {
   makeSingleOrderIcon,
   makeClusterIcon,
   makeTechnicianIcon,
-  isValidCoordinate,
+  hasVerifiedRecentGps,
+  extractOrderCoordinates,
 } from "../lib/mapClustering";
 import {
   SERVICE_TYPES,
@@ -78,10 +94,20 @@ function FilterPill({ label, active, onClick }) {
   );
 }
 
-// Componente auxiliar para ajustar encuadre a marcadores reales
-function MapAutoBounds({ markers }) {
+// Componente auxiliar para ajustar encuadre a marcadores reales o ruta activa
+function MapAutoBounds({ markers, trackingRoutePoints }) {
   const map = useMap();
   useEffect(() => {
+    if (trackingRoutePoints && trackingRoutePoints.length >= 2) {
+      try {
+        const bounds = L.latLngBounds(trackingRoutePoints);
+        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 15 });
+        map.invalidateSize();
+        return;
+      } catch {
+        // Continuar con markers normales
+      }
+    }
     if (!markers || markers.length === 0) return;
     const valid = markers.filter(
       (m) =>
@@ -91,11 +117,218 @@ function MapAutoBounds({ markers }) {
         !isNaN(m.lng)
     );
     if (valid.length > 0) {
-      const bounds = L.latLngBounds(valid.map((m) => [m.lat, m.lng]));
-      map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+      try {
+        const bounds = L.latLngBounds(valid.map((m) => [m.lat, m.lng]));
+        map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
+      } catch {
+        // Ignorar si el mapa no está montado
+      }
     }
-  }, [map, markers]);
+  }, [map, markers, trackingRoutePoints]);
   return null;
+}
+
+// ── Capa interactiva de ruta y vehículo simulado en el mapa principal ────────
+function TrackingMapLayer({ snapshot, isDark }) {
+  if (!snapshot || !snapshot.routeData) return null;
+  const { coordinates } = snapshot.routeData;
+  const traveledSegment = snapshot.traveledSegment || [];
+  const currentCoord = snapshot.currentCoord || [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
+  const isArrived = Boolean(snapshot.isArrived);
+  const vehicleBearing = snapshot.bearing || 0;
+
+  return (
+    <>
+      {/* 1. Borde oscuro de la ruta vial */}
+      {coordinates && (
+        <Polyline
+          positions={coordinates}
+          pathOptions={{
+            color: isDark ? "#030712" : "#0f172a",
+            weight: 7,
+            opacity: 0.85,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      )}
+
+      {/* 2. Núcleo naranja brillante */}
+      {coordinates && (
+        <Polyline
+          positions={coordinates}
+          pathOptions={{
+            color: "#f97316",
+            weight: 4,
+            opacity: 1,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      )}
+
+      {/* 3. Tramo verde completado */}
+      {traveledSegment.length > 1 && (
+        <Polyline
+          positions={traveledSegment}
+          pathOptions={{
+            color: "#10b981",
+            weight: 4,
+            opacity: 0.95,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      )}
+
+      {/* Marcador Origen: Base ATLAS */}
+      <Marker position={[DEMO_ORIGIN.lat, DEMO_ORIGIN.lng]} icon={makeOriginIcon(L)}>
+        <Popup>
+          <div className="text-xs">
+            <strong className="block text-slate-900 font-bold">{DEMO_ORIGIN.label}</strong>
+            <span className="text-slate-500">{DEMO_ORIGIN.address}</span>
+            <span className="mt-1 block text-[10px] text-orange-600 font-semibold">
+              Punto de salida (Demo)
+            </span>
+          </div>
+        </Popup>
+      </Marker>
+
+      {/* Marcador Destino: Cliente de la OT */}
+      {snapshot.destination && (
+        <Marker
+          position={[snapshot.destination.lat, snapshot.destination.lng]}
+          icon={makeDestinationIcon("#f97316", L)}
+        >
+          <Popup>
+            <div className="text-xs">
+              <strong className="block text-slate-900 font-bold">Destino: {snapshot.clientName}</strong>
+              <span className="text-slate-500">{snapshot.clientAddress}</span>
+              <span className="mt-1 block text-[10px] text-slate-600 font-medium">
+                Orden #{snapshot.orderNumber}
+              </span>
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Marcador Móvil: Vehículo simulado */}
+      <Marker
+        position={currentCoord}
+        icon={makeVehicleIcon(vehicleBearing, !isArrived, isArrived, L)}
+      >
+        <Popup>
+          <div className="text-xs">
+            <strong className="block text-slate-900 font-bold">Móvil Técnico · Simulación</strong>
+            <span className="text-slate-600 block">
+              {isArrived
+                ? "Simulación finalizada · Pendiente de confirmación de llegada del técnico"
+                : "En desplazamiento continuo asistido por OSRM (Demo)"}
+            </span>
+            <span className="text-[10px] text-orange-600 font-semibold block mt-1">
+              Especialista: {snapshot.technicianName}
+            </span>
+          </div>
+        </Popup>
+      </Marker>
+    </>
+  );
+}
+
+// ── Tarjeta compacta flotante sobre el mapa de despacho ───────────────────────
+function TrackingFloatingCard({ snapshot, order, onOpenModal, onClose }) {
+  if (!snapshot || !order) return null;
+  const isArrived = Boolean(snapshot.isArrived);
+
+  return (
+    <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-[400] rounded-xl border border-slate-200/90 dark:border-gray-800/90 bg-white/95 dark:bg-gray-900/95 shadow-xl backdrop-blur-md p-2.5 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-gray-800 pb-1.5 mb-1.5">
+        <div className="flex items-center gap-1.5 truncate">
+          <span
+            className={`h-2 w-2 rounded-full shrink-0 ${
+              isArrived ? "bg-emerald-500" : "bg-orange-500 animate-pulse"
+            }`}
+          />
+          <span className="font-bold text-[11px] text-slate-900 dark:text-white truncate">
+            Seguimiento {snapshot.orderNumber}
+          </span>
+          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+            Demo
+          </span>
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 p-0.5 rounded cursor-pointer"
+            title="Cerrar seguimiento y volver a mapa general"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="text-[11px] truncate text-slate-700 dark:text-gray-300">
+        <span className="font-semibold">{snapshot.clientName}</span> ·{" "}
+        <span className="text-slate-500 dark:text-gray-400">Especialista: {snapshot.technicianName}</span>
+      </div>
+
+      {/* Barra de progreso */}
+      <div className="w-full h-1 rounded-full bg-slate-100 dark:bg-gray-800 overflow-hidden my-1.5">
+        <div
+          className={`h-full transition-all duration-150 ${
+            isArrived ? "bg-emerald-500" : "bg-orange-500"
+          }`}
+          style={{ width: `${snapshot.progressPercent || 0}%` }}
+        />
+      </div>
+
+      {/* Métricas compactas */}
+      <div className="grid grid-cols-3 gap-1 text-[10px] py-0.5 text-center">
+        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+          <span className="block text-slate-400">Estado</span>
+          <span className="font-bold text-slate-800 dark:text-gray-200 truncate block">
+            {isArrived ? "Finalizado" : "En ruta"}
+          </span>
+        </div>
+        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+          <span className="block text-slate-400">Tiempo</span>
+          <span className="font-bold text-slate-800 dark:text-gray-200 block">
+            {isArrived ? "0:00" : formatCountdown(snapshot.remainingSeconds || 0)}
+          </span>
+        </div>
+        <div className="bg-slate-50 dark:bg-gray-800/60 rounded p-1">
+          <span className="block text-slate-400">Distancia</span>
+          <span className="font-bold text-slate-800 dark:text-gray-200 block">
+            {isArrived ? "0 m" : formatDistance(snapshot.remainingDistanceMeters || 0)}
+          </span>
+        </div>
+      </div>
+
+      {/* Botones de acción */}
+      <div className="flex items-center gap-1.5 mt-2 pt-1 border-t border-slate-100 dark:border-gray-800">
+        {onOpenModal && (
+          <button
+            type="button"
+            onClick={() => onOpenModal(order)}
+            className="flex-1 py-1 px-2 rounded-md bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10px] transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+          >
+            <Maximize2 className="h-3 w-3" />
+            <span>Ver visor ampliado</span>
+          </button>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="py-1 px-2 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-300 font-semibold text-[10px] transition-colors cursor-pointer"
+          >
+            Cerrar ruta
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Recalcula el tamaño del canvas al abrir el modal expandido
@@ -121,11 +354,18 @@ export function ActiveZonesCard({
   technicianMarkers = [],
   onSelectOrderId,
   onSimulateRoute,
+  trackingOrder = null,
+  onCloseTrackingRoute,
+  onOpenTrackingModal,
 }) {
   const { isDark } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [statusFilter, setStatusFilter] = useState("TODAS");
   const [showUnlocatedModal, setShowUnlocatedModal] = useState(false);
+
+  // Hook de seguimiento en tiempo real para la orden activa
+  const trackingOrderId = trackingOrder ? getSafeOrderId(trackingOrder) : null;
+  const trackingSnapshot = useRouteTracking(trackingOrderId);
 
   // Considerar orders si están provistas, con fallback a markers
   const allOrdersList = useMemo(() => {
@@ -138,20 +378,39 @@ export function ActiveZonesCard({
     [allOrdersList, statusFilter]
   );
 
-  // Técnicos con coordenadas válidas
-  const validTechMarkers = useMemo(
-    () => technicianMarkers.filter((t) => isValidCoordinate(t.lat, t.lng)),
-    [technicianMarkers]
-  );
+  // Técnicos con coordenadas GPS reales, válidas y recientes
+  // Unifica la representación: descarta datos estáticos o de seed sin timestamp reciente,
+  // y si la orden en seguimiento pertenece al técnico, evita duplicar su marcador.
+  const validTechMarkers = useMemo(() => {
+    return technicianMarkers.filter((t) => {
+      if (!hasVerifiedRecentGps(t)) return false;
+      if (trackingOrder) {
+        const trackingTechName = getSafeTechnicianName(trackingOrder);
+        if (
+          t.orderNumber &&
+          (t.orderNumber === trackingOrder.order_number || t.orderNumber === trackingOrder.orderNumber)
+        ) {
+          return false;
+        }
+        if (trackingTechName && t.name && trackingTechName.toLowerCase() === t.name.toLowerCase()) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [technicianMarkers, trackingOrder]);
 
-  // Puntos geográficos para encuadre automático del mapa
-  const allMapPoints = useMemo(
-    () => [
+  // Puntos geográficos para encuadre automático del mapa (incluyendo la ruta activa)
+  const trackingRoutePoints = trackingSnapshot?.routeData?.coordinates || null;
+  const allMapPoints = useMemo(() => {
+    if (trackingRoutePoints && trackingRoutePoints.length >= 2) {
+      return trackingRoutePoints.map((pt) => ({ lat: pt[0], lng: pt[1] }));
+    }
+    return [
       ...clusters.map((c) => ({ lat: c.lat, lng: c.lng })),
       ...validTechMarkers.map((t) => ({ lat: t.lat, lng: t.lng })),
-    ],
-    [clusters, validTechMarkers]
-  );
+    ];
+  }, [clusters, validTechMarkers, trackingRoutePoints]);
 
   // Contadores del encabezado
   const summary = useMemo(
@@ -169,10 +428,12 @@ export function ActiveZonesCard({
               <h2 className="text-sm font-semibold text-foreground">
                 Distribución geográfica de órdenes y técnicos en terreno
               </h2>
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
-                aria-label="En vivo"
-              />
+              {validTechMarkers.length > 0 && (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0"
+                  aria-label="En vivo"
+                />
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>{summary.summaryText}</span>
@@ -300,7 +561,10 @@ export function ActiveZonesCard({
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={allMapPoints} />
+                <MapAutoBounds markers={allMapPoints} trackingRoutePoints={trackingRoutePoints} />
+
+                {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
+                <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
 
                 {/* Marcadores de Órdenes agrupadas (Clusters) y marcadores individuales */}
                 {clusters.map((cluster) => {
@@ -360,7 +624,7 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3 w-3 shrink-0" />
                                     </button>
                                   )}
-                                  {onSimulateRoute && isEnRutaStatus(o.status) && (
+                                  {onSimulateRoute && isEnRutaStatus(o.status) && extractOrderCoordinates(o).isValid && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -416,7 +680,7 @@ export function ActiveZonesCard({
                                     <ExternalLink className="h-3 w-3 shrink-0" />
                                   </button>
                                 )}
-                                {onSimulateRoute && isEnRutaStatus(o.status) && (
+                                {onSimulateRoute && isEnRutaStatus(o.status) && extractOrderCoordinates(o).isValid && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -484,9 +748,15 @@ export function ActiveZonesCard({
                   );
                 })}
               </MapContainer>
-            </div>
 
-            {/* Leyenda de colores */}
+              {/* Tarjeta flotante compacta con telemetría de seguimiento */}
+              <TrackingFloatingCard
+                snapshot={trackingSnapshot}
+                order={trackingOrder}
+                onOpenModal={onOpenTrackingModal || onSimulateRoute}
+                onClose={onCloseTrackingRoute}
+              />
+            </div>
             <div className="flex flex-wrap gap-2.5 items-center text-xs">
               <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
               <LegendDot color="bg-amber-500" label="Técnico señal >5m" />
@@ -576,7 +846,10 @@ export function ActiveZonesCard({
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={allMapPoints} />
+                <MapAutoBounds markers={allMapPoints} trackingRoutePoints={trackingRoutePoints} />
+
+                {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
+                <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
                 <MapResizeHandler />
 
                 {/* Marcadores agrupados y unitarios */}
@@ -637,7 +910,7 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                     </button>
                                   )}
-                                  {onSimulateRoute && isEnRutaStatus(o.status) && (
+                                  {onSimulateRoute && isEnRutaStatus(o.status) && extractOrderCoordinates(o).isValid && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -687,7 +960,7 @@ export function ActiveZonesCard({
                                     <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                   </button>
                                 )}
-                                {onSimulateRoute && isEnRutaStatus(o.status) && (
+                                {onSimulateRoute && isEnRutaStatus(o.status) && extractOrderCoordinates(o).isValid && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -744,9 +1017,15 @@ export function ActiveZonesCard({
                   );
                 })}
               </MapContainer>
-            </div>
 
-            {/* Pie con leyenda */}
+              {/* Tarjeta flotante con telemetría de seguimiento en vista expandida */}
+              <TrackingFloatingCard
+                snapshot={trackingSnapshot}
+                order={trackingOrder}
+                onOpenModal={onOpenTrackingModal || onSimulateRoute}
+                onClose={onCloseTrackingRoute}
+              />
+            </div>
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">
               <div className="flex flex-wrap gap-4 text-xs">
                 <LegendDot color="bg-emerald-500" label="Técnico GPS en vivo" />
@@ -1478,10 +1757,74 @@ export default function DispatchBoard() {
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [simulatedOrder, setSimulatedOrder] = useState(null);
+  const [selectedTrackingOrder, setSelectedTrackingOrder] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
   const [serviceFilter, setServiceFilter] = useState(null);
+
+  // Sincronizar seguimiento desde URL query param (?tracking=<orderNumber>)
+  useEffect(() => {
+    const trackingParam = searchParams.get("tracking");
+    if (!trackingParam) return;
+
+    let target = null;
+    if (Array.isArray(dashboardOrders)) {
+      target = dashboardOrders.find(
+        (o) =>
+          String(o.id) === trackingParam ||
+          String(o.order_number) === trackingParam ||
+          String(o.orderNumber) === trackingParam
+      );
+    }
+    if (!target && Array.isArray(visitsList)) {
+      target = visitsList.find(
+        (v) =>
+          String(v.id) === trackingParam ||
+          String(v.orderId) === trackingParam ||
+          String(v.order_number) === trackingParam
+      );
+    }
+    if (!target && Array.isArray(columns)) {
+      for (const col of columns) {
+        const found = col.tasks?.find(
+          (t) =>
+            String(t.id) === trackingParam ||
+            String(t.orderId) === trackingParam ||
+            String(t.order_number) === trackingParam
+        );
+        if (found) {
+          target = found;
+          break;
+        }
+      }
+    }
+
+    if (target && isEnRutaStatus(target.status)) {
+      startTracking(target);
+      setSelectedTrackingOrder(target);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("tracking");
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, dashboardOrders, visitsList, columns, setSearchParams]);
+
+  // Si una orden en ruta con coordenadas válidas es seleccionada, activar su seguimiento en el mapa principal
+  useEffect(() => {
+    if (selectedOrder && isEnRutaStatus(selectedOrder.status)) {
+      const { isValid } = extractOrderCoordinates(selectedOrder);
+      if (isValid) {
+        startTracking(selectedOrder);
+        setSelectedTrackingOrder(selectedOrder);
+      }
+    }
+  }, [selectedOrder]);
 
   const [kpis, setKpis] = useState(null);
   const [techniciansList, setTechniciansList] = useState([]);
@@ -2100,7 +2443,8 @@ export default function DispatchBoard() {
         }}
         onSimulateRoute={(order) => {
           setSelectedOrder(null);
-          setSimulatedOrder(order);
+          startTracking(order);
+          setSelectedTrackingOrder(order);
         }}
       />
 
@@ -2315,7 +2659,13 @@ export default function DispatchBoard() {
                 markers={mapMarkers}
                 technicianMarkers={technicianMarkers}
                 onSelectOrderId={handleSelectOrderId}
-                onSimulateRoute={(order) => setSimulatedOrder(order)}
+                onSimulateRoute={(order) => {
+                  startTracking(order);
+                  setSelectedTrackingOrder(order);
+                }}
+                trackingOrder={selectedTrackingOrder}
+                onCloseTrackingRoute={() => setSelectedTrackingOrder(null)}
+                onOpenTrackingModal={(order) => setSimulatedOrder(order)}
               />
               <DonutChartCard
                 isLoading={isLoading}

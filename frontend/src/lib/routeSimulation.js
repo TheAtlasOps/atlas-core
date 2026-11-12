@@ -219,3 +219,91 @@ export function formatEta(seconds) {
   const remMins = mins % 60;
   return `${hrs} h ${remMins} m`;
 }
+
+// ─── Generadores de Iconos Leaflet para Simulación de Ruteo ─────────────────
+
+export function makeOriginIcon(LInstance) {
+  const Leaflet = LInstance || (typeof window !== "undefined" ? window.L : null);
+  if (!Leaflet?.divIcon) return null;
+
+  return Leaflet.divIcon({
+    className: "atlas-sim-origin-icon",
+    html: `
+      <div style="
+        position: relative;
+        width: 34px; height: 34px; border-radius: 10px;
+        background: #0f172a; border: 2px solid #38bdf8;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.6);
+        display: flex; align-items: center; justify-content: center;
+        color: #38bdf8; font-size: 16px;
+      ">
+        🏢
+      </div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  });
+}
+
+export function makeDestinationIcon(color = "#f97316", LInstance) {
+  const Leaflet = LInstance || (typeof window !== "undefined" ? window.L : null);
+  if (!Leaflet?.divIcon) return null;
+
+  return Leaflet.divIcon({
+    className: "atlas-sim-dest-icon",
+    html: `
+      <div style="
+        position: relative;
+        width: 36px; height: 36px; border-radius: 9999px;
+        background: #0f172a; border: 2.5px solid ${color};
+        box-shadow: 0 6px 14px rgba(249, 115, 22, 0.45);
+        display: flex; align-items: center; justify-content: center;
+        color: #ffffff; font-size: 17px;
+      ">
+        📍
+      </div>`,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
+    popupAnchor: [0, -20],
+  });
+}
+
+export function makeVehicleIcon(bearing = 0, isMoving = false, isArrived = false, LInstance) {
+  const Leaflet = LInstance || (typeof window !== "undefined" ? window.L : null);
+  if (!Leaflet?.divIcon) return null;
+
+  const pulseHtml = isMoving
+    ? `<span style="
+        position: absolute; inset: -6px; border-radius: 9999px;
+        border: 2px solid #f97316; opacity: 0.75;
+        animation: atlasPing 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+      "></span>`
+    : "";
+
+  const borderColor = isArrived ? "#10b981" : "#f97316";
+  const iconSymbol = isArrived ? "✅" : "🚐";
+
+  return Leaflet.divIcon({
+    className: "atlas-sim-vehicle-icon",
+    html: `
+      <div style="
+        position: relative;
+        width: 42px; height: 42px; border-radius: 9999px;
+        background: #0f172a; border: 3px solid ${borderColor};
+        box-shadow: 0 6px 16px rgba(249, 115, 22, 0.55);
+        display: flex; align-items: center; justify-content: center;
+        transform: rotate(${Math.round(bearing)}deg);
+        transition: transform 0.18s ease-out;
+      ">
+        ${pulseHtml}
+        <span style="
+          font-size: 20px;
+          transform: rotate(-${Math.round(bearing)}deg);
+          display: inline-block;
+        ">${iconSymbol}</span>
+      </div>`,
+    iconSize: [42, 42],
+    iconAnchor: [21, 21],
+    popupAnchor: [0, -22],
+  });
+}

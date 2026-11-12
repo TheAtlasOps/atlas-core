@@ -72,6 +72,40 @@ export function getSafeOrderId(order) {
   return id !== null && id !== undefined ? String(id) : null;
 }
 
+export function getSafeTechnicianName(order) {
+  if (!order) return "Especialista en terreno";
+  if (typeof order.technician_name === "string" && order.technician_name.trim()) {
+    return order.technician_name.trim();
+  }
+  if (typeof order.assigneeName === "string" && order.assigneeName.trim()) {
+    return order.assigneeName.trim();
+  }
+  if (typeof order.assignee === "string" && order.assignee.trim()) {
+    return order.assignee.trim();
+  }
+  if (typeof order.technician === "string" && order.technician.trim()) {
+    return order.technician.trim();
+  }
+  if (typeof order.technician_summary?.full_name === "string" && order.technician_summary.full_name.trim()) {
+    return order.technician_summary.full_name.trim();
+  }
+  const assigned = order.assigned_technician || order.technician;
+  if (assigned) {
+    if (typeof assigned.full_name === "string" && assigned.full_name.trim()) {
+      return assigned.full_name.trim();
+    }
+    if (typeof assigned.name === "string" && assigned.name.trim()) {
+      return assigned.name.trim();
+    }
+    if (assigned.user) {
+      const u = assigned.user;
+      const fn = `${u.first_name || ""} ${u.last_name || ""}`.trim();
+      if (fn) return fn;
+    }
+  }
+  return "Especialista en terreno";
+}
+
 /**
  * Normaliza y comprueba si un estado corresponde a "En ruta"
  */
@@ -95,6 +129,11 @@ export function formatCountdown(seconds) {
 
 const activeTrackings = new Map();
 const listeners = new Set();
+let onTrackingCompletedCallback = null;
+
+export function setOnTrackingCompleted(callback) {
+  onTrackingCompletedCallback = callback;
+}
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -128,6 +167,7 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     orderNumber: getSafeOrderNumber(order),
     clientName: getSafeClientName(order),
     address: getSafeAddress(order),
+    technicianName: getSafeTechnicianName(order),
     origin: DEMO_ORIGIN,
     destination: { lat, lng },
     startedAt: Date.now(),
@@ -136,6 +176,7 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     isLoadingRoute: true,
     routeError: null,
     isInitialLoad: Boolean(isInitialLoad),
+    hasNotifiedCompletion: false,
     rawOrder: order,
   };
 
@@ -193,6 +234,20 @@ export function retryTrackingRoute(orderId) {
     });
 }
 
+/**
+ * Reinicia la simulación local de una orden (botón 'Repetir demo').
+ * No modifica BD, Neon ni estados operativos reales.
+ */
+export function restartTracking(orderId) {
+  if (!orderId) return null;
+  const current = activeTrackings.get(String(orderId));
+  if (!current) return null;
+  current.startedAt = Date.now();
+  current.hasNotifiedCompletion = false;
+  notifyListeners();
+  return current;
+}
+
 /** Detiene y elimina el seguimiento simulado de una orden */
 export function stopTracking(orderId) {
   if (!orderId) return;
@@ -224,6 +279,18 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
   const progress = Math.min(1, elapsedMs / record.durationMs);
   const isArrived = elapsedMs >= record.durationMs;
   const remainingSeconds = Math.max(0, Math.ceil((record.durationMs - elapsedMs) / 1000));
+
+  // Disparar notificación informativa exactamente una vez por finalización
+  if (isArrived && !record.hasNotifiedCompletion) {
+    record.hasNotifiedCompletion = true;
+    if (typeof onTrackingCompletedCallback === "function") {
+      try {
+        onTrackingCompletedCallback(record);
+      } catch (err) {
+        console.warn("[ATLAS routeTrackingManager] Error en callback de finalización:", err);
+      }
+    }
+  }
 
   const totalSteps = record.routeData?.interpolatedCoordinates?.length || 0;
   const currentIndex =
@@ -327,6 +394,23 @@ export function useRouteTracking(orderId) {
 
   const safeId = orderId !== null && orderId !== undefined ? String(orderId) : null;
   const record = safeId ? getTracking(safeId) : null;
+
+  // Actualización periódica en tiempo real mientras el seguimiento esté en curso
+  useEffect(() => {
+    if (!record || !record.routeData) return;
+    let animId = null;
+    const loop = () => {
+      setTick((t) => t + 1);
+      const now = Date.now();
+      if (now - record.startedAt < record.durationMs + 1000) {
+        animId = requestAnimationFrame(loop);
+      }
+    };
+    animId = requestAnimationFrame(loop);
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [record]);
 
   return useMemo(() => {
     if (!record) return null;

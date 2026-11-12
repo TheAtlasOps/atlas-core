@@ -471,7 +471,7 @@ function WorkOrderDetailDrawerContent({
                   Editar ubicación
                 </button>
               )}
-              {onSimulateRoute && isEnRutaStatus(apiOrderDetail?.status || order.status) && (
+              {onSimulateRoute && hasGeoloc && isEnRutaStatus(apiOrderDetail?.status || order.status) && (
                 <button
                   type="button"
                   onClick={() => onSimulateRoute(apiOrderDetail || order)}

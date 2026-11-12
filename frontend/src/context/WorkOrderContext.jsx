@@ -12,7 +12,7 @@ import {
   formatChileanDateTime,
 } from "../lib/workOrderOptions";
 import { api } from "../lib/api";
-import { syncOrdersWithTracking } from "../lib/routeTrackingManager";
+import { syncOrdersWithTracking, setOnTrackingCompleted } from "../lib/routeTrackingManager";
 
 const WorkOrderContext = createContext(null);
 
@@ -100,6 +100,19 @@ export function WorkOrderProvider({ children }) {
       syncOrdersWithTracking(rawOrders);
     }
   }, [rawOrders]);
+
+  // Notificación informativa discreta al finalizar un recorrido simulado (180 s)
+  useEffect(() => {
+    setOnTrackingCompleted((record) => {
+      showNotification(
+        "Recorrido simulado finalizado",
+        `La OT ${record.orderNumber} completó su recorrido de demostración. Pendiente de confirmación de llegada del técnico.`
+      );
+    });
+    return () => {
+      setOnTrackingCompleted(null);
+    };
+  }, [showNotification]);
 
   const allNormalizedOrders = useMemo(
     () => columns.flatMap((col) => col.tasks),

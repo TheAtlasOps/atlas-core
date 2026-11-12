@@ -202,6 +202,21 @@ export function getMapSummaryCounters(rawOrders = [], technicianMarkers = [], st
 }
 
 /**
+ * Determina si el técnico cuenta con GPS auténtico, válido y reciente.
+ * Descarta coordenadas estáticas, antiguas, de prueba o sin timestamp verificable.
+ */
+export function hasVerifiedRecentGps(techMarker) {
+  if (!techMarker) return false;
+  if (!isValidCoordinate(techMarker.lat, techMarker.lng)) return false;
+  if (!techMarker.lastLocationAt) return false;
+  const time = new Date(techMarker.lastLocationAt).getTime();
+  if (isNaN(time)) return false;
+  const diffMinutes = (Date.now() - time) / 60000;
+  // Considera auténtico únicamente lecturas recientes dentro de los últimos 10 minutos
+  return diffMinutes >= 0 && diffMinutes <= 10;
+}
+
+/**
  * Evalúa la vigencia de la última señal de GPS de un técnico.
  */
 export function getSignalFreshness(lastLocationAt) {
