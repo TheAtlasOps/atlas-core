@@ -219,7 +219,7 @@ export function LoginScreen({ onForgotPassword }: LoginScreenProps = {}) {
         {/* Footer corporativo */}
         <View className="items-center mt-4">
           <Text className="text-[11px] text-text3">
-            ATLAS FSM · Versión 1.0.3 · Conexión segura
+            ATLAS FSM · Versión 1.0.4 · Conexión segura
           </Text>
         </View>
       </ScrollView>
