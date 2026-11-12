@@ -22,7 +22,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Navigation,
-  Zap,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -33,6 +32,7 @@ import NewWorkOrderModal from "../components/ui/NewWorkOrderModal";
 import HardwareInventoryModal from "../components/ui/HardwareInventoryModal";
 import WorkOrderDetailDrawer from "../components/ui/WorkOrderDetailDrawer";
 import RouteSimulationModal from "../components/ui/RouteSimulationModal";
+import { isEnRutaStatus, syncOrdersWithTracking } from "../lib/routeTrackingManager";
 import {
   AVAILABLE_STATUS_FILTERS,
   getMarkerHexByStatus,
@@ -190,26 +190,6 @@ export function ActiveZonesCard({
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {onSimulateRoute && (
-              <button
-                type="button"
-                onClick={() => {
-                  const sample =
-                    allOrdersList.find(
-                      (o) =>
-                        isValidCoordinate(o.lat, o.lng) ||
-                        isValidCoordinate(o.client?.lat, o.client?.lng)
-                    ) || allOrdersList[0];
-                  if (sample) onSimulateRoute(sample);
-                }}
-                aria-label="Simular ruta de técnico en modo demostración"
-                title="Simular desplazamiento de técnico hacia una orden en modo demo"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 transition-all cursor-pointer shadow-2xs"
-              >
-                <Zap className="h-3.5 w-3.5 text-orange-500" />
-                <span className="hidden sm:inline">Simular ruta (Demo)</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={() => setIsExpanded(true)}
@@ -380,17 +360,21 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3 w-3 shrink-0" />
                                     </button>
                                   )}
-                                  {onSimulateRoute && (
+                                  {onSimulateRoute && isEnRutaStatus(o.status) && (
                                     <button
                                       type="button"
                                       onClick={() => {
                                         if (isExpanded) setIsExpanded(false);
                                         onSimulateRoute(o);
                                       }}
-                                      className="mt-1 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[10px] font-bold py-1 px-2 transition-colors flex items-center justify-center gap-1 shadow-2xs cursor-pointer"
+                                      className="mt-1 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[10px] font-bold py-1 px-2 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                                     >
+                                      <span className="relative flex h-2 w-2 shrink-0">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                      </span>
                                       <Navigation className="h-3 w-3 shrink-0 text-orange-600 dark:text-orange-400" />
-                                      <span>Simular ruta</span>
+                                      <span>Ver seguimiento (Demo)</span>
                                     </button>
                                   )}
                                 </div>
@@ -432,7 +416,7 @@ export function ActiveZonesCard({
                                     <ExternalLink className="h-3 w-3 shrink-0" />
                                   </button>
                                 )}
-                                {onSimulateRoute && (
+                                {onSimulateRoute && isEnRutaStatus(o.status) && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -441,8 +425,12 @@ export function ActiveZonesCard({
                                     }}
                                     className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-[11px] font-bold py-1.5 px-2.5 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                                   >
+                                    <span className="relative flex h-2 w-2 shrink-0">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                    </span>
                                     <Navigation className="h-3 w-3 shrink-0 text-orange-600 dark:text-orange-400" />
-                                    <span>Simular ruta del técnico</span>
+                                    <span>Ver seguimiento en ruta (Demo)</span>
                                   </button>
                                 )}
                               </div>
@@ -649,7 +637,7 @@ export function ActiveZonesCard({
                                       <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                     </button>
                                   )}
-                                  {onSimulateRoute && (
+                                  {onSimulateRoute && isEnRutaStatus(o.status) && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -658,8 +646,12 @@ export function ActiveZonesCard({
                                       }}
                                       className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                                     >
+                                      <span className="relative flex h-2 w-2 shrink-0">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                      </span>
                                       <Navigation className="h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400" />
-                                      <span>Simular ruta del técnico</span>
+                                      <span>Ver seguimiento en ruta (Demo)</span>
                                     </button>
                                   )}
                                 </div>
@@ -695,7 +687,7 @@ export function ActiveZonesCard({
                                     <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                                   </button>
                                 )}
-                                {onSimulateRoute && (
+                                {onSimulateRoute && isEnRutaStatus(o.status) && (
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -704,8 +696,12 @@ export function ActiveZonesCard({
                                     }}
                                     className="mt-1.5 w-full rounded-md border border-orange-500/40 bg-orange-50 hover:bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-xs font-bold py-1.5 px-3 transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
                                   >
+                                    <span className="relative flex h-2 w-2 shrink-0">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                                    </span>
                                     <Navigation className="h-3.5 w-3.5 shrink-0 text-orange-600 dark:text-orange-400" />
-                                    <span>Simular ruta del técnico</span>
+                                    <span>Ver seguimiento en ruta (Demo)</span>
                                   </button>
                                 )}
                               </div>
@@ -1706,6 +1702,13 @@ export default function DispatchBoard() {
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  // Sincronizar órdenes en ruta con el administrador de seguimiento simulado (180 s)
+  useEffect(() => {
+    if (Array.isArray(dashboardOrders) && dashboardOrders.length > 0) {
+      syncOrdersWithTracking(dashboardOrders);
+    }
+  }, [dashboardOrders]);
 
   // Polling silencioso en segundo plano para actualizar telemetría GPS cada 30s sin recargar la pantalla
   useEffect(() => {

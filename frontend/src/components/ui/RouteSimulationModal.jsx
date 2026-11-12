@@ -1,10 +1,20 @@
+/**
+ * frontend/src/components/ui/RouteSimulationModal.jsx
+ *
+ * Visor de seguimiento simulado de técnico en ruta (ATLAS FSM).
+ * Diseñado para la presentación académica:
+ * - Se activa automáticamente con órdenes en estado "En ruta".
+ * - Duración exacta de 3 minutos (180 segundos).
+ * - Progreso determinista calculado por timestamps (wall-clock time), permitiendo
+ *   cerrar el visor o navegar por el dashboard sin reiniciar la simulación.
+ * - Manejo 100% seguro de datos de orden para evitar React Minified Error #31.
+ * - Protegido por SimulationErrorBoundary contra fallos en Leaflet/OSRM.
+ */
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
-  Play,
-  Pause,
-  RotateCcw,
   Navigation,
   MapPin,
   Clock,
@@ -27,14 +37,22 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { useTheme } from "../../hooks/useTheme";
-import {
-  DEMO_ORIGIN,
-  fetchStreetRoute,
-  calculateBearing,
-  formatDistance,
-  formatEta,
-} from "../../lib/routeSimulation";
+import { DEMO_ORIGIN, formatDistance } from "../../lib/routeSimulation";
 import { extractOrderCoordinates } from "../../lib/mapClustering";
+import {
+  getSafeOrderId,
+  getSafeOrderNumber,
+  getSafeClientName,
+  getSafeAddress,
+  startTracking,
+  getTracking,
+  retryTrackingRoute,
+  computeTrackingSnapshot,
+  subscribeToTrackings,
+  formatCountdown,
+  SIMULATION_DURATION_SECONDS,
+} from "../../lib/routeTrackingManager";
+import SimulationErrorBoundary from "./SimulationErrorBoundary";
 
 // ─── Componente para autoencuadre de la ruta en Leaflet ──────────────────────
 function RouteBoundsFitter({ points }) {
@@ -52,7 +70,7 @@ function RouteBoundsFitter({ points }) {
   return null;
 }
 
-// ─── Iconos Leaflet personalizados de alta definición ────────────────────────
+// ─── Iconos Leaflet personalizados ──────────────────────────────────────────
 function makeOriginIcon() {
   return L.divIcon({
     className: "atlas-sim-origin-icon",
@@ -131,155 +149,75 @@ function makeVehicleIcon(bearing = 0, isMoving = false, isArrived = false) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// COMPONENTE PRINCIPAL: Modal de Simulación de Ruta
+// COMPONENTE INTERNO DEL VISOR
 // ═══════════════════════════════════════════════════════════════════════════════
-export default function RouteSimulationModal({ order, onClose }) {
+function RouteSimulationModalInner({ order, onClose }) {
   const { isDark } = useTheme();
 
-  // Coordenadas del destino
+  // 1. Extracción segura de valores primitivos
+  const orderId = useMemo(() => getSafeOrderId(order), [order]);
+  const orderNumber = useMemo(() => getSafeOrderNumber(order), [order]);
+  const clientName = useMemo(() => getSafeClientName(order), [order]);
+  const clientAddress = useMemo(() => getSafeAddress(order), [order]);
+
   const destinationCoords = useMemo(() => {
     if (!order) return null;
     const { lat, lng, isValid } = extractOrderCoordinates(order);
     if (isValid) return { lat, lng };
-
-    // Si la orden no tiene coordenadas válidas, no usar destino ficticio
     return null;
   }, [order]);
 
-  // Estado de ruta
-  const [routeData, setRouteData] = useState(null);
-  const [isLoadingRoute, setIsLoadingRoute] = useState(true);
-  const [routeError, setRouteError] = useState(null);
+  // 2. Registro de seguimiento automático en frontend
+  const [trackingRecord, setTrackingRecord] = useState(() => {
+    if (!order) return null;
+    let rec = orderId ? getTracking(orderId) : null;
+    if (!rec && destinationCoords) {
+      rec = startTracking(order);
+    }
+    return rec;
+  });
 
-  // Estado de la simulación
-  const [simStatus, setSimStatus] = useState("PREPARADO"); // "PREPARADO" | "EN_RUTA" | "PAUSADO" | "LLEGADA_AL_SITIO"
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [speedMultiplier, setSpeedMultiplier] = useState(2); // 1x, 2x, 4x
+  // Suscribirse a actualizaciones del almacén de seguimiento
+  useEffect(() => {
+    const unsubscribe = subscribeToTrackings(() => {
+      if (orderId) {
+        const rec = getTracking(orderId);
+        setTrackingRecord(rec ? { ...rec } : null);
+      }
+    });
+    return unsubscribe;
+  }, [orderId]);
 
-  // Animación loop ref
+  // Si no había seguimiento activo al montar pero la orden tiene coordenadas válidas
+  useEffect(() => {
+    if (!trackingRecord && order && destinationCoords) {
+      const rec = startTracking(order);
+      if (rec) setTrackingRecord({ ...rec });
+    }
+  }, [trackingRecord, order, destinationCoords]);
+
+  // 3. Estado dinámico de telemetría actualizado en tiempo real
+  const [snapshot, setSnapshot] = useState(() => {
+    return trackingRecord ? computeTrackingSnapshot(trackingRecord, Date.now()) : null;
+  });
+
+  // Loop de actualización visual vía requestAnimationFrame mientras el visor esté abierto
   const animFrameRef = useRef(null);
-  const lastTickTimeRef = useRef(null);
 
-  // Cargar ruta al abrir modal
-  const loadRoute = useCallback(async () => {
-    if (!destinationCoords) {
-      setRouteError(
-        "Esta orden de trabajo no cuenta con coordenadas geográficas registradas. No es posible iniciar la simulación de ruta sin un destino válido."
-      );
-      setIsLoadingRoute(false);
+  useEffect(() => {
+    if (!trackingRecord || !trackingRecord.routeData) {
+      setSnapshot(trackingRecord ? computeTrackingSnapshot(trackingRecord, Date.now()) : null);
       return;
     }
 
-    setIsLoadingRoute(true);
-    setRouteError(null);
-    setSimStatus("PREPARADO");
-    setCurrentIndex(0);
-
-    try {
-      const data = await fetchStreetRoute(DEMO_ORIGIN, destinationCoords, {
-        timeoutMs: 4000,
-      });
-      setRouteData(data);
-    } catch (err) {
-      setRouteError(err.message || "Error al calcular la ruta por calles.");
-    } finally {
-      setIsLoadingRoute(false);
-    }
-  }, [destinationCoords]);
-
-  useEffect(() => {
-    loadRoute();
-  }, [loadRoute]);
-
-  // Vértices de la ruta interpolada memoizados
-  const routePoints = useMemo(
-    () => routeData?.interpolatedCoordinates || [],
-    [routeData]
-  );
-  const totalSteps = routePoints.length;
-
-  // Posición actual del vehículo
-  const currentCoord = useMemo(() => {
-    if (totalSteps === 0) return [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
-    const safeIndex = Math.min(Math.max(0, currentIndex), totalSteps - 1);
-    return routePoints[safeIndex] || [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
-  }, [routePoints, currentIndex, totalSteps]);
-
-  // Rumbo / orientación hacia el siguiente punto
-  const vehicleBearing = useMemo(() => {
-    if (totalSteps < 2) return 0;
-    const targetIdx = Math.min(currentIndex + 3, totalSteps - 1);
-    const startPt = routePoints[currentIndex];
-    const endPt = routePoints[targetIdx];
-    return calculateBearing(startPt, endPt);
-  }, [routePoints, currentIndex, totalSteps]);
-
-  // Segmento ya recorrido (para pintar rastro verde)
-  const traveledSegment = useMemo(() => {
-    if (totalSteps === 0 || currentIndex === 0) return [];
-    return routePoints.slice(0, currentIndex + 1);
-  }, [routePoints, currentIndex, totalSteps]);
-
-  // Métricas dinámicas calculadas a partir del avance
-  const progressPercent = useMemo(() => {
-    if (totalSteps <= 1) return 0;
-    return Math.min(100, Math.round((currentIndex / (totalSteps - 1)) * 100));
-  }, [currentIndex, totalSteps]);
-
-  const remainingDistanceMeters = useMemo(() => {
-    if (!routeData) return 0;
-    const ratio = Math.max(0, 1 - currentIndex / Math.max(1, totalSteps - 1));
-    return Math.round(routeData.distanceMeters * ratio);
-  }, [routeData, currentIndex, totalSteps]);
-
-  const remainingSeconds = useMemo(() => {
-    if (!routeData) return 0;
-    const ratio = Math.max(0, 1 - currentIndex / Math.max(1, totalSteps - 1));
-    return Math.round(routeData.durationSeconds * ratio);
-  }, [routeData, currentIndex, totalSteps]);
-
-  // ─── Loop de animación controlado por requestAnimationFrame ─────────────────
-  useEffect(() => {
-    if (simStatus !== "EN_RUTA") {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-      lastTickTimeRef.current = null;
-      return;
-    }
-
-    // Intervalo de avance por paso en ms (ajustado según velocidad)
-    // totalSteps ~260. A 1x queremos ~26 segundos total (100ms por paso)
-    // A 2x queremos ~13 segundos (50ms por paso)
-    // A 4x queremos ~6.5 segundos (25ms por paso)
-    const stepIntervalMs = Math.max(20, Math.round(75 / speedMultiplier));
-
-    const loop = (timestamp) => {
-      if (!lastTickTimeRef.current) {
-        lastTickTimeRef.current = timestamp;
-      }
-
-      const elapsed = timestamp - lastTickTimeRef.current;
-
-      if (elapsed >= stepIntervalMs) {
-        const stepsToAdvance = Math.max(1, Math.floor(elapsed / stepIntervalMs));
-        lastTickTimeRef.current = timestamp;
-
-        setCurrentIndex((prev) => {
-          const next = prev + stepsToAdvance;
-          if (next >= totalSteps - 1) {
-            setSimStatus("LLEGADA_AL_SITIO");
-            return totalSteps - 1;
-          }
-          return next;
-        });
-      }
-
-      animFrameRef.current = requestAnimationFrame(loop);
+    const updateLoop = () => {
+      const current = getTracking(orderId) || trackingRecord;
+      const snap = computeTrackingSnapshot(current, Date.now());
+      setSnapshot(snap);
+      animFrameRef.current = requestAnimationFrame(updateLoop);
     };
 
-    animFrameRef.current = requestAnimationFrame(loop);
+    animFrameRef.current = requestAnimationFrame(updateLoop);
 
     return () => {
       if (animFrameRef.current) {
@@ -287,81 +225,31 @@ export default function RouteSimulationModal({ order, onClose }) {
         animFrameRef.current = null;
       }
     };
-  }, [simStatus, speedMultiplier, totalSteps]);
+  }, [trackingRecord, orderId]);
 
-  // ─── Controladores de usuario ──────────────────────────────────────────────
-  function handlePlayPause() {
-    if (!routeData || !destinationCoords) return;
-    if (simStatus === "EN_RUTA") {
-      setSimStatus("PAUSADO");
-    } else if (simStatus === "LLEGADA_AL_SITIO") {
-      setCurrentIndex(0);
-      setSimStatus("EN_RUTA");
-    } else {
-      setSimStatus("EN_RUTA");
+  // Manejo de reintento de cálculo OSRM
+  const handleRetryRoute = useCallback(() => {
+    if (orderId) {
+      retryTrackingRoute(orderId);
     }
-  }
-
-  function handleReset() {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    setCurrentIndex(0);
-    setSimStatus("PREPARADO");
-  }
-
-  // Cerrar modal y limpiar animación
-  const handleClose = () => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    onClose();
-  };
-
-  // Etiqueta visual de estado
-  const statusMeta = useMemo(() => {
-    switch (simStatus) {
-      case "PREPARADO":
-        return {
-          label: "Vehículo en base",
-          sublabel: "Listo para iniciar recorrido",
-          badgeClass: "bg-slate-100 text-slate-700 dark:bg-gray-800 dark:text-gray-300 border-slate-300 dark:border-gray-700",
-          dotColor: "bg-slate-400",
-        };
-      case "EN_RUTA":
-        return {
-          label: "En ruta hacia el domicilio",
-          sublabel: "Desplazándose por vías habilitadas",
-          badgeClass: "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 border-orange-300 dark:border-orange-800",
-          dotColor: "bg-orange-500 animate-ping",
-        };
-      case "PAUSADO":
-        return {
-          label: "Simulación pausada",
-          sublabel: "Telemetría detenida",
-          badgeClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border-amber-300 dark:border-amber-800",
-          dotColor: "bg-amber-500",
-        };
-      case "LLEGADA_AL_SITIO":
-        return {
-          label: "Llegada al sitio",
-          sublabel: "Vehículo en domicilio del cliente",
-          badgeClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800",
-          dotColor: "bg-emerald-500",
-        };
-      default:
-        return {
-          label: simStatus,
-          sublabel: "",
-          badgeClass: "bg-slate-100 text-slate-700 border-slate-300",
-          dotColor: "bg-slate-400",
-        };
-    }
-  }, [simStatus]);
+  }, [orderId]);
 
   if (!order) return null;
+
+  const isLoadingRoute = trackingRecord ? trackingRecord.isLoadingRoute : false;
+  const routeError = !destinationCoords
+    ? "Esta orden de trabajo no cuenta con coordenadas geográficas registradas. No es posible iniciar la simulación de ruta sin un destino válido."
+    : trackingRecord?.routeError;
+
+  const routeData = trackingRecord?.routeData;
+  const routePoints = routeData?.interpolatedCoordinates || [];
+  const currentCoord = snapshot?.currentCoord || [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
+  const vehicleBearing = snapshot?.bearing || 0;
+  const traveledSegment = snapshot?.traveledSegment || [];
+  const progressPercent = snapshot?.progressPercent || 0;
+  const remainingDistanceMeters = snapshot?.remainingDistanceMeters || 0;
+  const remainingSeconds = snapshot?.remainingSeconds || 0;
+  const isArrived = Boolean(snapshot?.isArrived);
 
   return createPortal(
     <div
@@ -387,20 +275,20 @@ export default function RouteSimulationModal({ order, onClose }) {
                 </h2>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide uppercase bg-orange-500 text-white shadow-2xs">
                   <Sparkles className="h-3 w-3" />
-                  Modo demostración · Recorrido simulado
+                  Modo demostración · Seguimiento simulado
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                {order.orderNumber || order.id} · {order.client || "Cliente"} — {order.address || "Dirección sin especificar"}
+              <p className="text-[11px] text-slate-500 dark:text-gray-400 truncate max-w-xl">
+                {orderNumber} · {clientName} — {clientAddress}
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={handleClose}
-            className="rounded-lg p-2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
-            aria-label="Cerrar modal de simulación"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            aria-label="Cerrar visor de simulación"
           >
             <X className="h-5 w-5" />
           </button>
@@ -415,7 +303,7 @@ export default function RouteSimulationModal({ order, onClose }) {
                 Calculando ruta vial por calles de Santiago con OSRM…
               </p>
               <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">
-                Trazando geometría real desde Providencia hasta el destino
+                Trazando geometría real desde Providencia hacia el cliente
               </p>
             </div>
           ) : routeError ? (
@@ -430,7 +318,7 @@ export default function RouteSimulationModal({ order, onClose }) {
               {destinationCoords && (
                 <button
                   type="button"
-                  onClick={loadRoute}
+                  onClick={handleRetryRoute}
                   className="px-4 py-2 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition-colors cursor-pointer"
                 >
                   Reintentar cálculo de ruta
@@ -501,7 +389,9 @@ export default function RouteSimulationModal({ order, onClose }) {
                     <div className="text-xs">
                       <strong className="block text-slate-900 font-bold">{DEMO_ORIGIN.label}</strong>
                       <span className="text-slate-500">{DEMO_ORIGIN.address}</span>
-                      <span className="mt-1 block text-[10px] text-orange-600 font-semibold">Punto de salida del especialista</span>
+                      <span className="mt-1 block text-[10px] text-orange-600 font-semibold">
+                        Punto de salida del especialista
+                      </span>
                     </div>
                   </Popup>
                 </Marker>
@@ -514,10 +404,10 @@ export default function RouteSimulationModal({ order, onClose }) {
                   >
                     <Popup>
                       <div className="text-xs">
-                        <strong className="block text-slate-900 font-bold">Destino: {order.client || "Cliente"}</strong>
-                        <span className="text-slate-500">{order.address}</span>
+                        <strong className="block text-slate-900 font-bold">Destino: {clientName}</strong>
+                        <span className="text-slate-500">{clientAddress}</span>
                         <span className="mt-1 block text-[10px] text-slate-600 font-medium">
-                          Orden #{order.orderNumber || order.id}
+                          Orden #{orderNumber}
                         </span>
                       </div>
                     </Popup>
@@ -527,13 +417,15 @@ export default function RouteSimulationModal({ order, onClose }) {
                 {/* Marcador Móvil: Vehículo simulado */}
                 <Marker
                   position={currentCoord}
-                  icon={makeVehicleIcon(vehicleBearing, simStatus === "EN_RUTA", simStatus === "LLEGADA_AL_SITIO")}
+                  icon={makeVehicleIcon(vehicleBearing, !isArrived, isArrived)}
                 >
                   <Popup>
                     <div className="text-xs">
                       <strong className="block text-slate-900 font-bold">Móvil Técnico ATLAS</strong>
                       <span className="text-slate-600">
-                        {simStatus === "LLEGADA_AL_SITIO" ? "Llegada al domicilio completada" : "En desplazamiento asistido por OSRM"}
+                        {isArrived
+                          ? "Llegada simulada al domicilio completada"
+                          : "En desplazamiento continuo asistido por OSRM"}
                       </span>
                     </div>
                   </Popup>
@@ -562,9 +454,13 @@ export default function RouteSimulationModal({ order, onClose }) {
                 <Navigation className="h-3.5 w-3.5 text-orange-500" />
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${statusMeta.dotColor} shrink-0`} />
+                <span
+                  className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                    isArrived ? "bg-emerald-500" : "bg-orange-500 animate-ping"
+                  }`}
+                />
                 <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
-                  {statusMeta.label}
+                  {isArrived ? "Llegada al sitio" : "En ruta hacia el domicilio"}
                 </span>
               </div>
             </div>
@@ -577,24 +473,24 @@ export default function RouteSimulationModal({ order, onClose }) {
               </div>
               <div className="mt-1">
                 <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
-                  {simStatus === "LLEGADA_AL_SITIO" ? "0 m" : formatDistance(remainingDistanceMeters)}
+                  {isArrived ? "0 m" : formatDistance(remainingDistanceMeters)}
                 </span>
                 <span className="text-[10px] text-slate-400 ml-1">restantes</span>
               </div>
             </div>
 
-            {/* ETA aproximada */}
+            {/* Tiempo restante del ciclo de 3 minutos */}
             <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/80 dark:bg-gray-800/50 p-2.5 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-500 dark:text-gray-400">
-                <span className="text-[10px] font-bold uppercase tracking-wider">ETA estimación</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider">Tiempo restante</span>
                 <Clock className="h-3.5 w-3.5 text-emerald-500" />
               </div>
               <div className="mt-1">
                 <span className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white">
-                  {simStatus === "LLEGADA_AL_SITIO" ? "¡En sitio!" : formatEta(remainingSeconds)}
+                  {isArrived ? "¡En sitio!" : formatCountdown(remainingSeconds)}
                 </span>
                 <span className="text-[10px] text-slate-400 ml-1">
-                  {simStatus === "LLEGADA_AL_SITIO" ? "" : "estimado"}
+                  {isArrived ? "" : `de ${SIMULATION_DURATION_SECONDS}s`}
                 </span>
               </div>
             </div>
@@ -610,7 +506,7 @@ export default function RouteSimulationModal({ order, onClose }) {
                   {progressPercent}%
                 </span>
                 <span className="text-[10px] text-slate-400">
-                  {currentIndex + 1}/{totalSteps || 1}
+                  {snapshot?.currentIndex ? snapshot.currentIndex + 1 : 1}/{routePoints.length || 1}
                 </span>
               </div>
             </div>
@@ -620,87 +516,64 @@ export default function RouteSimulationModal({ order, onClose }) {
           <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-gray-800 overflow-hidden">
             <div
               className={`h-full transition-all duration-150 ${
-                simStatus === "LLEGADA_AL_SITIO" ? "bg-emerald-500" : "bg-orange-500"
+                isArrived ? "bg-emerald-500" : "bg-orange-500"
               }`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
 
-          {/* ─── 4. Barra de Controles de Demostración ─── */}
+          {/* ─── 4. Barra Informativa y Cierre del Visor ─── */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-            {/* Controles de reproducción */}
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePlayPause}
-                disabled={isLoadingRoute || Boolean(routeError)}
-                className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-white shadow-sm transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                  simStatus === "EN_RUTA"
-                    ? "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"
-                    : simStatus === "LLEGADA_AL_SITIO"
-                    ? "bg-emerald-600 hover:bg-emerald-700"
-                    : "bg-orange-500 hover:bg-orange-600 active:bg-orange-700"
-                }`}
-              >
-                {simStatus === "EN_RUTA" ? (
-                  <>
-                    <Pause className="h-4 w-4" />
-                    <span>Pausar</span>
-                  </>
-                ) : simStatus === "LLEGADA_AL_SITIO" ? (
-                  <>
-                    <RotateCcw className="h-4 w-4" />
-                    <span>Repetir viaje</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-4 w-4" />
-                    <span>Iniciar simulación</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={isLoadingRoute || Boolean(routeError) || currentIndex === 0}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-700 dark:text-gray-200 hover:bg-slate-50 dark:hover:bg-gray-750 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <RotateCcw className="h-4 w-4 text-slate-500" />
-                <span>Reiniciar</span>
-              </button>
-            </div>
-
-            {/* Selector de velocidad */}
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-gray-800 p-1 rounded-xl border border-slate-200 dark:border-gray-700">
-              <span className="text-[10px] font-bold text-slate-500 dark:text-gray-400 px-2 uppercase">
-                Velocidad:
-              </span>
-              {[1, 2, 4].map((mult) => (
-                <button
-                  key={mult}
-                  type="button"
-                  onClick={() => setSpeedMultiplier(mult)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    speedMultiplier === mult
-                      ? "bg-white dark:bg-gray-900 text-orange-600 dark:text-orange-400 shadow-2xs"
-                      : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300 text-xs font-semibold border border-slate-200 dark:border-gray-700">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    isArrived ? "bg-emerald-500" : "bg-orange-500 animate-pulse"
                   }`}
-                >
-                  {mult}×
-                </button>
-              ))}
+                />
+                <span>
+                  {isArrived
+                    ? "Llegada simulada al sitio cumplida"
+                    : "Seguimiento automático activo · Duración fija 3 min"}
+                </span>
+              </div>
+
+              {trackingRecord?.isInitialLoad && (
+                <span className="text-[11px] text-slate-400 dark:text-gray-500 hidden sm:inline">
+                  (Sincronizado con la sesión local)
+                </span>
+              )}
             </div>
 
-            {/* Aviso de presentación */}
-            <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              <span>Simulación local · Sin efectos persistentes en BD</span>
+            <div className="flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Simulación en frontend · Sin alterar base de datos</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-750 text-slate-700 dark:text-gray-200 transition-colors cursor-pointer border border-slate-200 dark:border-gray-700"
+              >
+                <span>Cerrar visor</span>
+              </button>
             </div>
           </div>
         </div>
       </div>
     </div>,
     document.body
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPORTACIÓN PRINCIPAL PROTEGIDA CON ERROR BOUNDARY
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function RouteSimulationModal(props) {
+  return (
+    <SimulationErrorBoundary onClose={props.onClose}>
+      <RouteSimulationModalInner {...props} />
+    </SimulationErrorBoundary>
   );
 }
