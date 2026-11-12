@@ -77,7 +77,7 @@ export function normalizeOrderForMap(order) {
     order.client?.business_name ||
     order.client?.name ||
     order.clientName ||
-    order.client ||
+    (typeof order.client === "string" ? order.client : "") ||
     "Cliente Corporativo";
   const title = order.title || order.service || order.label || "Servicio técnico en terreno";
   const status = (order.status || "IDLE").toUpperCase();

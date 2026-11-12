@@ -12,6 +12,7 @@ import {
   formatChileanDateTime,
 } from "../lib/workOrderOptions";
 import { api } from "../lib/api";
+import { syncOrdersWithTracking } from "../lib/routeTrackingManager";
 
 const WorkOrderContext = createContext(null);
 
@@ -92,6 +93,13 @@ export function WorkOrderProvider({ children }) {
       cancelled = true;
     };
   }, [refreshOrders, refreshHardwareInventory]);
+
+  // Sincronizar órdenes en ruta con el seguimiento simulado automático de 180s
+  useEffect(() => {
+    if (Array.isArray(rawOrders) && rawOrders.length > 0) {
+      syncOrdersWithTracking(rawOrders);
+    }
+  }, [rawOrders]);
 
   const allNormalizedOrders = useMemo(
     () => columns.flatMap((col) => col.tasks),

@@ -26,6 +26,7 @@ import {
 import AdminAvatar from "./AdminAvatar";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
 import { isValidCoordinate } from "../../lib/mapClustering.js";
+import { isEnRutaStatus } from "../../lib/routeTrackingManager.js";
 
 const SAFE_STATUS_LABELS = STATUS_LABELS || {
   DISPONIBLE: "Disponible",
@@ -470,15 +471,19 @@ function WorkOrderDetailDrawerContent({
                   Editar ubicación
                 </button>
               )}
-              {onSimulateRoute && (
+              {onSimulateRoute && isEnRutaStatus(apiOrderDetail?.status || order.status) && (
                 <button
                   type="button"
                   onClick={() => onSimulateRoute(apiOrderDetail || order)}
                   className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 transition-all cursor-pointer shadow-2xs"
-                  title="Simular desplazamiento de técnico hacia esta orden en mapa interactivo"
+                  title="Ver seguimiento continuo del técnico hacia esta orden en mapa interactivo"
                 >
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                  </span>
                   <Navigation className="h-3 w-3 text-orange-500" />
-                  <span>Simular ruta (Demo)</span>
+                  <span>Ver seguimiento (Demo)</span>
                 </button>
               )}
             </div>
