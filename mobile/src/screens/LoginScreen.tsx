@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput,
-  TouchableOpacity, View,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
@@ -33,7 +40,7 @@ export function LoginScreen({ onForgotPassword }: LoginScreenProps = {}) {
       await signIn(email, password);
       // al iniciar sesión, App cambia sola a la agenda
     } catch (e) {
-      setError((e as Error).message || 'No se pudo iniciar sesión.');
+      setError((e as Error).message || 'Correo electrónico o contraseña incorrectos.');
       setLoading(false);
     }
   }
@@ -42,118 +49,179 @@ export function LoginScreen({ onForgotPassword }: LoginScreenProps = {}) {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1"
+      className="flex-1 bg-bg"
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView
         className="flex-1"
-        contentContainerClassName="flex-grow justify-center p-6"
+        contentContainerClassName="flex-grow justify-center px-6 py-10"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Cabecera / Identidad ATLAS */}
         <View className="items-center mb-8">
-          <View className="w-14 h-14 rounded-2xl bg-card border border-brand/40 items-center justify-center mb-3.5">
-            <Text className="text-brand text-[26px] font-bold">A</Text>
-          </View>
-          <Text className="text-text1 font-bold text-[22px] tracking-tight">Atlas técnico</Text>
-          <Text className="text-xs text-text2 mt-1">Inicia sesión para ver tus visitas</Text>
-        </View>
-
-        <Text className="text-[11px] text-text3 mb-1.5">Correo electrónico</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="tu.correo@empresa.cl"
-          placeholderTextColor={colors.text3}
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete="email"
-          keyboardType="email-address"
-          textContentType="username"
-          returnKeyType="next"
-          onSubmitEditing={() => passwordRef.current?.focus()}
-          editable={!loading}
-          className="bg-card border border-border rounded-xl px-3 py-3 text-text1 text-[14px] mb-3.5"
-        />
-
-        <Text className="text-[11px] text-text3 mb-1.5">Contraseña</Text>
-        <View className="flex-row items-center bg-card border border-border rounded-xl mb-4">
-          <TextInput
-            ref={passwordRef}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor={colors.text3}
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="current-password"
-            textContentType="password"
-            returnKeyType="go"
-            onSubmitEditing={submit}
-            editable={!loading}
-            className="flex-1 px-3 py-3 text-text1 text-[14px]"
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword((s) => !s)}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            className="px-3 py-3"
-          >
-            <Feather name={showPassword ? 'eye-off' : 'eye'} size={16} color={colors.text3} />
-          </TouchableOpacity>
-        </View>
-
-        {message ? (
-          <View
-            className={`flex-row items-start rounded-xl border px-3 py-2.5 mb-4 ${
-              error ? 'bg-red-dim border-red/30' : 'bg-amber-dim border-amber/30'
-            }`}
-          >
-            <Feather
-              name={error ? 'alert-circle' : 'info'}
-              size={14}
-              color={error ? colors.red : colors.amber}
-              style={{ marginTop: 1 }}
+          <View className="w-20 h-20 rounded-2xl bg-card border border-border-bright items-center justify-center mb-4 shadow-lg shadow-black/40 overflow-hidden">
+            <Image
+              source={require('../../assets/atlas-logo.png')}
+              className="w-16 h-16 rounded-xl"
+              resizeMode="contain"
+              accessibilityLabel="Logotipo oficial de ATLAS"
             />
-            <Text className={`text-xs ml-2 flex-1 ${error ? 'text-red' : 'text-amber'}`}>{message}</Text>
           </View>
-        ) : null}
 
-        <TouchableOpacity
-          onPress={submit}
-          disabled={!canSubmit}
-          className={`rounded-xl py-[13px] items-center ${canSubmit ? 'bg-brand' : 'bg-surface'}`}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text className={`text-sm font-bold ${canSubmit ? 'text-white' : 'text-text3'}`}>
-              Iniciar sesión
+          <View className="flex-row items-center px-3 py-1 rounded-full bg-brand-dim border border-brand/30 mb-2.5">
+            <Feather name="zap" size={12} color={colors.brandText} style={{ marginRight: 6 }} />
+            <Text className="text-[11px] font-semibold text-brand-text tracking-wide uppercase">
+              Atlas FSM · App Técnico
             </Text>
-          )}
-        </TouchableOpacity>
-        {loading ? (
-          <Text className="text-[10px] text-text3 text-center mt-3">
-            Conectando con el servidor… la primera vez puede tardar hasta un minuto.
+          </View>
+
+          <Text className="text-text1 font-bold text-2xl tracking-tight">
+            Portal Móvil
           </Text>
-        ) : null}
+          <Text className="text-xs text-text2 mt-1.5 text-center max-w-[260px]">
+            Inicia sesión con tus credenciales autorizadas para gestionar tus visitas en terreno
+          </Text>
+        </View>
 
-        {onForgotPassword ? (
+        {/* Tarjeta de Formulario */}
+        <View className="bg-card border border-border rounded-2xl p-5 mb-4 shadow-sm">
+          {/* Campo Correo */}
+          <Text className="text-[12px] font-medium text-text2 mb-1.5">
+            Correo electrónico
+          </Text>
+          <View className="flex-row items-center bg-surface/60 border border-border-bright rounded-xl px-3.5 mb-4">
+            <Feather name="mail" size={16} color={colors.text3} style={{ marginRight: 10 }} />
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="tu.correo@empresa.cl"
+              placeholderTextColor={colors.text3}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              textContentType="username"
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
+              editable={!loading}
+              className="flex-1 py-3 text-text1 text-[14px]"
+            />
+          </View>
+
+          {/* Campo Contraseña */}
+          <Text className="text-[12px] font-medium text-text2 mb-1.5">
+            Contraseña
+          </Text>
+          <View className="flex-row items-center bg-surface/60 border border-border-bright rounded-xl px-3.5 mb-5">
+            <Feather name="lock" size={16} color={colors.text3} style={{ marginRight: 10 }} />
+            <TextInput
+              ref={passwordRef}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              placeholderTextColor={colors.text3}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              textContentType="password"
+              returnKeyType="go"
+              onSubmitEditing={submit}
+              editable={!loading}
+              className="flex-1 py-3 text-text1 text-[14px]"
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((s) => !s)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              className="p-1"
+              activeOpacity={0.7}
+            >
+              <Feather name={showPassword ? 'eye-off' : 'eye'} size={16} color={colors.text3} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Mensajes de Error o Aviso */}
+          {message ? (
+            <View
+              className={`flex-row items-start rounded-xl border px-3.5 py-3 mb-5 ${
+                error ? 'bg-red-dim border-red/40' : 'bg-amber-dim border-amber/40'
+              }`}
+            >
+              <Feather
+                name={error ? 'alert-circle' : 'info'}
+                size={16}
+                color={error ? colors.red : colors.amber}
+                style={{ marginTop: 1, marginRight: 8 }}
+              />
+              <Text className={`text-xs flex-1 leading-5 ${error ? 'text-red' : 'text-amber'}`}>
+                {message}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Botón de Acceso */}
           <TouchableOpacity
-            onPress={onForgotPassword}
-            disabled={loading}
-            accessibilityRole="button"
-            accessibilityLabel="¿Olvidaste tu contraseña?"
-            className="mt-5 py-2 items-center"
-            activeOpacity={0.7}
+            onPress={submit}
+            disabled={!canSubmit}
+            className={`rounded-xl py-3.5 items-center justify-center flex-row gap-2 ${
+              canSubmit ? 'bg-brand' : 'bg-surface opacity-70'
+            }`}
+            style={canSubmit ? {
+              shadowColor: '#F97316',
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+            } : undefined}
+            activeOpacity={0.8}
           >
-            <Text className="text-xs font-semibold text-brand">
-              ¿Olvidaste tu contraseña?
-            </Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Text className={`text-sm font-bold ${canSubmit ? 'text-white' : 'text-text3'}`}>
+                  Iniciar sesión
+                </Text>
+                <Feather
+                  name="arrow-right"
+                  size={15}
+                  color={canSubmit ? '#ffffff' : colors.text3}
+                />
+              </>
+            )}
           </TouchableOpacity>
-        ) : null}
+
+          {loading ? (
+            <Text className="text-[11px] text-text3 text-center mt-3 leading-4">
+              Conectando con el servidor ATLAS… La primera conexión puede tardar unos segundos.
+            </Text>
+          ) : null}
+
+          {/* Link Olvidaste Contraseña */}
+          {onForgotPassword ? (
+            <TouchableOpacity
+              onPress={onForgotPassword}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="¿Olvidaste tu contraseña?"
+              className="mt-4 py-2 items-center"
+              activeOpacity={0.7}
+            >
+              <Text className="text-xs font-semibold text-brand">
+                ¿Olvidaste tu contraseña?
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Footer corporativo */}
+        <View className="items-center mt-4">
+          <Text className="text-[11px] text-text3">
+            ATLAS FSM · Versión 1.0.3 · Conexión segura
+          </Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

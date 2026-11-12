@@ -20,8 +20,11 @@ export function SuccessScreen({ visit, online, onDone }: SuccessProps) {
         <Feather name="check-circle" size={30} color={colors.green} />
       </View>
       <Text className="text-text1 font-bold text-[22px] mb-1.5 tracking-tight">Visita finalizada</Text>
-      <Text className="text-xs text-text2 mb-5 text-center max-w-[230px]">
-        {visit.service} · {visit.client}
+      <Text className="text-xs text-text2 mb-1 text-center max-w-[280px] font-semibold">
+        {visit.title || visit.service}
+      </Text>
+      <Text className="text-xs text-text3 mb-5 text-center max-w-[280px]">
+        {visit.client}{visit.service ? ` · ${visit.service}` : ''}
       </Text>
       <View
         className={`flex-row items-center px-3.5 py-[7px] rounded-full border mb-7 ${
