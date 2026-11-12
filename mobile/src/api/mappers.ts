@@ -1,5 +1,6 @@
 import type { Status, Visit } from '../types';
 import type { ApiOrder, ApiOrderStatus } from './types';
+import { formatChileanSchedule, parseDateSafe } from '../utils/scheduling';
 
 // ─── Orden de la API → Visita de la app ───────────────────────────────────────
 const STATUS_FROM_API: Record<ApiOrderStatus, Status | null> = {
@@ -31,17 +32,8 @@ function labelFor(serviceType: string): string {
   );
 }
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
 export function formatWhen(iso: string, now: Date = new Date()): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  return sameDay ? hm : `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${hm}`;
+  return formatChileanSchedule(iso, now);
 }
 
 /** Devuelve null si la orden no debe mostrarse (cancelada). */
@@ -74,7 +66,8 @@ export function orderToVisit(o: ApiOrder): Visit | null {
   return {
     id: o.id,
     code: o.order_number,
-    time: formatWhen(o.scheduled_date),
+    time: formatChileanSchedule(o.scheduled_date),
+    scheduledDate: o.scheduled_date || null,
     client: o.client?.business_name ?? 'Cliente sin datos',
     service: labelFor(o.service_type),
     serviceType: o.service_type,
@@ -91,7 +84,14 @@ export function orderToVisit(o: ApiOrder): Visit | null {
 export function ordersToVisits(orders: ApiOrder[]): Visit[] {
   return orders
     .slice()
-    .sort((a, b) => new Date(a.scheduled_date).getTime() - new Date(b.scheduled_date).getTime())
+    .sort((a, b) => {
+      const dateA = parseDateSafe(a.scheduled_date);
+      const dateB = parseDateSafe(b.scheduled_date);
+      if (dateA && dateB) return dateA.getTime() - dateB.getTime();
+      if (dateA && !dateB) return -1;
+      if (!dateA && dateB) return 1;
+      return a.order_number.localeCompare(b.order_number);
+    })
     .map(orderToVisit)
     .filter((v): v is Visit => v !== null);
 }
