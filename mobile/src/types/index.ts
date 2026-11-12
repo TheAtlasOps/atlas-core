@@ -15,6 +15,8 @@ export type Visit = {
   /** Número visible de la orden, ej. "OT-0042" */
   code: string;
   time: string;
+  /** Fecha y hora programada ISO original entregada por la API (o null si no tiene) */
+  scheduledDate: string | null;
   client: string;
   /** Etiqueta legible del tipo de servicio, ej. "Instalación de fibra" */
   service: string;
