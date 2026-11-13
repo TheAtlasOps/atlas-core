@@ -203,11 +203,17 @@ export function checkAndNotifyCompletion(target = null, now = Date.now()) {
 /**
  * Ciclo principal de actualización del motor de simulación.
  */
+let lastNotifyTime = 0;
 function stepEngine() {
   const now = Date.now();
   checkAndNotifyCompletion(now);
 
-  notifyListeners();
+  // Cadencia óptima de actualización visual (~40ms / 25 FPS) para mantener fluidez
+  // visual total sin saturar React ni bloquear el hilo de interacción y clics del usuario
+  if (now - lastNotifyTime >= 40) {
+    lastNotifyTime = now;
+    notifyListeners();
+  }
 
   // Comprobar si aún queda alguna orden en tránsito sin arribar
   let hasPending = false;
@@ -226,6 +232,7 @@ function stepEngine() {
     }
   } else {
     engineTimerId = null;
+    notifyListeners(); // Asegurar notificación final al terminar
   }
 }
 
@@ -531,11 +538,52 @@ export function useRouteTracking(orderId) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
+    if (!safeId) return;
     const unsubscribe = subscribeToTrackings(() => setTick((t) => t + 1));
     return unsubscribe;
-  }, []);
+  }, [safeId]);
 
   const record = safeId ? getTracking(safeId) : null;
   if (!record) return null;
   return computeTrackingSnapshot(record, Date.now());
+}
+
+/**
+ * Hook ligero para obtener únicamente las coordenadas completas de la ruta trazada.
+ * Solo emite actualizaciones cuando los puntos de la ruta cambian (ej: tras resolverse OSRM),
+ * evitando renderizados de alta frecuencia en el contenedor principal del mapa.
+ */
+export function useTrackingRouteCoordinates(orderId) {
+  const safeId = orderId !== null && orderId !== undefined ? String(orderId) : null;
+  const [coords, setCoords] = useState(() => {
+    if (!safeId) return null;
+    return getTracking(safeId)?.routeData?.coordinates || null;
+  });
+
+  useEffect(() => {
+    if (!safeId) {
+      setCoords(null);
+      return;
+    }
+    const currentCoords = getTracking(safeId)?.routeData?.coordinates || null;
+    setCoords(currentCoords);
+
+    const unsubscribe = subscribeToTrackings(() => {
+      const nextCoords = getTracking(safeId)?.routeData?.coordinates || null;
+      setCoords((prev) => {
+        if (prev === nextCoords) return prev;
+        if (
+          Array.isArray(prev) &&
+          Array.isArray(nextCoords) &&
+          prev.length === nextCoords.length
+        ) {
+          return prev;
+        }
+        return nextCoords;
+      });
+    });
+    return unsubscribe;
+  }, [safeId]);
+
+  return coords;
 }
