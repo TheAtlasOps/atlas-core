@@ -14,7 +14,7 @@ import {
   Building2,
   FileSignature,
   CalendarCheck,
-  Navigation,
+  Sparkles,
 } from "lucide-react";
 import AdminAvatar from "../components/ui/AdminAvatar";
 import ThemeToggle from "../components/ui/ThemeToggle";
@@ -33,6 +33,9 @@ const LiveTrackingMap = lazy(() => import("../components/ui/LiveTrackingMap"));
 export default function CustomerTrackingView({ initialSummary = null } = {}) {
   const { uuid } = useParams();
   const [searchParams] = useSearchParams();
+  const [isDemoPreviewActive, setIsDemoPreviewActive] = useState(
+    () => searchParams.get("demo") === "1" || searchParams.get("preview") === "1"
+  );
   const token = useMemo(
     () => (searchParams.get("token") || uuid || "").trim(),
     [searchParams, uuid]
@@ -525,52 +528,77 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
           </div>
         </section>
 
-        {/* ── MAPA EN VIVO LEAFLET (EXCLUSIVO CUANDO EL TÉCNICO ESTÁ EN RUTA) ── */}
-        {isEnRuta && (clientPos || techPos) && (
-          <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-4 shadow-sm overflow-hidden transition-colors">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
-                  Ubicación en vivo del especialista
-                </h3>
-              </div>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
-                {techPos ? "GPS activo" : "Buscando señal"}
-              </span>
-            </div>
-
-            <Suspense
-              fallback={
-                <div className="h-64 sm:h-72 w-full rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse flex items-center justify-center text-xs text-slate-400">
-                  Cargando mapa interactivo...
-                </div>
-              }
+        {/* ── BOTÓN DE PREVISUALIZACIÓN DE SEGUIMIENTO (MODO DEMOSTRACIÓN) ── */}
+        {!isEnRuta && (clientPos || order?.lat) && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsDemoPreviewActive((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors cursor-pointer shadow-2xs"
             >
-              <LiveTrackingMap
-                clientPos={clientPos}
-                techPos={techPos}
-                address={order.address}
-                technicianName={order.technician?.name}
-              />
-            </Suspense>
-
-            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
-              <div className="flex items-center gap-1.5">
-                <Navigation className="h-3.5 w-3.5 text-orange-500" />
-                <span>Actualización automática de trayecto cada 30s</span>
-              </div>
-              {order.technician?.name && (
-                <span className="font-medium text-slate-700 dark:text-gray-300">
-                  {order.technician.name}
-                </span>
-              )}
-            </div>
-          </section>
+              <Sparkles className="h-3.5 w-3.5 text-orange-500" />
+              <span>
+                {isDemoPreviewActive
+                  ? "Ocultar simulación demostrativa"
+                  : "Previsualizar recorrido técnico (Modo Demostración)"}
+              </span>
+            </button>
+          </div>
         )}
+
+        {/* ── MAPA EN VIVO LEAFLET Y SIMULACIÓN INTERACTIVA V2 ── */}
+        {(isEnRuta || isDemoPreviewActive || Boolean(liveTechLocation?.is_live)) &&
+          (clientPos || techPos || order?.lat) && (
+            <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-4 shadow-sm overflow-hidden transition-colors">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span
+                      className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                        liveTechLocation?.is_live ? "bg-emerald-400" : "bg-orange-400"
+                      }`}
+                    ></span>
+                    <span
+                      className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                        liveTechLocation?.is_live ? "bg-emerald-500" : "bg-orange-500"
+                      }`}
+                    ></span>
+                  </span>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
+                    {liveTechLocation?.is_live
+                      ? "Ubicación en vivo del especialista"
+                      : "Seguimiento de trayecto del especialista"}
+                  </h3>
+                </div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
+                  {liveTechLocation?.is_live
+                    ? "GPS activo"
+                    : isEnRuta
+                    ? "Móvil en tránsito"
+                    : "Modo Demostración"}
+                </span>
+              </div>
+
+              <Suspense
+                fallback={
+                  <div className="h-72 sm:h-84 md:h-96 w-full rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse flex items-center justify-center text-xs text-slate-400">
+                    Cargando mapa interactivo...
+                  </div>
+                }
+              >
+                <LiveTrackingMap
+                  orderId={order.id || order.order_id}
+                  order={order}
+                  clientPos={clientPos}
+                  techPos={techPos}
+                  isLiveGps={Boolean(liveTechLocation?.is_live)}
+                  address={order.address}
+                  technicianName={order.technician?.name}
+                  isDemoActive={isEnRuta || isDemoPreviewActive}
+                />
+              </Suspense>
+            </section>
+          )}
 
         {/* ── 2. STEPPER / LÍNEA DE TIEMPO DE 4 ESTADOS (confirmada, en_ruta, en_sitio, completada) ── */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-5 shadow-sm transition-colors">

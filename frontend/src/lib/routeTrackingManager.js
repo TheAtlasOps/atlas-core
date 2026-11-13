@@ -69,7 +69,7 @@ export function getSafeOrderNumber(order) {
 
 export function getSafeOrderId(order) {
   if (!order) return null;
-  const id = order.id ?? order.order_number ?? order.orderNumber;
+  const id = order.id ?? order.order_id ?? order.order_number ?? order.orderNumber;
   return id !== null && id !== undefined ? String(id) : null;
 }
 
@@ -86,6 +86,9 @@ export function getSafeTechnicianName(order) {
   }
   if (typeof order.technician === "string" && order.technician.trim()) {
     return order.technician.trim();
+  }
+  if (typeof order.technician?.name === "string" && order.technician.name.trim()) {
+    return order.technician.name.trim();
   }
   if (typeof order.technician_summary?.full_name === "string" && order.technician_summary.full_name.trim()) {
     return order.technician_summary.full_name.trim();
@@ -227,8 +230,10 @@ function stepEngine() {
   if (hasPending && typeof window !== "undefined") {
     if (typeof document !== "undefined" && document.hidden) {
       engineTimerId = setTimeout(stepEngine, 400);
-    } else {
+    } else if (typeof requestAnimationFrame === "function") {
       engineTimerId = requestAnimationFrame(stepEngine);
+    } else {
+      engineTimerId = setTimeout(stepEngine, 40);
     }
   } else {
     engineTimerId = null;
@@ -246,7 +251,11 @@ export function ensureEngineRunning() {
     }
   }
   if (hasPending && typeof window !== "undefined") {
-    engineTimerId = requestAnimationFrame(stepEngine);
+    if (typeof requestAnimationFrame === "function") {
+      engineTimerId = requestAnimationFrame(stepEngine);
+    } else {
+      engineTimerId = setTimeout(stepEngine, 40);
+    }
   }
 }
 
@@ -282,6 +291,26 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     return null;
   }
 
+  const storageKey = `atlas_sim_started_at_${orderId}`;
+  let initialStartedAt = Date.now();
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && Date.now() - parsed < SIMULATION_DURATION_MS && Date.now() >= parsed) {
+          initialStartedAt = parsed;
+        } else {
+          window.localStorage.setItem(storageKey, String(initialStartedAt));
+        }
+      } else {
+        window.localStorage.setItem(storageKey, String(initialStartedAt));
+      }
+    } catch {
+      // Ignorar restricciones en entornos con storage deshabilitado
+    }
+  }
+
   const record = {
     orderId,
     orderNumber: getSafeOrderNumber(order),
@@ -290,7 +319,7 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     technicianName: getSafeTechnicianName(order),
     origin: DEMO_ORIGIN,
     destination: { lat, lng },
-    startedAt: Date.now(),
+    startedAt: initialStartedAt,
     durationMs: SIMULATION_DURATION_MS,
     routeData: null,
     isLoadingRoute: true,
@@ -365,12 +394,20 @@ export function retryTrackingRoute(orderId) {
  */
 export function restartTracking(orderId) {
   if (!orderId) return null;
-  const current = activeTrackings.get(String(orderId));
+  const safeId = String(orderId);
+  const current = activeTrackings.get(safeId);
   if (!current) return null;
   current.startedAt = Date.now();
   current.hasNotifiedCompletion = false;
   current.isArrived = false;
   current.lastBearing = null;
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(`atlas_sim_started_at_${safeId}`, String(current.startedAt));
+    } catch {
+      // Ignorar restricciones en entornos con storage deshabilitado
+    }
+  }
   ensureEngineRunning();
   notifyListeners();
   return current;
@@ -523,10 +560,44 @@ export function resetAllTrackings() {
   activeTrackings.clear();
   if (engineTimerId !== null) {
     clearTimeout(engineTimerId);
-    cancelAnimationFrame(engineTimerId);
+    if (typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(engineTimerId);
+    }
     engineTimerId = null;
   }
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      for (let i = window.localStorage.length - 1; i >= 0; i--) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith("atlas_sim_started_at_")) {
+          window.localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      // Ignorar en entornos sin soporte de storage
+    }
+  }
   notifyListeners();
+}
+
+// Sincronización inter-pestañas en tiempo real (mismo navegador / demostración)
+if (typeof window !== "undefined" && window.addEventListener) {
+  window.addEventListener("storage", (event) => {
+    if (event.key && event.key.startsWith("atlas_sim_started_at_")) {
+      const orderId = event.key.replace("atlas_sim_started_at_", "");
+      const current = activeTrackings.get(orderId);
+      if (current && event.newValue) {
+        const newStartedAt = parseInt(event.newValue, 10);
+        if (!isNaN(newStartedAt) && newStartedAt !== current.startedAt) {
+          current.startedAt = newStartedAt;
+          current.hasNotifiedCompletion = false;
+          current.isArrived = false;
+          ensureEngineRunning();
+          notifyListeners();
+        }
+      }
+    }
+  });
 }
 
 /**
