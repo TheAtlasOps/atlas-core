@@ -89,8 +89,17 @@ def build_magic_link_html(
     scheduled_date_str: str,
     address: str,
     magic_link_url: str,
+    technician_name: Optional[str] = None,
 ) -> str:
     """Genera plantilla HTML responsiva para invitación con Magic Link compatible con Gmail y Outlook."""
+    escaped_client = escape(client_name)
+    escaped_order = escape(order_number)
+    escaped_service = escape(service_type)
+    escaped_scheduled = escape(scheduled_date_str)
+    escaped_address = escape(address)
+    escaped_magic_link = escape(magic_link_url, quote=True)
+    escaped_tech = escape(technician_name) if (technician_name and technician_name.strip()) else "Pendiente de asignación"
+
     return f"""
     <!DOCTYPE html>
     <html lang="es">
@@ -115,30 +124,30 @@ def build_magic_link_html(
 
         <div style="padding: 32px 28px;">
           <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 12px 0; color: #0f172a;">Tu visita técnica ha sido programada</h1>
-          <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Hola <strong>{client_name}</strong>, tu orden de servicio de conectividad está confirmada. Puedes seguir el estado del técnico en tiempo real sin necesidad de crear contraseñas.</p>
+          <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Hola <strong>{escaped_client}</strong>, tu orden de servicio de conectividad está confirmada. Puedes seguir el estado del técnico en tiempo real sin necesidad de crear contraseñas.</p>
           
           <!-- Tabla de Datos Clave (100% compatible con clientes de correo) -->
           <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 24px;">
             <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; font-size: 13px;">
               <tr>
                 <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Orden de Trabajo:</td>
-                <td style="color: #0f172a; font-weight: 700; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace;">{order_number}</td>
+                <td style="color: #0f172a; font-weight: 700; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-family: monospace;">{escaped_order}</td>
               </tr>
               <tr>
                 <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Servicio:</td>
-                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{service_type}</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{escaped_service}</td>
               </tr>
               <tr>
                 <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Fecha acordada:</td>
-                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{scheduled_date_str}</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{escaped_scheduled}</td>
               </tr>
               <tr>
                 <td style="color: #64748b; font-weight: 500; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">Dirección:</td>
-                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{address}</td>
+                <td style="color: #0f172a; font-weight: 600; text-align: right; padding: 7px 0; border-bottom: 1px solid #f1f5f9;">{escaped_address}</td>
               </tr>
               <tr>
                 <td style="color: #64748b; font-weight: 500; padding: 7px 0;">Técnico Asignado:</td>
-                <td style="color: #f97316; font-weight: 700; text-align: right; padding: 7px 0;">Alexander Sáez (Entel)</td>
+                <td style="color: #f97316; font-weight: 700; text-align: right; padding: 7px 0;">{escaped_tech}</td>
               </tr>
             </table>
           </div>
@@ -147,7 +156,7 @@ def build_magic_link_html(
           <table cellpadding="0" cellspacing="0" border="0" style="width: 100%; margin: 24px 0;">
             <tr>
               <td align="center">
-                <a href="{magic_link_url}" style="display: block; width: 100%; box-sizing: border-box; background-color: #f97316; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;" target="_blank">Acceder al Portal de Seguimiento</a>
+                <a href="{escaped_magic_link}" style="display: block; width: 100%; box-sizing: border-box; background-color: #f97316; color: #ffffff !important; text-align: center; padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 15px;" target="_blank">Acceder al Portal de Seguimiento</a>
               </td>
             </tr>
           </table>
