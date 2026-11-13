@@ -22,18 +22,13 @@ import {
   makeVehicleIcon,
   makeOriginIcon,
   makeDestinationIcon,
-  formatDistance,
 } from "../lib/routeSimulation.js";
 
 import {
   startTracking,
   restartTracking,
-  stopTracking,
-  getTracking,
   resetAllTrackings,
   computeTrackingSnapshot,
-  formatCountdown,
-  SIMULATION_DURATION_MS,
   getSafeOrderId,
 } from "../lib/routeTrackingManager.js";
 

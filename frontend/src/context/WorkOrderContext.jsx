@@ -28,12 +28,103 @@ export function WorkOrderProvider({ children }) {
   const [auditedOrders, setAuditedOrders] = useState({});
   const [toast, setToast] = useState(null);
 
-  const showNotification = useCallback((title, description) => {
-    setToast({ title, description });
-    setTimeout(() => {
-      setToast(null);
-    }, 4500);
+  // ── Almacén persistente de notificaciones (localStorage) ──
+  const [notifications, setNotifications] = useState(() => {
+    if (typeof window === "undefined" || !window.localStorage) return [];
+    try {
+      const saved = window.localStorage.getItem("atlas_notifications_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return [];
+  });
+
+  const persistNotifications = useCallback((updater) => {
+    setNotifications((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem("atlas_notifications_v1", JSON.stringify(next));
+        } catch {
+          // Ignorar en entornos restringidos
+        }
+      }
+      return next;
+    });
   }, []);
+
+  const addNotification = useCallback(
+    ({ title, message, type = "order", orderNumber = null, dedupeKey = null }) => {
+      if (!title) return;
+      const key = dedupeKey || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+
+      persistNotifications((prev) => {
+        // Evitar duplicados si ya existe el dedupeKey
+        if (dedupeKey && prev.some((n) => n.dedupeKey === dedupeKey)) {
+          return prev;
+        }
+        const item = {
+          id: key,
+          dedupeKey: key,
+          title,
+          message,
+          type,
+          orderNumber,
+          time: timeStr,
+          timestamp: now.getTime(),
+          read: false,
+        };
+        return [item, ...prev].slice(0, 50);
+      });
+    },
+    [persistNotifications]
+  );
+
+  const markAsRead = useCallback(
+    (id) => {
+      persistNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+    },
+    [persistNotifications]
+  );
+
+  const markAllAsRead = useCallback(() => {
+    persistNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  }, [persistNotifications]);
+
+  const clearNotifications = useCallback(() => {
+    persistNotifications([]);
+  }, [persistNotifications]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications]
+  );
+
+  const showNotification = useCallback(
+    (title, description, { type = "order", orderNumber = null, dedupeKey = null } = {}) => {
+      setToast({ title, description, type });
+      setTimeout(() => {
+        setToast(null);
+      }, 4500);
+
+      addNotification({
+        title,
+        message: description,
+        type,
+        orderNumber,
+        dedupeKey,
+      });
+    },
+    [addNotification]
+  );
 
   /**
    * Recarga la lista de órdenes desde FastAPI (`api.orders.getAll({ size: 100 })`).
@@ -102,17 +193,82 @@ export function WorkOrderProvider({ children }) {
   }, [rawOrders]);
 
   // Notificación informativa discreta al finalizar un recorrido simulado (180 s)
+  // Emite exactamente una notificación evitando duplicados o alertas continuas por frame
   useEffect(() => {
     setOnTrackingCompleted((record) => {
+      if (!record || !record.orderNumber) return;
       showNotification(
         "Recorrido simulado finalizado",
-        `La OT ${record.orderNumber} completó su recorrido de demostración. Pendiente de confirmación de llegada del técnico.`
+        `La OT ${record.orderNumber} completó su recorrido de demostración. Pendiente de confirmación de llegada del técnico.`,
+        {
+          type: "tracking",
+          orderNumber: record.orderNumber,
+          dedupeKey: `tracking_completed_${record.orderId || record.orderNumber}`,
+        }
       );
     });
     return () => {
       setOnTrackingCompleted(null);
     };
   }, [showNotification]);
+
+  // Sincronizar notificaciones relevantes derivadas de órdenes reales de Neon
+  useEffect(() => {
+    if (!Array.isArray(rawOrders) || rawOrders.length === 0) return;
+
+    for (const order of rawOrders) {
+      if (!order) continue;
+      const orderNumber = order.order_number || `#OT-${order.id}`;
+      const status = (order.status || "").toUpperCase();
+      const priority = (order.priority || "").toUpperCase();
+      const clientName =
+        order.client?.business_name || order.client_name || order.clientName || "Cliente";
+
+      // 1. Notificación de órdenes con prioridad Urgente
+      if (priority === "URGENTE") {
+        addNotification({
+          title: `Atención Prioritaria: ${orderNumber}`,
+          message: `Orden con prioridad Urgente para ${clientName} requiere supervisión de despacho.`,
+          type: "urgent",
+          orderNumber,
+          dedupeKey: `order_urgent_${orderNumber}`,
+        });
+      }
+
+      // 2. Notificación de órdenes en desplazamiento técnico
+      if (status === "EN_RUTA") {
+        addNotification({
+          title: `Especialista en Ruta: ${orderNumber}`,
+          message: `El móvil técnico se encuentra en desplazamiento hacia las dependencias de ${clientName}.`,
+          type: "tracking",
+          orderNumber,
+          dedupeKey: `order_en_ruta_${orderNumber}`,
+        });
+      }
+
+      // 3. Notificación de órdenes en atención en sitio
+      if (status === "EN_SITIO") {
+        addNotification({
+          title: `Atención en Sitio: ${orderNumber}`,
+          message: `Especialista en terreno ejecutando faenas para ${clientName}.`,
+          type: "order",
+          orderNumber,
+          dedupeKey: `order_en_sitio_${orderNumber}`,
+        });
+      }
+
+      // 4. Notificación de órdenes completadas pendientes de auditoría
+      if (status === "COMPLETADA" && !order.is_audited && !auditedOrders[orderNumber]) {
+        addNotification({
+          title: `Auditoría Pendiente: ${orderNumber}`,
+          message: `Servicio técnico para ${clientName} finalizado. Pendiente de conformidad y cierre formal.`,
+          type: "audit",
+          orderNumber,
+          dedupeKey: `order_audit_pending_${orderNumber}`,
+        });
+      }
+    }
+  }, [rawOrders, auditedOrders, addNotification]);
 
   const allNormalizedOrders = useMemo(
     () => columns.flatMap((col) => col.tasks),
@@ -195,7 +351,8 @@ export function WorkOrderProvider({ children }) {
 
       showNotification(
         `Orden ${newId} creada exitosamente`,
-        `${orderTitle} · Asignada a ${newTask.assigneeName}`
+        `${orderTitle} · Asignada a ${newTask.assigneeName}`,
+        { type: "order", orderNumber: newId, dedupeKey: `order_created_${newId}` }
       );
 
       return newTask;
@@ -233,7 +390,8 @@ export function WorkOrderProvider({ children }) {
 
       showNotification(
         `Auditoría ${orderKey} aprobada y cerrada`,
-        `Cierre administrativo registrado y persistido en base de datos.`
+        `Cierre administrativo registrado y persistido en base de datos.`,
+        { type: "audit", orderNumber: orderKey, dedupeKey: `audit_approved_${orderKey}` }
       );
     },
     [showNotification]
@@ -311,7 +469,8 @@ export function WorkOrderProvider({ children }) {
         `Hardware emparejado exitosamente`,
         `${routerItem ? `Router ${routerItem.identifier}` : ""}${
           routerItem && simItem ? " + " : ""
-        }${simItem ? `SIM ${simItem.identifier}` : ""} sincronizados.`
+        }${simItem ? `SIM ${simItem.identifier}` : ""} sincronizados.`,
+        { type: "order", orderNumber: orderKey, dedupeKey: `hw_reassigned_${orderKey}_${Date.now()}` }
       );
     },
     [showNotification]
@@ -331,6 +490,12 @@ export function WorkOrderProvider({ children }) {
       toast,
       setToast,
       showNotification,
+      notifications,
+      unreadCount,
+      markAsRead,
+      markAllAsRead,
+      clearNotifications,
+      addNotification,
       refreshOrders,
       refreshHardwareInventory,
       createWorkOrder,
@@ -348,6 +513,12 @@ export function WorkOrderProvider({ children }) {
       totalOrders,
       toast,
       showNotification,
+      notifications,
+      unreadCount,
+      markAsRead,
+      markAllAsRead,
+      clearNotifications,
+      addNotification,
       refreshOrders,
       refreshHardwareInventory,
       createWorkOrder,
@@ -363,9 +534,9 @@ export function WorkOrderProvider({ children }) {
   );
 }
 
-export function useWorkOrders() {
+export function useWorkOrders({ optional = false } = {}) {
   const context = useContext(WorkOrderContext);
-  if (!context) {
+  if (!context && !optional) {
     throw new Error("useWorkOrders debe ser usado dentro de un WorkOrderProvider");
   }
   return context;
