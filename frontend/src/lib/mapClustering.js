@@ -180,7 +180,11 @@ export function getMapSummaryCounters(rawOrders = [], technicianMarkers = [], st
   const { geocodedOrders, unlocatedOrders } = groupOrdersIntoClusters(rawOrders, statusFilter);
   const geocodedCount = geocodedOrders.length;
   const unlocatedCount = unlocatedOrders.length;
-  const techGpsCount = Array.isArray(technicianMarkers) ? technicianMarkers.length : 0;
+  // Solo contabilizar técnicos con señal GPS auténtica, válida y reciente (<10 min)
+  const validTechs = (Array.isArray(technicianMarkers) ? technicianMarkers : []).filter(
+    (t) => hasVerifiedRecentGps(t)
+  );
+  const techGpsCount = validTechs.length;
 
   const summaryText = `${geocodedCount} ${
     geocodedCount === 1 ? "orden geolocalizada" : "órdenes geolocalizadas"

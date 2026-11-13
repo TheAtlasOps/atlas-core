@@ -272,38 +272,112 @@ export function makeVehicleIcon(bearing = 0, isMoving = false, isArrived = false
   const Leaflet = LInstance || (typeof window !== "undefined" ? window.L : null);
   if (!Leaflet?.divIcon) return null;
 
-  const pulseHtml = isMoving
-    ? `<span style="
-        position: absolute; inset: -6px; border-radius: 9999px;
-        border: 2px solid #f97316; opacity: 0.75;
-        animation: atlasPing 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
-      "></span>`
+  const normalizedBearing = ((Math.round(bearing) % 360) + 360) % 360;
+  const isWestbound = normalizedBearing >= 180 && normalizedBearing < 360;
+  const flipX = isWestbound ? -1 : 1;
+
+  // Compensación de orientación 3D isométrica:
+  // Heading este (90°) u oeste (270°) es horizontal neutro (0° tilt)
+  // Heading norte (0° o 360°) inclina sutilmente el frente hacia arriba
+  // Heading sur (180°) inclina sutilmente el frente hacia abajo
+  let tilt = 0;
+  if (isWestbound) {
+    tilt = ((normalizedBearing - 270) / 90) * 18;
+  } else {
+    tilt = ((normalizedBearing - 90) / 90) * 18;
+  }
+  tilt = Math.max(-20, Math.min(20, Math.round(tilt)));
+
+  const beaconHtml = isMoving && !isArrived
+    ? `<div style="
+        position: absolute;
+        top: 22%;
+        left: 68%;
+        transform: translate(-50%, -50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 9999px;
+        background: #f97316;
+        box-shadow: 0 0 8px #f97316, 0 0 16px #ea580c;
+        animation: atlasBeaconStrobe 0.75s ease-in-out infinite;
+        pointer-events: none;
+        z-index: 3;
+      "></div>`
     : "";
 
-  const borderColor = isArrived ? "#10b981" : "#f97316";
-  const iconSymbol = isArrived ? "✅" : "🚐";
+  const arrivedBadgeHtml = isArrived
+    ? `<div style="
+        position: absolute;
+        top: -6px;
+        right: -4px;
+        width: 18px;
+        height: 18px;
+        border-radius: 9999px;
+        background: #10b981;
+        border: 2px solid #ffffff;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.75);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        z-index: 4;
+      ">✓</div>`
+    : "";
+
+  const shadowHtml = `<div style="
+    position: absolute;
+    bottom: 1px;
+    left: 10%;
+    width: 80%;
+    height: 8px;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.45);
+    filter: blur(2px);
+    z-index: 1;
+  "></div>`;
 
   return Leaflet.divIcon({
     className: "atlas-sim-vehicle-icon",
     html: `
       <div style="
         position: relative;
-        width: 42px; height: 42px; border-radius: 9999px;
-        background: #0f172a; border: 3px solid ${borderColor};
-        box-shadow: 0 6px 16px rgba(249, 115, 22, 0.55);
-        display: flex; align-items: center; justify-content: center;
-        transform: rotate(${Math.round(bearing)}deg);
-        transition: transform 0.18s ease-out;
+        width: 52px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
       ">
-        ${pulseHtml}
-        <span style="
-          font-size: 20px;
-          transform: rotate(-${Math.round(bearing)}deg);
-          display: inline-block;
-        ">${iconSymbol}</span>
+        ${shadowHtml}
+        <div style="
+          position: relative;
+          width: 52px;
+          height: 38px;
+          transform: scaleX(${flipX}) rotate(${tilt}deg);
+          transform-origin: center center;
+          transition: transform 0.22s ease-out;
+          z-index: 2;
+        ">
+          <img
+            src="/truck-atlas.png"
+            alt="Camioneta ATLAS FSM"
+            style="
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+              display: block;
+              user-select: none;
+              -webkit-user-drag: none;
+            "
+          />
+          ${beaconHtml}
+        </div>
+        ${arrivedBadgeHtml}
       </div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+    iconSize: [52, 38],
+    iconAnchor: [26, 19],
     popupAnchor: [0, -22],
   });
 }
