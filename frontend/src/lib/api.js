@@ -144,6 +144,22 @@ export const api = {
       return request(`/orders/activity-log?limit=${params}`);
     },
   },
+  clients: {
+    getAll: (params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(`/clients${query ? `?${query}` : ""}`);
+    },
+    getById: (clientId) => request(`/clients/${clientId}`),
+    create: (clientData) =>
+      request("/clients", { method: "POST", body: JSON.stringify(clientData) }),
+    update: (clientId, clientData) =>
+      request(`/clients/${clientId}`, {
+        method: "PATCH",
+        body: JSON.stringify(clientData),
+      }),
+    delete: (clientId) =>
+      request(`/clients/${clientId}`, { method: "DELETE" }),
+  },
   evidences: {
     getByOrderId: (workOrderId) => request(`/evidences/order/${workOrderId}`),
   },

@@ -1,10 +1,11 @@
-import { LayoutDashboard, ClipboardList, Database, Link2, Settings, Users } from "lucide-react";
+import { LayoutDashboard, ClipboardList, Database, Link2, Settings, Users, Building2 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import atlasLogo from "../../assets/atlas-logo.png";
 
 const navItems = [
   { label: "Tablero de Despacho", icon: LayoutDashboard, path: "/" },
   { label: "Órdenes de Trabajo", icon: ClipboardList, path: "/work-orders" },
+  { label: "Clientes", icon: Building2, path: "/clients" },
   { label: "Técnicos", icon: Users, path: "/technicians" },
   { label: "Inventario SIM", icon: Database, path: "/sim-inventory" },
   { label: "Magic Links", icon: Link2, path: "/magic-links" },
