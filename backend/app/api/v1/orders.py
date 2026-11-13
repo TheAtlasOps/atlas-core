@@ -6,12 +6,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Union
 from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.config import settings
 from app.api.deps import get_current_active_user, require_role
 from app.models.user import User
+from app.models.client import Client
 from app.models.work_order import WorkOrder
 from app.models.enums import UserRoleEnum, OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum, EvidenceTypeEnum
 from app.services.storage_service import generate_presigned_download_url
@@ -38,6 +40,8 @@ from app.schemas.work_order import (
     AuditorSummary,
     AuditApprovalRequest,
     MagicLinkDetailSummary,
+    ClientContactEmailUpdate,
+    ClientUpdate,
 )
 from app.services.order_service import (
     list_orders,
@@ -414,6 +418,40 @@ async def get_clients(
     return await list_clients(db)
 
 
+@router.patch(
+    "/clients/{client_id}",
+    response_model=ClientSummary,
+    summary="Actualizar datos de contacto de un cliente",
+    description="Permite modificar el correo y datos de contacto de un cliente registrado en Neon. Restringido a Coordinadores y Administradores.",
+)
+async def update_client_contact(
+    client_id: uuid.UUID,
+    payload: ClientUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Actualización de datos de un cliente."""
+    result = await db.execute(select(Client).where(Client.id == client_id))
+    client_obj = result.scalar_one_or_none()
+    if not client_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Cliente con ID {client_id} no encontrado",
+        )
+
+    if payload.contact_email is not None:
+        client_obj.contact_email = str(payload.contact_email).strip().lower()
+    if payload.contact_person is not None:
+        client_obj.contact_person = payload.contact_person.strip()
+    if payload.contact_phone is not None:
+        client_obj.contact_phone = payload.contact_phone.strip()
+
+    client_obj.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(client_obj)
+    return ClientSummary.model_validate(client_obj)
+
+
 @router.get(
     "/activity-log",
     response_model=Union[OrderActivityLogPaginatedResponse, List[OrderActivityLogItem]],
@@ -539,6 +577,39 @@ async def update_work_order_endpoint(
     """Actualización de datos y coordenadas de la orden."""
     updated = await update_order(db, order_id, order_update, current_user=current_user)
     return build_order_response(updated)
+
+
+@router.patch(
+    "/{order_id}/client-email",
+    response_model=WorkOrderResponse,
+    summary="Actualizar correo de contacto del cliente de la orden",
+    description="Actualiza en Neon el correo principal de contacto del cliente asociado a la orden de trabajo. Restringido a Coordinadores y Administradores.",
+)
+async def update_order_client_email(
+    order_id: uuid.UUID,
+    payload: ClientContactEmailUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Actualización del correo del cliente vinculado a una orden."""
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {order_id} no encontrada",
+        )
+    if not order.client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="La orden de trabajo no tiene un cliente asociado",
+        )
+
+    order.client.contact_email = str(payload.contact_email).strip().lower()
+    order.client.updated_at = datetime.now(timezone.utc)
+    order.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(order.client)
+    return build_order_response(order)
 
 
 @router.patch(

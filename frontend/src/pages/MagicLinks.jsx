@@ -407,10 +407,25 @@ export default function MagicLinks() {
       .catch(() => {});
   };
 
-  // Acción: Abrir modal de envío por correo
-  const handleOpenSendModal = (row) => {
+  // Acción: Abrir modal de envío por correo recuperando el correo actualizado del cliente
+  const handleOpenSendModal = async (row) => {
     setSendModalRow(row);
     setSendModalEmail(row.clientEmail || "");
+    try {
+      if (row.workOrderId) {
+        const fresh = await api.orders.getById(row.workOrderId);
+        const freshEmail =
+          fresh?.client?.contact_email ||
+          fresh?.client_email ||
+          row.clientEmail ||
+          "";
+        if (freshEmail) {
+          setSendModalEmail(freshEmail);
+        }
+      }
+    } catch {
+      // Conservar el correo actual si la consulta de refresco falla
+    }
   };
 
   // Confirmar despacho por correo vía SendGrid

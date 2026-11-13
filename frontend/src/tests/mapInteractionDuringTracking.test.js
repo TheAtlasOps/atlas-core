@@ -7,13 +7,8 @@ import { fileURLToPath } from "node:url";
 import {
   startTracking,
   resetAllTrackings,
-  getTracking,
-  useRouteTracking,
-  useTrackingRouteCoordinates,
   computeTrackingSnapshot,
-  SIMULATION_DURATION_MS,
 } from "../lib/routeTrackingManager.js";
-import { DEMO_ORIGIN } from "../lib/routeSimulation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
