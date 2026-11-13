@@ -21,4 +21,4 @@ services:
       - key: MAGIC_LINK_SECRET_KEY
         generateValue: true
       - key: FRONTEND_PORTAL_URL
-        value: https://atlas-fsm.vercel.app/status
+        value: https://www.atlasfsm.cl/status

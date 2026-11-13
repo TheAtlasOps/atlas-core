@@ -353,23 +353,32 @@ def test_send_magic_link_unassigned_technician_shows_pending(
 
 
 def test_frontend_portal_url_production_guard():
-    """Valida que en producción FRONTEND_PORTAL_URL nunca apunte a localhost."""
-    # 1. En producción con valor por defecto localhost, debe mutar a la URL oficial de Vercel
+    """Valida que en producción FRONTEND_PORTAL_URL nunca apunte a localhost ni a dominios internos de vercel.app."""
+    # 1. En producción con valor por defecto localhost, debe mutar al dominio oficial https://www.atlasfsm.cl/status
     prod_settings = Settings(
         ENVIRONMENT="production",
         FRONTEND_PORTAL_URL="http://localhost:5173/status",
     )
-    assert prod_settings.FRONTEND_PORTAL_URL == "https://atlas-fsm.vercel.app/status"
+    assert prod_settings.FRONTEND_PORTAL_URL == "https://www.atlasfsm.cl/status"
     assert "localhost" not in prod_settings.FRONTEND_PORTAL_URL
+    assert "vercel.app" not in prod_settings.FRONTEND_PORTAL_URL
 
-    # 2. Con trailing slash, debe normalizarse sin slash final
+    # 2. Si se configuró con dominio interno de vercel.app en producción, se normaliza al dominio oficial
+    prod_vercel = Settings(
+        ENVIRONMENT="production",
+        FRONTEND_PORTAL_URL="https://atlas-fsm.vercel.app/status",
+    )
+    assert prod_vercel.FRONTEND_PORTAL_URL == "https://www.atlasfsm.cl/status"
+    assert "vercel.app" not in prod_vercel.FRONTEND_PORTAL_URL
+
+    # 3. Con trailing slash, debe normalizarse sin slash final
     prod_custom = Settings(
         ENVIRONMENT="production",
-        FRONTEND_PORTAL_URL="https://atlas-fsm.vercel.app/status/",
+        FRONTEND_PORTAL_URL="https://www.atlasfsm.cl/status/",
     )
-    assert prod_custom.FRONTEND_PORTAL_URL == "https://atlas-fsm.vercel.app/status"
+    assert prod_custom.FRONTEND_PORTAL_URL == "https://www.atlasfsm.cl/status"
 
-    # 3. En desarrollo, conserva localhost para testing local
+    # 4. En desarrollo, conserva localhost para testing local
     dev_settings = Settings(
         ENVIRONMENT="development",
         FRONTEND_PORTAL_URL="http://localhost:5173/status",

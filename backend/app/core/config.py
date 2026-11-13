@@ -59,14 +59,20 @@ class Settings(BaseSettings):
         env = str(self.ENVIRONMENT or "development").strip().lower()
         if self.FRONTEND_PORTAL_URL:
             self.FRONTEND_PORTAL_URL = self.FRONTEND_PORTAL_URL.strip().rstrip("/")
-            if env == "production" and ("localhost" in self.FRONTEND_PORTAL_URL or "127.0.0.1" in self.FRONTEND_PORTAL_URL):
-                self.FRONTEND_PORTAL_URL = "https://atlas-fsm.vercel.app/status"
+            if env == "production" and (
+                "localhost" in self.FRONTEND_PORTAL_URL
+                or "127.0.0.1" in self.FRONTEND_PORTAL_URL
+                or "vercel.app" in self.FRONTEND_PORTAL_URL
+            ):
+                self.FRONTEND_PORTAL_URL = "https://www.atlasfsm.cl/status"
         return self
 
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://www.atlasfsm.cl",
+        "https://atlasfsm.cl",
         "https://atlas-fsm.vercel.app",
     ]
 
