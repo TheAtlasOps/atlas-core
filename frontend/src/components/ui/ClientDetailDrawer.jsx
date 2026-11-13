@@ -305,8 +305,16 @@ export default function ClientDetailDrawer({
                     return (
                       <div
                         key={o.id}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => handleOpenOrder(o.order_number)}
-                        className="rounded-xl border border-border bg-card p-3.5 hover:border-orange-500/50 hover:shadow-md transition-all cursor-pointer group"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleOpenOrder(o.order_number);
+                          }
+                        }}
+                        className="rounded-xl border border-border bg-card p-3.5 hover:border-orange-500/50 hover:shadow-md transition-all cursor-pointer group focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
