@@ -22,8 +22,13 @@ import {
   AlertTriangle,
   Loader2,
   Navigation,
+  Mail,
+  Building2,
+  Edit2,
+  Send,
 } from "lucide-react";
 import AdminAvatar from "./AdminAvatar";
+import { useAuth } from "../../context/AuthContext";
 import { getOrderAuditPackage, STATUS_LABELS } from "../../lib/auditAndHardwareData";
 import { isValidCoordinate } from "../../lib/mapClustering.js";
 import { isEnRutaStatus } from "../../lib/routeTrackingManager.js";
@@ -136,6 +141,9 @@ function WorkOrderDetailDrawerContent({
     setToast,
   } = useWorkOrders();
 
+  const { user } = useAuth();
+  const canEditClient = user?.role === "ADMIN" || user?.role === "COORDINADOR";
+
   const [activeTab, setActiveTab] = useState("all");
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null);
   const [isReassigning, setIsReassigning] = useState(false);
@@ -149,6 +157,19 @@ function WorkOrderDetailDrawerContent({
   const [isPairing, setIsPairing] = useState(false);
   const [approveError, setApproveError] = useState(null);
 
+  // Estados para visualización y edición del correo del cliente
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [emailEditError, setEmailEditError] = useState(null);
+  const [emailSuccessMessage, setEmailSuccessMessage] = useState(null);
+
+  // Estados para modal de envío de Magic Link
+  const [isSendMagicModalOpen, setIsSendMagicModalOpen] = useState(false);
+  const [magicRecipientEmail, setMagicRecipientEmail] = useState("");
+  const [isSendingMagicLink, setIsSendingMagicLink] = useState(false);
+  const [magicSendToast, setMagicSendToast] = useState(null);
+
   // Reset estados internos y consultar detalle completo y evidencias reales de la OT
   useEffect(() => {
     setActiveTab("all");
@@ -158,6 +179,11 @@ function WorkOrderDetailDrawerContent({
     setSelectedSimId("");
     setApproveError(null);
     setApiOrderDetail(null);
+    setIsEditingEmail(false);
+    setEmailEditError(null);
+    setEmailSuccessMessage(null);
+    setIsSendMagicModalOpen(false);
+    setMagicSendToast(null);
     setApiEvidences(null);
     setIsEvidencesLoading(false);
     setEvidencesError(null);
@@ -250,6 +276,141 @@ function WorkOrderDetailDrawerContent({
     order.assigneeName ||
     order.assignee ||
     "Técnico sin asignar";
+
+  const currentClientEmail =
+    apiOrderDetail?.client?.contact_email ||
+    order.client?.contact_email ||
+    order.clientEmail ||
+    "";
+  const clientPerson =
+    apiOrderDetail?.client?.contact_person ||
+    order.client?.contact_person ||
+    "";
+  const clientPhone =
+    apiOrderDetail?.client?.contact_phone ||
+    order.client?.contact_phone ||
+    "";
+
+  // Guardar correo del cliente en Neon con validación
+  const handleSaveClientEmail = async (e) => {
+    e.preventDefault();
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setEmailEditError("Ingresa un correo electrónico con formato válido (ej: contacto@empresa.cl)");
+      return;
+    }
+
+    setIsSavingEmail(true);
+    setEmailEditError(null);
+    try {
+      const orderId = apiOrderDetail?.id || order?.id;
+      const updatedOrder = await api.orders.updateClientEmail(orderId, cleanEmail);
+      if (updatedOrder?.client) {
+        setApiOrderDetail((prev) => ({
+          ...(prev || order),
+          client: updatedOrder.client,
+        }));
+      }
+      if (order.client) {
+        order.client.contact_email = cleanEmail;
+      }
+      if (typeof refreshOrders === "function") {
+        refreshOrders().catch(() => {});
+      }
+      setIsEditingEmail(false);
+      setEmailSuccessMessage("Correo guardado exitosamente en Neon.");
+      if (typeof setToast === "function") {
+        setToast({
+          type: "success",
+          title: "Correo actualizado",
+          message: `El correo de contacto se guardó como ${cleanEmail} en Neon.`,
+        });
+      }
+      setTimeout(() => setEmailSuccessMessage(null), 4000);
+    } catch (err) {
+      setEmailEditError(err.message || "No se pudo actualizar el correo del cliente.");
+    } finally {
+      setIsSavingEmail(false);
+    }
+  };
+
+  // Abrir modal de envío recuperando automáticamente el correo fresco del cliente
+  const handleOpenSendMagicModal = async () => {
+    setIsSendMagicModalOpen(true);
+    setMagicSendToast(null);
+    try {
+      const orderId = apiOrderDetail?.id || order?.id;
+      const fresh = await api.orders.getById(orderId);
+      const email =
+        fresh?.client?.contact_email ||
+        fresh?.client_email ||
+        apiOrderDetail?.client?.contact_email ||
+        order?.client?.contact_email ||
+        "";
+      setMagicRecipientEmail(email);
+      if (fresh?.client) {
+        setApiOrderDetail((prev) => ({
+          ...(prev || order),
+          client: { ...(prev?.client || {}), ...fresh.client },
+        }));
+      }
+    } catch {
+      const fallbackEmail =
+        apiOrderDetail?.client?.contact_email ||
+        order?.client?.contact_email ||
+        "";
+      setMagicRecipientEmail(fallbackEmail);
+    }
+  };
+
+  // Enviar Magic Link por SendGrid
+  const handleConfirmSendMagicLink = async (e) => {
+    e.preventDefault();
+    const orderId = apiOrderDetail?.id || order?.id;
+    if (!orderId) return;
+
+    const target = magicRecipientEmail.trim();
+    if (!target) {
+      setMagicSendToast({
+        type: "error",
+        message: "Por favor ingresa un correo de destino válido.",
+      });
+      return;
+    }
+
+    setIsSendingMagicLink(true);
+    setMagicSendToast(null);
+    try {
+      const res = await api.notifications.sendMagicLink(orderId, target);
+      if (res?.success) {
+        setMagicSendToast({
+          type: "success",
+          message: `Magic Link entregado exitosamente a ${res.recipient} vía SendGrid.`,
+        });
+        if (typeof setToast === "function") {
+          setToast({
+            type: "success",
+            title: "¡Correo enviado con éxito!",
+            message: `Magic Link entregado a ${res.recipient} vía SendGrid.`,
+          });
+        }
+        setTimeout(() => {
+          setIsSendMagicModalOpen(false);
+          setMagicSendToast(null);
+        }, 1800);
+      } else {
+        throw new Error(res?.status || "Error reportado por el servidor de correo.");
+      }
+    } catch (err) {
+      setMagicSendToast({
+        type: "error",
+        message: err.message || "No se pudo despachar el correo transaccional.",
+      });
+    } finally {
+      setIsSendingMagicLink(false);
+    }
+  };
 
   const availableRouters = hardwareInventory.filter(
     (item) =>
@@ -523,6 +684,143 @@ function WorkOrderDetailDrawerContent({
 
         {/* ── Contenido desplazable del Drawer ── */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-kanban">
+          {/* Ficha de Contacto del Cliente y Correo Electrónico */}
+          <div className="rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-[#161616] p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-gray-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                    Contacto del Cliente
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                    Datos del cliente asociado y destinatario de Magic Link
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenSendMagicModal}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 transition-colors cursor-pointer"
+                title="Enviar invitación con Magic Link al cliente"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                <span>Enviar Magic Link</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              {/* Razón Social y Persona de Contacto */}
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                  Empresa / Cliente
+                </span>
+                <p className="font-semibold text-slate-900 dark:text-white truncate">
+                  {clientDisplayName || "Cliente no especificado"}
+                </p>
+                {clientPerson && (
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400 truncate">
+                    Atención: {clientPerson}
+                  </p>
+                )}
+              </div>
+
+              {/* Teléfono de Contacto */}
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                  Teléfono de Contacto
+                </span>
+                <p className="font-medium text-slate-800 dark:text-gray-200">
+                  {clientPhone || "Sin teléfono registrado"}
+                </p>
+              </div>
+
+              {/* Correo Electrónico (Visualización y Edición) */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
+                    Correo de Contacto
+                  </span>
+                  {canEditClient && !isEditingEmail && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailInput(currentClientEmail);
+                        setEmailEditError(null);
+                        setIsEditingEmail(true);
+                      }}
+                      className="text-[11px] font-semibold text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 inline-flex items-center gap-1 cursor-pointer"
+                      title="Editar correo de contacto del cliente en Neon"
+                    >
+                      <Edit2 className="h-3 w-3" />
+                      <span>Editar</span>
+                    </button>
+                  )}
+                </div>
+
+                {isEditingEmail ? (
+                  <form onSubmit={handleSaveClientEmail} className="mt-1 space-y-1.5">
+                    <input
+                      type="email"
+                      required
+                      value={emailInput}
+                      onChange={(e) => {
+                        setEmailInput(e.target.value);
+                        setEmailEditError(null);
+                      }}
+                      placeholder="cliente@empresa.cl"
+                      className="w-full rounded-md border border-orange-500/50 bg-white dark:bg-gray-900 px-2 py-1 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-orange-500"
+                    />
+                    {emailEditError && (
+                      <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium">
+                        {emailEditError}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <button
+                        type="submit"
+                        disabled={isSavingEmail}
+                        className="rounded bg-orange-500 hover:bg-orange-600 px-2.5 py-0.5 text-[10px] font-bold text-white transition disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSavingEmail ? "Guardando..." : "Guardar"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isSavingEmail}
+                        onClick={() => {
+                          setIsEditingEmail(false);
+                          setEmailEditError(null);
+                        }}
+                        className="rounded border border-slate-200 dark:border-gray-700 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800 transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="mt-0.5">
+                    {currentClientEmail ? (
+                      <span className="font-mono text-xs font-semibold text-slate-800 dark:text-gray-200 break-all">
+                        {currentClientEmail}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] italic text-amber-600 dark:text-amber-400">
+                        Sin correo registrado
+                      </span>
+                    )}
+                    {emailSuccessMessage && (
+                      <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-0.5 animate-in fade-in">
+                        ✓ {emailSuccessMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           {/* Banner de Auditoría Aprobada y Cerrada */}
           {isAudited && (
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/20 p-4 flex items-start gap-3">
@@ -1270,6 +1568,128 @@ function WorkOrderDetailDrawerContent({
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+        {/* ── MODAL: ENVIAR MAGIC LINK POR CORREO DIRECTO ── */}
+        {isSendMagicModalOpen && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="relative w-full max-w-md rounded-2xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-[#1e1e1e] p-6 shadow-2xl animate-in zoom-in-95 duration-200 text-slate-900 dark:text-white">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-gray-700 pb-4 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold">Enviar Magic Link</h3>
+                    <p className="text-xs text-slate-500 dark:text-gray-400">
+                      Despacha la invitación con enlace seguro vía SendGrid
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSendMagicModalOpen(false);
+                    setMagicSendToast(null);
+                  }}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmSendMagicLink} className="space-y-4">
+                <div className="rounded-xl bg-slate-50 dark:bg-gray-800/60 p-3 text-xs space-y-1 border border-slate-200/60 dark:border-gray-700">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-gray-400">Orden de Trabajo:</span>
+                    <span className="font-semibold text-orange-600 dark:text-orange-400">
+                      {order.order_number || order.orderId}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 dark:text-gray-400">Cliente Asociado:</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200 truncate ml-2">
+                      {clientDisplayName || "Cliente"}
+                    </span>
+                  </div>
+                  {currentClientEmail && (
+                    <div className="flex justify-between pt-0.5 border-t border-slate-200/50 dark:border-gray-700/50">
+                      <span className="text-slate-500 dark:text-gray-400">Correo Principal Registrado:</span>
+                      <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 truncate ml-2">
+                        {currentClientEmail}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-gray-400 mb-1.5">
+                    Correo Electrónico de Destino
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="email"
+                      required
+                      value={magicRecipientEmail}
+                      onChange={(e) => setMagicRecipientEmail(e.target.value)}
+                      placeholder="cliente@correo.com"
+                      className="w-full rounded-xl border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-900 py-2.5 pl-10 pr-3.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-1">
+                    Puedes ingresar otro correo temporal si deseas enviar la copia a otra persona sin modificar el correo oficial del cliente.
+                  </p>
+                </div>
+
+                {magicSendToast && (
+                  <div
+                    className={`rounded-lg p-2.5 text-xs font-medium flex items-center gap-2 ${
+                      magicSendToast.type === "success"
+                        ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                        : "bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-400"
+                    }`}
+                  >
+                    {magicSendToast.type === "success" ? (
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500" />
+                    )}
+                    <span>{magicSendToast.message}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSendMagicModalOpen(false);
+                      setMagicSendToast(null);
+                    }}
+                    className="rounded-xl px-4 py-2 text-sm font-medium text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800 transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSendingMagicLink}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSendingMagicLink ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Despachando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        <span>Enviar Ahora</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -56,17 +56,13 @@ async def resend_magic_link(
         )
 
     # 2. Determinar correo destinatario (personalizado o el guardado en el cliente)
+    # Si se especifica un correo alternativo, se envía a este sin modificar el correo principal del cliente en BD
     target_email = request.recipient_email or (order.client.contact_email if order.client else None)
     if not target_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La orden no cuenta con un correo de cliente y no se especificó un correo de destino"
         )
-
-    # Si se especificó un correo personalizado y difiere del actual, actualizarlo en el cliente
-    if request.recipient_email and order.client and order.client.contact_email != request.recipient_email:
-        order.client.contact_email = str(request.recipient_email)
-        await db.commit()
 
     # 3. Obtener token activo de Magic Link (vigente) o auto-generarlo
     active_token = None
@@ -103,11 +99,19 @@ async def resend_magic_link(
 
     subject = f"🌍 Atlas Entel: Seguimiento de tu visita técnica ({order.order_number})"
 
-    return await send_transactional_email(
+    result = await send_transactional_email(
         to_email=str(target_email),
         subject=subject,
         html_content=html_content,
     )
+
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo despachar el correo transaccional: {result.status}",
+        )
+
+    return result
 
 
 @router.post(

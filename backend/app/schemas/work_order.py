@@ -21,6 +21,16 @@ class ClientSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ClientContactEmailUpdate(BaseModel):
+    contact_email: EmailStr = Field(..., description="Correo electrónico válido de contacto del cliente")
+
+
+class ClientUpdate(BaseModel):
+    contact_email: Optional[EmailStr] = Field(None, description="Correo electrónico de contacto")
+    contact_person: Optional[str] = Field(None, description="Nombre de la persona de contacto")
+    contact_phone: Optional[str] = Field(None, description="Teléfono de contacto")
+
+
 class AuditorSummary(BaseModel):
     id: uuid.UUID
     full_name: str

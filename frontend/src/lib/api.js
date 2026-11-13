@@ -122,6 +122,16 @@ export const api = {
     toggleTechnicianAvailability: (id) =>
       request(`/orders/technicians/${id}/toggle-availability`, { method: "PATCH" }),
     getClients: () => request("/orders/clients"),
+    updateClientEmail: (orderId, contactEmail) =>
+      request(`/orders/${orderId}/client-email`, {
+        method: "PATCH",
+        body: JSON.stringify({ contact_email: contactEmail }),
+      }),
+    updateClient: (clientId, data) =>
+      request(`/orders/clients/${clientId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     getActivityLog: (params = 50) => {
       if (typeof params === "object" && params !== null) {
         const query = new URLSearchParams();
