@@ -70,7 +70,8 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
 
     // Verificar subtítulo con max-w y tamaño adecuado para no desbordar el círculo interior
     assert.ok(
-      dispatchBoardCode.includes("max-w-[76px] text-[10px] leading-tight"),
+      dispatchBoardCode.includes("max-w-19 text-[10px] leading-tight") ||
+        dispatchBoardCode.includes("max-w-[76px] text-[10px] leading-tight"),
       "El subtítulo de órdenes registradas debe tener tamaño acotado (10px) y max-w para permanecer dentro del círculo"
     );
   });
@@ -131,7 +132,8 @@ describe("Tablero de Despacho — Ajustes visuales de tipografía, centrado y la
 
     // AiInsights debe distribuir uniformemente sus tarjetas interiores con flex-1 y min-h
     assert.ok(
-      dispatchBoardCode.includes("flex-1 min-h-[115px] rounded-xl"),
+      dispatchBoardCode.includes("flex-1 min-h-28.75 rounded-xl") ||
+        dispatchBoardCode.includes("flex-1 min-h-[115px] rounded-xl"),
       "Las tarjetas interiores de Alertas operativas deben ocupar el espacio disponible con flex-1 y min-h"
     );
   });

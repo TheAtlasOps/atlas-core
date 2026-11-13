@@ -255,7 +255,7 @@ function TrackingFloatingCard({
   // Estado contraído (Píldora discreta sin bloquear marcadores del mapa)
   if (isCollapsed) {
     return (
-      <div className="absolute bottom-3 left-3 z-[400] animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="absolute bottom-3 left-3 z-400 animate-in fade-in slide-in-from-bottom-2 duration-200">
         <button
           type="button"
           onClick={() => setIsCollapsed(false)}
@@ -289,7 +289,7 @@ function TrackingFloatingCard({
   // Vista ampliada dentro del modal de mapa completo
   if (isExpandedView) {
     return (
-      <div className="absolute bottom-4 left-4 z-[400] w-full max-w-sm sm:max-w-md rounded-2xl border border-orange-500/40 bg-slate-950/95 shadow-2xl backdrop-blur-md p-4 text-xs text-white animate-in fade-in slide-in-from-bottom-3 duration-200">
+      <div className="absolute bottom-4 left-4 z-400 w-full max-w-sm sm:max-w-md rounded-2xl border border-orange-500/40 bg-slate-950/95 shadow-2xl backdrop-blur-md p-4 text-xs text-white animate-in fade-in slide-in-from-bottom-3 duration-200">
         <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2.5">
           <div className="flex items-center gap-2 truncate">
             <span
@@ -444,7 +444,7 @@ function TrackingFloatingCard({
 
   // Vista compacta en mapa pequeño (ActiveZonesCard)
   return (
-    <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-[400] rounded-xl border border-orange-500/30 bg-slate-950/95 text-white shadow-2xl backdrop-blur-md p-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div className="absolute bottom-3 left-3 right-3 sm:right-auto sm:max-w-xs z-400 rounded-xl border border-orange-500/30 bg-slate-950/95 text-white shadow-2xl backdrop-blur-md p-3 text-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
       <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-1.5">
         <div className="flex items-center gap-1.5 truncate">
           <span
@@ -750,14 +750,14 @@ export function ActiveZonesCard({
 
         {/* Mapa Leaflet interactivo */}
         {isLoading ? (
-          <div className="relative flex h-[250px] w-full items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
+          <div className="relative flex h-62.5 w-full items-center justify-center rounded-lg bg-slate-200 dark:bg-gray-800 animate-pulse">
             <Map className="h-8 w-8 text-slate-300 dark:text-gray-700" />
           </div>
         ) : (
           <>
-            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate h-[250px] w-full">
+            <div className="relative rounded-lg overflow-hidden border border-border z-0 isolate h-62.5 w-full">
               {allMapPoints.length === 0 && (
-                <div className="absolute inset-x-4 top-4 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
+                <div className="absolute inset-x-4 top-4 z-400 flex items-center justify-center rounded-lg bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
                   <span>
                     {error
                       ? "No se pudieron sincronizar las ubicaciones geográficas"
@@ -815,7 +815,7 @@ export function ActiveZonesCard({
                                 {cluster.orders[0]?.client || "Misma dirección"}
                               </span>
                             </div>
-                            <div className="max-h-[210px] overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
+                            <div className="max-h-52.5 overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
                               {cluster.orders.map((o) => (
                                 <div
                                   key={o.id}
@@ -1050,7 +1050,7 @@ export function ActiveZonesCard({
             {/* Mapa interactivo expandido */}
             <div className="relative flex-1 w-full z-0 isolate">
               {allMapPoints.length === 0 && (
-                <div className="absolute inset-x-6 top-6 z-[400] flex items-center justify-center rounded-lg bg-background/90 px-4 py-2.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
+                <div className="absolute inset-x-6 top-6 z-400 flex items-center justify-center rounded-lg bg-background/90 px-4 py-2.5 text-xs text-muted-foreground shadow-sm backdrop-blur-xs border border-border">
                   <span>No hay órdenes ni técnicos con ubicación registrada para el filtro seleccionado</span>
                 </div>
               )}
@@ -1100,7 +1100,7 @@ export function ActiveZonesCard({
                                 {cluster.orders[0]?.client || "Misma dirección"}
                               </p>
                             </div>
-                            <div className="max-h-[320px] overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
+                            <div className="max-h-80 overflow-y-auto space-y-2.5 pr-2.5 atlas-map-popup-scroll">
                               {cluster.orders.map((o) => (
                                 <div
                                   key={o.id}
@@ -1345,7 +1345,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
         {isLoading ? (
           <>
             <div className="flex items-center justify-center py-1">
-              <div className="w-[150px] h-[150px] rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
+              <div className="w-37.5 h-37.5 rounded-full bg-slate-200 dark:bg-gray-800 animate-pulse" />
             </div>
             <div className="flex flex-col gap-2.5">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -1416,7 +1416,7 @@ function DonutChartCard({ isLoading, error, statusCounts = {} }) {
                   >
                     {total}
                   </span>
-                  <span className="mt-1 max-w-[76px] text-[10px] leading-tight font-medium text-muted-foreground text-center">
+                  <span className="mt-1 max-w-19 text-[10px] leading-tight font-medium text-muted-foreground text-center">
                     {total === 0 ? "Sin órdenes" : "órdenes registradas"}
                   </span>
                 </div>
@@ -1515,7 +1515,7 @@ function UpcomingVisitsCard({ isLoading, error, visits = [], onSelectOrderId }) 
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          <ol className="flex flex-col divide-y divide-border overflow-y-auto max-h-[250px] pr-1.5 scrollbar-kanban">
+          <ol className="flex flex-col divide-y divide-border overflow-y-auto max-h-62.5 pr-1.5 scrollbar-kanban">
             {visits.map((visit, idx) => (
               <li
                 key={visit.id || idx}
@@ -1635,7 +1635,7 @@ function ActivityTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto scrollbar-kanban relative min-h-[140px]">
+      <div className="overflow-x-auto scrollbar-kanban relative min-h-35">
         {isLoading && (
           <div className="absolute inset-0 bg-background/50 backdrop-blur-2xs flex items-center justify-center z-10 transition-opacity">
             <div className="flex items-center gap-2 rounded-lg bg-card border border-border px-3 py-2 shadow-sm text-xs font-medium text-foreground">
@@ -1906,7 +1906,7 @@ function AiInsights({
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="flex-1 min-h-[115px] rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse"
+              className="flex-1 min-h-28.75 rounded-xl bg-slate-200 dark:bg-gray-800 animate-pulse"
             />
           ))}
         </div>
@@ -1915,7 +1915,7 @@ function AiInsights({
           {dataBackedInsights.map((insight) => (
             <div
               key={insight.id}
-              className="flex-1 min-h-[115px] rounded-xl border border-border bg-background/50 hover:bg-background/80 p-4 transition-colors flex flex-col justify-between shadow-2xs"
+              className="flex-1 min-h-28.75 rounded-xl border border-border bg-background/50 hover:bg-background/80 p-4 transition-colors flex flex-col justify-between shadow-2xs"
             >
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
