@@ -18,6 +18,7 @@ import {
 import { api } from "../../lib/api";
 import { useWorkOrders } from "../../context/WorkOrderContext";
 import AddressLocationPicker from "./AddressLocationPicker";
+import ClientModal from "./ClientModal";
 
 const FIELD_CLASS =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-[#121212] dark:text-white dark:placeholder:text-gray-500";
@@ -336,30 +337,51 @@ function CustomSelectField({
  * Formulario interno. Vive solo mientras el modal está abierto, de modo que
  * el estado se reinicia automáticamente en cada apertura o según la orden provista.
  */
-function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
+function WorkOrderForm({
+  onClose,
+  onCreate,
+  onUpdate,
+  initialOrder = null,
+  initialClientPreset = null,
+}) {
   const { refreshOrders } = useWorkOrders();
   const isEditing = Boolean(initialOrder?.id);
 
   const [form, setForm] = useState(() => ({
     title: initialOrder?.title || "",
+    clientId:
+      initialOrder?.client_id ||
+      initialOrder?.client?.id ||
+      initialClientPreset?.id ||
+      null,
     clientName:
       initialOrder?.client?.business_name ||
       initialOrder?.client_name ||
       initialOrder?.clientName ||
+      initialClientPreset?.business_name ||
       (typeof initialOrder?.client === "string" ? initialOrder.client : "") ||
       "",
     address:
       initialOrder?.address_override ||
       initialOrder?.location ||
       initialOrder?.client?.address ||
+      (initialClientPreset?.address
+        ? initialClientPreset.comuna && !initialClientPreset.address.toLowerCase().includes(initialClientPreset.comuna.toLowerCase())
+          ? `${initialClientPreset.address}, ${initialClientPreset.comuna}`
+          : initialClientPreset.address
+        : "") ||
       "",
     lat:
       initialOrder?.lat !== null && initialOrder?.lat !== undefined
         ? Number(initialOrder.lat)
+        : initialClientPreset?.lat !== null && initialClientPreset?.lat !== undefined
+        ? Number(initialClientPreset.lat)
         : null,
     lng:
       initialOrder?.lng !== null && initialOrder?.lng !== undefined
         ? Number(initialOrder.lng)
+        : initialClientPreset?.lng !== null && initialClientPreset?.lng !== undefined
+        ? Number(initialClientPreset.lng)
         : null,
     serviceType:
       initialOrder?.service_type ||
@@ -381,6 +403,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
   const [availableClients, setAvailableClients] = useState([]);
   const [formError, setFormError] = useState(null);
   const [assignmentConfirmed, setAssignmentConfirmed] = useState(false);
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -534,9 +557,11 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
 
     // Determinar ID del cliente
     const matchedClient = availableClients.find(
-      (c) => c.business_name.toLowerCase() === (form.clientName || "").trim().toLowerCase()
+      (c) =>
+        (form.clientId && c.id === form.clientId) ||
+        c.business_name.toLowerCase() === (form.clientName || "").trim().toLowerCase()
     );
-    const clientId = matchedClient ? matchedClient.id : null;
+    const clientId = matchedClient ? matchedClient.id : form.clientId || null;
 
     // Manejo de fecha programada
     let scheduledDateIso = null;
@@ -698,9 +723,19 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
         </div>
 
         <div>
-          <label htmlFor="new-wo-client" className={LABEL_CLASS}>
-            Nombre del Cliente
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label htmlFor="new-wo-client" className="block text-xs font-medium text-slate-500 dark:text-gray-400">
+              Nombre del Cliente <span className="text-orange-500">*</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsClientModalOpen(true)}
+              className="text-[11px] font-semibold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="h-3 w-3" />
+              Nuevo cliente
+            </button>
+          </div>
           <input
             id="new-wo-client"
             type="text"
@@ -716,7 +751,9 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
                 let clientAddress = prev.address;
                 let clientLat = prev.lat;
                 let clientLng = prev.lng;
+                let matchedId = prev.clientId;
                 if (matched) {
+                  matchedId = matched.id;
                   const addr = matched.address ? matched.address.trim() : "";
                   const com = matched.comuna ? matched.comuna.trim() : "";
                   if (addr && com) {
@@ -726,13 +763,16 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
                   } else {
                     clientAddress = addr || com || prev.address;
                   }
-                  if (matched.lat != null && matched.lng != null && prev.lat == null) {
+                  if (matched.lat != null && matched.lng != null) {
                     clientLat = Number(matched.lat);
                     clientLng = Number(matched.lng);
                   }
+                } else {
+                  matchedId = null;
                 }
                 return {
                   ...prev,
+                  clientId: matchedId,
                   clientName: val,
                   address: clientAddress,
                   lat: clientLat,
@@ -752,6 +792,26 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
               ))}
             </datalist>
           )}
+
+          <ClientModal
+            isOpen={isClientModalOpen}
+            onClose={() => setIsClientModalOpen(false)}
+            onSuccess={(newClient) => {
+              setAvailableClients((prev) => [newClient, ...prev]);
+              setForm((prev) => ({
+                ...prev,
+                clientId: newClient.id,
+                clientName: newClient.business_name,
+                address: newClient.address
+                  ? newClient.comuna && !newClient.address.toLowerCase().includes(newClient.comuna.toLowerCase())
+                    ? `${newClient.address}, ${newClient.comuna}`
+                    : newClient.address
+                  : prev.address,
+                lat: newClient.lat !== null && newClient.lat !== undefined ? Number(newClient.lat) : prev.lat,
+                lng: newClient.lng !== null && newClient.lng !== undefined ? Number(newClient.lng) : prev.lng,
+              }));
+            }}
+          />
         </div>
 
         {/* Selector interactivo de dirección y ubicación geográfica en mapa */}
@@ -1011,6 +1071,7 @@ export default function NewWorkOrderModal({
   onCreate,
   onUpdate,
   initialOrder = null,
+  initialClientPreset = null,
 }) {
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -1053,6 +1114,7 @@ export default function NewWorkOrderModal({
           onCreate={onCreate}
           onUpdate={onUpdate}
           initialOrder={initialOrder}
+          initialClientPreset={initialClientPreset}
         />
       </div>
     </div>,

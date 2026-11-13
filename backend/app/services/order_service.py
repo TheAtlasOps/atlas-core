@@ -292,9 +292,13 @@ async def create_order(
     Crea una orden técnica con validación de cliente, correlativo e inicialización de estados (RF-BO-01).
     Dispara automáticamente la generación de un Magic Link seguro (14-DocArq §3.3).
     """
-    # 1. Resolver o crear cliente
+    # 1. Resolver o asociar cliente existente o registrar nuevo
     client: Optional[Client] = None
-    if order_in.client_name and order_in.client_name.strip():
+    if order_in.client_id:
+        client_res = await db.execute(select(Client).where(Client.id == order_in.client_id))
+        client = client_res.scalar_one_or_none()
+
+    if not client and order_in.client_name and order_in.client_name.strip():
         clean_name = order_in.client_name.strip()
         existing_client_res = await db.execute(
             select(Client).where(Client.business_name.ilike(clean_name)).limit(1)
@@ -314,10 +318,6 @@ async def create_order(
             )
             db.add(client)
             await db.flush()
-
-    if not client and order_in.client_id:
-        client_res = await db.execute(select(Client).where(Client.id == order_in.client_id))
-        client = client_res.scalar_one_or_none()
 
     if not client:
         # Fallback al primer cliente existente en base de datos
