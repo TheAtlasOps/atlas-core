@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Bell, BellOff, User, LogOut } from "lucide-react";
+import { Search, Bell, BellOff, User, LogOut, Sparkles } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import AdminAvatar from "../ui/AdminAvatar";
 import AdminProfileModal from "../ui/AdminProfileModal";
 import { useTheme } from "../../hooks/useTheme";
 import { useAuth } from "../../context/AuthContext";
+import { useWorkOrders } from "../../context/WorkOrderContext";
 import { api } from "../../lib/api";
 
 // Datos por defecto del perfil administrativo (Fallback para Vercel / sin token).
@@ -23,8 +24,14 @@ export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+
+  const workOrderCtx = useWorkOrders({ optional: true });
+  const notifications = workOrderCtx?.notifications || [];
+  const unreadCount = workOrderCtx?.unreadCount || 0;
+  const markAsRead = workOrderCtx?.markAsRead;
+  const markAllAsRead = workOrderCtx?.markAllAsRead;
+  const clearNotifications = workOrderCtx?.clearNotifications;
+
   const [profile, setProfile] = useState(DEFAULT_ADMIN_PROFILE);
   const notifRef = useRef(null);
   const profileRef = useRef(null);
@@ -140,18 +147,16 @@ export default function Header() {
               aria-label="Notifications"
               aria-expanded={isNotifOpen}
               onClick={() => {
-                setIsNotifOpen((prev) => {
-                  const next = !prev;
-                  if (next) setUnreadCount(0);
-                  return next;
-                });
+                setIsNotifOpen((prev) => !prev);
                 setIsMenuOpen(false);
               }}
-              className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              className="relative flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-orange-500 ring-2 ring-white dark:ring-[#1e1e1e]" />
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white shadow-xs">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
               )}
             </button>
 
@@ -159,23 +164,39 @@ export default function Header() {
               <div
                 role="dialog"
                 aria-label="Notifications panel"
-                className="absolute right-0 top-11 z-50 w-72 sm:w-80 rounded-xl border border-border bg-card p-4 shadow-xl"
+                className="absolute right-0 top-11 z-50 w-72 sm:w-84 rounded-xl border border-border bg-card p-4 shadow-xl"
               >
                 <div className="flex items-center justify-between pb-2.5 border-b border-border">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Notificaciones
-                  </p>
-                  {notifications.length > 0 && (
-                    <button
-                      onClick={() => {
-                        setNotifications([]);
-                        setUnreadCount(0);
-                      }}
-                      className="text-[11px] text-orange-500 hover:text-orange-600 font-medium transition"
-                    >
-                      Limpiar todas
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Notificaciones
+                    </p>
+                    {unreadCount > 0 && (
+                      <span className="rounded-full bg-orange-500/10 dark:bg-orange-950/40 px-1.5 py-0.5 text-[10px] font-bold text-orange-600 dark:text-orange-400">
+                        {unreadCount} nuevas
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => markAllAsRead?.()}
+                        className="text-[11px] text-muted-foreground hover:text-foreground font-medium transition cursor-pointer"
+                      >
+                        Marcar leídas
+                      </button>
+                    )}
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => clearNotifications?.()}
+                        className="text-[11px] text-orange-500 hover:text-orange-600 font-medium transition cursor-pointer"
+                      >
+                        Limpiar todas
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {notifications.length === 0 ? (
@@ -191,14 +212,82 @@ export default function Header() {
                     </p>
                   </div>
                 ) : (
-                  <div className="mt-2 divide-y divide-border max-h-60 overflow-y-auto">
-                    {notifications.map((n) => (
-                      <div key={n.id} className="py-2.5 text-xs">
-                        <p className="font-semibold text-foreground">{n.title}</p>
-                        <p className="text-muted-foreground mt-0.5">{n.message}</p>
-                        <span className="text-[10px] text-slate-400 mt-1 block">{n.time}</span>
-                      </div>
-                    ))}
+                  <div className="mt-2 divide-y divide-border max-h-72 overflow-y-auto">
+                    {notifications.map((n) => {
+                      const isSim = Boolean(n.isSimulated || n.type === "simulation");
+                      const handleOpenNotification = () => {
+                        markAsRead?.(n.id);
+                        if (n.orderNumber) {
+                          navigate(
+                            `/work-orders?order=${encodeURIComponent(
+                              n.orderNumber
+                            )}&search=${encodeURIComponent(n.orderNumber)}`
+                          );
+                          setIsNotifOpen(false);
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={n.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={handleOpenNotification}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleOpenNotification();
+                            }
+                          }}
+                          className={`py-2.5 px-2 rounded-lg text-xs transition-colors cursor-pointer flex items-start gap-2.5 focus:outline-none focus:ring-1 focus:ring-orange-500 ${
+                            n.read
+                              ? "opacity-75 hover:bg-slate-50 dark:hover:bg-gray-800/50"
+                              : "bg-orange-50/50 dark:bg-orange-950/20 hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                          }`}
+                        >
+                          <div className="mt-1 shrink-0">
+                            {isSim ? (
+                              <span className="flex h-2 w-2 rounded-full bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900" />
+                            ) : n.type === "urgent" ? (
+                              <span className="flex h-2 w-2 rounded-full bg-rose-500 ring-2 ring-rose-300 dark:ring-rose-900" />
+                            ) : n.type === "tracking" ? (
+                              <span className="flex h-2 w-2 rounded-full bg-orange-500 ring-2 ring-orange-300 dark:ring-orange-900" />
+                            ) : !n.read ? (
+                              <span className="flex h-2 w-2 rounded-full bg-orange-500" />
+                            ) : (
+                              <span className="flex h-2 w-2 rounded-full bg-slate-300 dark:bg-gray-600" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <p
+                                  className={`font-semibold truncate ${
+                                    n.read
+                                      ? "text-foreground"
+                                      : "text-orange-600 dark:text-orange-400 font-bold"
+                                  }`}
+                                >
+                                  {n.title}
+                                </p>
+                                {isSim && (
+                                  <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300/50 dark:border-amber-800/50 shrink-0">
+                                    <Sparkles className="h-2.5 w-2.5" />
+                                    Simulación
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-muted-foreground shrink-0">
+                                {n.time}
+                              </span>
+                            </div>
+                            <p className="text-muted-foreground mt-0.5 text-[11px] leading-relaxed line-clamp-2">
+                              {n.message}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

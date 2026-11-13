@@ -188,11 +188,27 @@ export default function WorkOrders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const queryParam = searchParams.get("search") || "";
+  const orderParam = searchParams.get("order") || "";
   const [search, setSearch] = useState(queryParam);
 
   useEffect(() => {
     setSearch(queryParam);
   }, [queryParam]);
+
+  // Abrir automáticamente el detalle de la orden si viene especificada por URL (ej. desde notificación)
+  useEffect(() => {
+    if (!orderParam || columns.length === 0) return;
+    const cleanTarget = normalize(orderParam).replace(/^#/, "");
+    for (const col of columns) {
+      for (const task of col.tasks) {
+        const orderNum = normalize(task.order_number || task.orderId || task.id || "").replace(/^#/, "");
+        if (orderNum === cleanTarget || (orderNum && cleanTarget && orderNum.includes(cleanTarget))) {
+          setSelectedOrder({ ...task, columnStatus: col.label });
+          return;
+        }
+      }
+    }
+  }, [orderParam, columns]);
 
   const handleSearchChange = (val) => {
     setSearch(val);
@@ -319,7 +335,14 @@ export default function WorkOrders() {
       {/* Drawer lateral de Auditoría de OT */}
       <WorkOrderDetailDrawer
         order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
+        onClose={() => {
+          setSelectedOrder(null);
+          if (searchParams.has("order")) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("order");
+            setSearchParams(nextParams, { replace: true });
+          }
+        }}
         onOpenInventoryModal={() => setIsInventoryOpen(true)}
         onEditOrder={(order) => {
           setSelectedOrder(null);

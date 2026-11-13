@@ -1,9 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, FilePlus, RefreshCw, AlertTriangle, CheckCircle2, MapPin } from "lucide-react";
+import {
+  X,
+  Plus,
+  FilePlus,
+  RefreshCw,
+  AlertTriangle,
+  CheckCircle2,
+  MapPin,
+  ChevronDown,
+  Check,
+} from "lucide-react";
 import {
   SERVICE_TYPES,
-  PRIORITIES,
   mapServiceTagToEnum,
 } from "../../lib/workOrderOptions";
 import { api } from "../../lib/api";
@@ -14,6 +23,314 @@ const FIELD_CLASS =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-[#121212] dark:text-white dark:placeholder:text-gray-500";
 const LABEL_CLASS =
   "mb-1.5 block text-xs font-medium text-slate-500 dark:text-gray-400";
+
+const PRIORITY_OPTIONS = [
+  {
+    value: "BAJA",
+    label: "Baja",
+    badge: "Baja",
+    badgeColor: "bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300",
+  },
+  {
+    value: "MEDIA",
+    label: "Media",
+    badge: "Media",
+    badgeColor: "bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300",
+  },
+  {
+    value: "ALTA",
+    label: "Alta",
+    badge: "Alta",
+    badgeColor: "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300",
+  },
+  {
+    value: "URGENTE",
+    label: "Urgente",
+    badge: "Urgente",
+    badgeColor: "bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300",
+  },
+];
+
+/**
+ * Selector desplegable interactivo y accesible, consistente con el diseño y paleta de ATLAS.
+ * Evita la validación nativa HTML de navegadores y garantiza legibilidad total en modo claro y oscuro.
+ */
+function CustomSelectField({
+  id,
+  label,
+  value,
+  onChange,
+  options = [],
+  placeholder = "Seleccionar...",
+  disabled = false,
+  hasError = false,
+  required = false,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+  const buttonRef = useRef(null);
+  const listRef = useRef(null);
+
+  const normalizedOptions = useMemo(() => {
+    return options.map((opt) => {
+      if (typeof opt === "string") {
+        return { value: opt, label: opt };
+      }
+      return opt;
+    });
+  }, [options]);
+
+  const selectedIndex = normalizedOptions.findIndex(
+    (opt) => String(opt.value ?? "") === String(value ?? "")
+  );
+
+  const selectedOption = selectedIndex >= 0 ? normalizedOptions[selectedIndex] : null;
+
+  // Sincronizar índice resaltado al abrir
+  useEffect(() => {
+    if (isOpen) {
+      const initialIdx = selectedIndex >= 0 ? selectedIndex : 0;
+      setHighlightedIndex(initialIdx);
+    } else {
+      setHighlightedIndex(-1);
+    }
+  }, [isOpen, selectedIndex]);
+
+  // Scroll automático hacia el elemento enfocado por teclado
+  useEffect(() => {
+    if (isOpen && highlightedIndex >= 0 && listRef.current) {
+      const itemEl = listRef.current.children[highlightedIndex];
+      if (itemEl && typeof itemEl.scrollIntoView === "function") {
+        itemEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [isOpen, highlightedIndex]);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const handleSelect = (opt) => {
+    if (!opt || opt.disabled) return;
+    onChange({ target: { value: opt.value, name: id } });
+    setIsOpen(false);
+    buttonRef.current?.focus();
+  };
+
+  const getNextEnabledIndex = (current, step) => {
+    if (normalizedOptions.length === 0) return -1;
+    let idx = current;
+    for (let i = 0; i < normalizedOptions.length; i++) {
+      idx = (idx + step + normalizedOptions.length) % normalizedOptions.length;
+      if (!normalizedOptions[idx].disabled) return idx;
+    }
+    return current;
+  };
+
+  const handleKeyDown = (event) => {
+    if (disabled) return;
+
+    if (!isOpen) {
+      if (["ArrowDown", "ArrowUp", "Enter", " ", "Spacebar"].includes(event.key)) {
+        event.preventDefault();
+        setIsOpen(true);
+      }
+      return;
+    }
+
+    switch (event.key) {
+      case "ArrowDown": {
+        event.preventDefault();
+        setHighlightedIndex((prev) => getNextEnabledIndex(prev, 1));
+        break;
+      }
+      case "ArrowUp": {
+        event.preventDefault();
+        setHighlightedIndex((prev) => getNextEnabledIndex(prev, -1));
+        break;
+      }
+      case "Home": {
+        event.preventDefault();
+        const first = normalizedOptions.findIndex((o) => !o.disabled);
+        if (first >= 0) setHighlightedIndex(first);
+        break;
+      }
+      case "End": {
+        event.preventDefault();
+        for (let i = normalizedOptions.length - 1; i >= 0; i--) {
+          if (!normalizedOptions[i].disabled) {
+            setHighlightedIndex(i);
+            break;
+          }
+        }
+        break;
+      }
+      case "Enter":
+      case " ":
+      case "Spacebar": {
+        event.preventDefault();
+        if (highlightedIndex >= 0 && highlightedIndex < normalizedOptions.length) {
+          handleSelect(normalizedOptions[highlightedIndex]);
+        }
+        break;
+      }
+      case "Escape": {
+        event.preventDefault();
+        setIsOpen(false);
+        buttonRef.current?.focus();
+        break;
+      }
+      case "Tab": {
+        setIsOpen(false);
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
+  return (
+    <div className="relative" ref={containerRef}>
+      {label && (
+        <label htmlFor={id} className={LABEL_CLASS}>
+          {label} {required && <span className="text-orange-500">*</span>}
+        </label>
+      )}
+
+      {/* Input oculto para accesibilidad, pruebas y lectores de pantalla */}
+      <input type="hidden" id={id} name={id} value={value ?? ""} />
+
+      <button
+        ref={buttonRef}
+        type="button"
+        id={`${id}-btn`}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={`${id}-listbox`}
+        aria-label={label || placeholder}
+        disabled={disabled}
+        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        onKeyDown={handleKeyDown}
+        className={`w-full rounded-lg border px-3 py-2 text-sm text-left flex items-center justify-between transition-all cursor-pointer focus:outline-none focus:ring-2 ${
+          hasError
+            ? "border-rose-500 focus:ring-rose-500"
+            : isOpen
+            ? "border-orange-500 ring-2 ring-orange-500/20 focus:ring-orange-500"
+            : "border-slate-200 dark:border-gray-700 hover:border-slate-300 dark:hover:border-gray-600 focus:ring-orange-500"
+        } ${
+          disabled
+            ? "bg-slate-100 dark:bg-gray-800 text-slate-400 dark:text-gray-500 cursor-not-allowed"
+            : "bg-white dark:bg-[#121212] text-slate-900 dark:text-white"
+        }`}
+      >
+        <span className="truncate flex items-center gap-2">
+          {selectedOption && selectedOption.value !== "" ? (
+            <>
+              <span className="font-medium text-slate-900 dark:text-white">
+                {selectedOption.label}
+              </span>
+              {selectedOption.badge && (
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                    selectedOption.badgeColor ||
+                    "bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300"
+                  }`}
+                >
+                  {selectedOption.badge}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-slate-400 dark:text-gray-500">{placeholder}</span>
+          )}
+        </span>
+
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 dark:text-gray-400 shrink-0 transition-transform duration-200 ${
+            isOpen ? "rotate-180 text-orange-500" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div
+          ref={listRef}
+          id={`${id}-listbox`}
+          role="listbox"
+          tabIndex={-1}
+          aria-labelledby={`${id}-btn`}
+          aria-activedescendant={
+            highlightedIndex >= 0 ? `${id}-opt-${highlightedIndex}` : undefined
+          }
+          className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-2xl dark:border-gray-700 dark:bg-[#1e1e1e] animate-in fade-in zoom-in-95 duration-100"
+        >
+          {normalizedOptions.map((opt, idx) => {
+            const isSelected = String(opt.value ?? "") === String(value ?? "");
+            const isHighlighted = highlightedIndex === idx;
+
+            return (
+              <div
+                key={opt.value ?? idx}
+                id={`${id}-opt-${idx}`}
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => handleSelect(opt)}
+                onMouseEnter={() => {
+                  if (!opt.disabled) setHighlightedIndex(idx);
+                }}
+                className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
+                  opt.disabled
+                    ? "opacity-40 cursor-not-allowed bg-transparent text-slate-400 dark:text-gray-600"
+                    : isHighlighted && isSelected
+                    ? "bg-orange-100 text-orange-900 dark:bg-orange-950/70 dark:text-orange-200 ring-1 ring-orange-500 font-semibold"
+                    : isHighlighted
+                    ? "bg-slate-100 text-slate-900 dark:bg-gray-800 dark:text-white ring-1 ring-orange-500/50"
+                    : isSelected
+                    ? "bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400 font-semibold"
+                    : "text-slate-800 hover:bg-slate-100 dark:text-gray-200 dark:hover:bg-gray-800/80"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2 min-w-0 pr-2">
+                  <span className="truncate">{opt.label}</span>
+                  {opt.badge && (
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        opt.badgeColor ||
+                        "bg-slate-100 dark:bg-gray-800 text-slate-700 dark:text-gray-300"
+                      }`}
+                    >
+                      {opt.badge}
+                    </span>
+                  )}
+                  {opt.plateText && (
+                    <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                      {opt.plateText}
+                    </span>
+                  )}
+                </div>
+
+                {isSelected && (
+                  <Check className="h-4 w-4 text-orange-500 shrink-0" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Formulario interno. Vive solo mientras el modal está abierto, de modo que
@@ -119,6 +436,50 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
   const scheduledTime = form.scheduledDate ? new Date(form.scheduledDate).getTime() : NaN;
   const isFutureScheduled = !isNaN(scheduledTime) && scheduledTime > Date.now();
 
+  const techOptions = useMemo(() => {
+    if (availableTechs.length === 0) {
+      return [{ value: "", label: "No hay técnicos registrados", disabled: true }];
+    }
+    const base = [
+      {
+        value: "",
+        label: "Sin asignar / Por coordinar",
+        badge: "Sin asignar",
+        badgeColor: "bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-400",
+      },
+    ];
+    const list = availableTechs.map((tech) => {
+      const opStatus =
+        tech.operational_status || (tech.is_available ? "DISPONIBLE" : "NO_DISPONIBLE");
+      const statusLabel =
+        opStatus === "DISPONIBLE"
+          ? "Disponible"
+          : opStatus === "ASIGNADO"
+          ? "Asignado"
+          : opStatus === "OCUPADO"
+          ? "Ocupado"
+          : "No disponible";
+      const badgeColor =
+        opStatus === "DISPONIBLE"
+          ? "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300"
+          : opStatus === "ASIGNADO"
+          ? "bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300"
+          : opStatus === "OCUPADO"
+          ? "bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300"
+          : "bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300";
+      const ordersBadge = tech.active_orders_count > 0 ? ` · ${tech.active_orders_count} OT` : "";
+      const plateText = tech.vehicle_plate ? ` [${tech.vehicle_plate}]` : "";
+
+      return {
+        value: tech.id,
+        label: `${tech.full_name}${plateText}`,
+        badge: `${statusLabel}${ordersBadge}`,
+        badgeColor,
+      };
+    });
+    return [...base, ...list];
+  }, [availableTechs]);
+
   let isAssignmentBlocked = false;
   let requiresConfirmation = false;
   let blockMessage = "";
@@ -145,6 +506,12 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
     e.preventDefault();
     setIsSubmitting(true);
     setFormError(null);
+
+    if (!form.serviceType || !form.serviceType.trim()) {
+      setFormError("Por favor seleccione un Tipo de Servicio para la orden.");
+      setIsSubmitting(false);
+      return;
+    }
 
     const rawParts = (form.address || "").split(",").map((p) => p.trim()).filter(Boolean);
     const dedupedParts = [];
@@ -268,7 +635,7 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form noValidate onSubmit={handleSubmit}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
@@ -409,90 +776,41 @@ function WorkOrderForm({ onClose, onCreate, onUpdate, initialOrder = null }) {
         />
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="new-wo-service" className={LABEL_CLASS}>
-              Tipo de Servicio
-            </label>
-            <select
-              id="new-wo-service"
-              required
-              value={form.serviceType}
-              onChange={setField("serviceType")}
-              className={FIELD_CLASS}
-            >
-              <option value="" disabled>
-                Seleccionar...
-              </option>
-              {SERVICE_TYPES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelectField
+            id="new-wo-service"
+            label="Tipo de Servicio"
+            required
+            value={form.serviceType}
+            onChange={setField("serviceType")}
+            options={SERVICE_TYPES}
+            placeholder="Seleccionar..."
+            hasError={!form.serviceType && Boolean(formError)}
+          />
 
-          <div>
-            <label htmlFor="new-wo-priority" className={LABEL_CLASS}>
-              Prioridad
-            </label>
-            <select
-              id="new-wo-priority"
-              value={form.priority}
-              onChange={setField("priority")}
-              className={FIELD_CLASS}
-            >
-              {PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </div>
+          <CustomSelectField
+            id="new-wo-priority"
+            label="Prioridad"
+            value={form.priority}
+            onChange={setField("priority")}
+            options={PRIORITY_OPTIONS}
+            placeholder="Seleccionar prioridad..."
+          />
         </div>
 
         <div>
-          <label htmlFor="new-wo-tech" className={LABEL_CLASS}>
-            Técnico Asignado
-          </label>
-          <select
+          <CustomSelectField
             id="new-wo-tech"
+            label="Técnico Asignado"
             value={form.technician}
             onChange={handleTechnicianChange}
-            className={FIELD_CLASS}
+            options={techOptions}
+            placeholder={
+              availableTechs.length === 0
+                ? "No hay técnicos registrados"
+                : "Sin asignar / Por coordinar"
+            }
             disabled={availableTechs.length === 0}
-          >
-            {availableTechs.length > 0 ? (
-              <>
-                <option value="">Sin asignar / Por coordinar</option>
-                {availableTechs.map((tech) => {
-                  const opStatus =
-                    tech.operational_status ||
-                    (tech.is_available ? "DISPONIBLE" : "NO_DISPONIBLE");
-                  const statusLabel =
-                    opStatus === "DISPONIBLE"
-                      ? "Disponible"
-                      : opStatus === "ASIGNADO"
-                      ? "Asignado"
-                      : opStatus === "OCUPADO"
-                      ? "Ocupado"
-                      : "No disponible";
-                  const ordersBadge =
-                    tech.active_orders_count > 0 ? ` · ${tech.active_orders_count} OT` : "";
-                  const plateText = tech.vehicle_plate ? ` [${tech.vehicle_plate}]` : "";
-
-                  return (
-                    <option key={tech.id} value={tech.id}>
-                      {tech.full_name} ({statusLabel}{ordersBadge}){plateText}
-                    </option>
-                  );
-                })}
-              </>
-            ) : (
-              <option value="" disabled>
-                No hay técnicos registrados
-              </option>
-            )}
-          </select>
+          />
 
           {/* Banners informativos y de control según estado operativo */}
           {selectedTech && (
