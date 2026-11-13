@@ -45,6 +45,7 @@ import {
   restartTracking,
   formatCountdown,
   useRouteTracking,
+  useTrackingRouteCoordinates,
 } from "../lib/routeTrackingManager";
 import {
   DEMO_ORIGIN,
@@ -147,6 +148,26 @@ function MapAutoBounds({ markers, trackingRoutePoints, activeTrackingId }) {
 // Controlador de seguimiento interactivo del vehículo (Cámara suave sin alterar nivel de zoom)
 function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow }) {
   const map = useMap();
+  const isPopupOpenRef = useRef(false);
+  const lastPanTimeRef = useRef(0);
+
+  // Pausar el desplazamiento de cámara si hay un popup abierto para que el usuario pueda
+  // leer los datos de la orden o hacer clic en 'Ver OT' sin que la cámara cierre la ventana
+  useEffect(() => {
+    if (!map) return;
+    const handlePopupOpen = () => {
+      isPopupOpenRef.current = true;
+    };
+    const handlePopupClose = () => {
+      isPopupOpenRef.current = false;
+    };
+    map.on("popupopen", handlePopupOpen);
+    map.on("popupclose", handlePopupClose);
+    return () => {
+      map.off("popupopen", handlePopupOpen);
+      map.off("popupclose", handlePopupClose);
+    };
+  }, [map]);
 
   useMapEvents({
     dragstart: () => {
@@ -158,6 +179,14 @@ function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow 
 
   useEffect(() => {
     if (!followVehicle || !currentCoord || !map) return;
+    // Si hay un popup abierto, no forzar panTo
+    if (isPopupOpenRef.current) return;
+
+    // Throttle de panTo (mínimo 750ms entre movimientos) para dejar el hilo libre a clics
+    const now = Date.now();
+    if (now - lastPanTimeRef.current < 750) return;
+    lastPanTimeRef.current = now;
+
     try {
       map.panTo(currentCoord, { animate: true, duration: 0.6 });
     } catch {
@@ -198,7 +227,7 @@ function TrackingMapLayer({ snapshot, isDark }) {
 
   return (
     <>
-      {/* 1. Tramo pendiente: gris neutro sutil sin saturar */}
+      {/* 1. Tramo pendiente: gris neutro con interactive:false para no bloquear clics a marcadores */}
       {pendingSegment.length > 1 && (
         <Polyline
           positions={pendingSegment}
@@ -208,11 +237,12 @@ function TrackingMapLayer({ snapshot, isDark }) {
             opacity: 0.85,
             lineCap: "round",
             lineJoin: "round",
+            interactive: false,
           }}
         />
       )}
 
-      {/* 2. Tramo recorrido: naranja corporativo ATLAS con continuidad en currentCoord */}
+      {/* 2. Tramo recorrido: naranja corporativo ATLAS continuo con interactive:false */}
       {traveledSegment.length > 1 && (
         <Polyline
           positions={traveledSegment}
@@ -222,6 +252,7 @@ function TrackingMapLayer({ snapshot, isDark }) {
             opacity: 1,
             lineCap: "round",
             lineJoin: "round",
+            interactive: false,
           }}
         />
       )}
@@ -239,22 +270,13 @@ function TrackingMapLayer({ snapshot, isDark }) {
         </Popup>
       </Marker>
 
-      {/* Marcador Destino: Cliente de la OT */}
+      {/* Marcador Destino: Cliente de la OT (con interactive:false para no bloquear el popup de la orden) */}
       {snapshot.destination && (
         <Marker
           position={[snapshot.destination.lat, snapshot.destination.lng]}
           icon={makeDestinationIcon("#f97316", L)}
-        >
-          <Popup>
-            <div className="text-xs">
-              <strong className="block text-slate-900 font-bold">Destino: {snapshot.clientName}</strong>
-              <span className="text-slate-500">{snapshot.clientAddress}</span>
-              <span className="mt-1 block text-[10px] text-slate-600 font-medium">
-                Orden #{snapshot.orderNumber}
-              </span>
-            </div>
-          </Popup>
-        </Marker>
+          interactive={false}
+        />
       )}
 
       {/* Marcador Móvil: Vehículo simulado */}
@@ -277,6 +299,65 @@ function TrackingMapLayer({ snapshot, isDark }) {
         </Popup>
       </Marker>
     </>
+  );
+}
+
+// Sub-capa aislada para el seguimiento del mapa: solo esta sub-capa se suscribe
+// a los ticks de animación de useRouteTracking, evitando que ActiveZonesCard
+// y los marcadores de las órdenes se re-rendericen continuamente a 60 FPS.
+function ActiveTrackingMapLayer({
+  trackingOrderId,
+  isDark,
+  followVehicle,
+  onDisableFollow,
+  triggerFitRoute,
+  onDoneFitRoute,
+}) {
+  const snapshot = useRouteTracking(trackingOrderId);
+  if (!snapshot) return null;
+
+  return (
+    <>
+      <TrackingMapLayer snapshot={snapshot} isDark={isDark} />
+      <VehicleCameraController
+        currentCoord={snapshot.currentCoord}
+        followVehicle={followVehicle}
+        onDisableFollow={onDisableFollow}
+      />
+      <RouteFitTrigger
+        triggerFit={triggerFitRoute}
+        routeCoordinates={snapshot.routeData?.coordinates}
+        onDoneFit={onDoneFitRoute}
+      />
+    </>
+  );
+}
+
+// Tarjeta flotante de telemetría conectada de forma aislada
+function ConnectedTrackingFloatingCard({
+  trackingOrderId,
+  order,
+  onOpenModal,
+  onClose,
+  isExpandedView = false,
+  followVehicle = true,
+  onToggleFollow,
+  onFitRoute,
+}) {
+  const snapshot = useRouteTracking(trackingOrderId);
+  if (!snapshot || !order) return null;
+
+  return (
+    <TrackingFloatingCard
+      snapshot={snapshot}
+      order={order}
+      onOpenModal={onOpenModal}
+      onClose={onClose}
+      isExpandedView={isExpandedView}
+      followVehicle={followVehicle}
+      onToggleFollow={onToggleFollow}
+      onFitRoute={onFitRoute}
+    />
   );
 }
 
@@ -707,9 +788,9 @@ export function ActiveZonesCard({
   const [followVehicle, setFollowVehicle] = useState(true);
   const [triggerFitRoute, setTriggerFitRoute] = useState(false);
 
-  // Hook de seguimiento en tiempo real para la orden activa
+  // Coordenadas de ruta de seguimiento para encuadre del mapa (sin re-renderizar marcadores por animación)
   const trackingOrderId = trackingOrder ? getSafeOrderId(trackingOrder) : null;
-  const trackingSnapshot = useRouteTracking(trackingOrderId);
+  const trackingRoutePoints = useTrackingRouteCoordinates(trackingOrderId);
 
   // Considerar orders si están provistas, con fallback a markers
   const allOrdersList = useMemo(() => {
@@ -745,7 +826,6 @@ export function ActiveZonesCard({
   }, [technicianMarkers, trackingOrder]);
 
   // Puntos geográficos para encuadre automático del mapa (incluyendo la ruta activa)
-  const trackingRoutePoints = trackingSnapshot?.routeData?.coordinates || null;
   const allMapPoints = useMemo(() => {
     if (trackingRoutePoints && trackingRoutePoints.length >= 2) {
       return trackingRoutePoints.map((pt) => ({ lat: pt[0], lng: pt[1] }));
@@ -910,19 +990,16 @@ export function ActiveZonesCard({
                   trackingRoutePoints={trackingRoutePoints}
                   activeTrackingId={trackingOrderId}
                 />
-                <VehicleCameraController
-                  currentCoord={trackingSnapshot?.currentCoord}
+
+                {/* Capa de seguimiento aislada de alta frecuencia (Vehículo, Ruta y Cámara) */}
+                <ActiveTrackingMapLayer
+                  trackingOrderId={trackingOrderId}
+                  isDark={isDark}
                   followVehicle={followVehicle}
                   onDisableFollow={() => setFollowVehicle(false)}
+                  triggerFitRoute={triggerFitRoute}
+                  onDoneFitRoute={() => setTriggerFitRoute(false)}
                 />
-                <RouteFitTrigger
-                  triggerFit={triggerFitRoute}
-                  routeCoordinates={trackingSnapshot?.routeData?.coordinates}
-                  onDoneFit={() => setTriggerFitRoute(false)}
-                />
-
-                {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
-                <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
 
                 {/* Marcadores de Órdenes agrupadas (Clusters) y marcadores individuales */}
                 {clusters.map((cluster) => {
@@ -1106,8 +1183,8 @@ export function ActiveZonesCard({
               </MapContainer>
 
               {/* Tarjeta flotante compacta con telemetría de seguimiento (Mapa Pequeño) */}
-              <TrackingFloatingCard
-                snapshot={trackingSnapshot}
+              <ConnectedTrackingFloatingCard
+                trackingOrderId={trackingOrderId}
                 order={trackingOrder}
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}
@@ -1211,19 +1288,16 @@ export function ActiveZonesCard({
                   trackingRoutePoints={trackingRoutePoints}
                   activeTrackingId={trackingOrderId}
                 />
-                <VehicleCameraController
-                  currentCoord={trackingSnapshot?.currentCoord}
+
+                {/* Capa de seguimiento aislada de alta frecuencia (Vehículo, Ruta y Cámara) */}
+                <ActiveTrackingMapLayer
+                  trackingOrderId={trackingOrderId}
+                  isDark={isDark}
                   followVehicle={followVehicle}
                   onDisableFollow={() => setFollowVehicle(false)}
+                  triggerFitRoute={triggerFitRoute}
+                  onDoneFitRoute={() => setTriggerFitRoute(false)}
                 />
-                <RouteFitTrigger
-                  triggerFit={triggerFitRoute}
-                  routeCoordinates={trackingSnapshot?.routeData?.coordinates}
-                  onDoneFit={() => setTriggerFitRoute(false)}
-                />
-
-                {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
-                <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
                 <MapResizeHandler />
 
                 {/* Marcadores agrupados y unitarios */}
@@ -1391,8 +1465,8 @@ export function ActiveZonesCard({
               </MapContainer>
 
               {/* Tarjeta flotante con telemetría de seguimiento (Mapa Ampliado) */}
-              <TrackingFloatingCard
-                snapshot={trackingSnapshot}
+              <ConnectedTrackingFloatingCard
+                trackingOrderId={trackingOrderId}
                 order={trackingOrder}
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}

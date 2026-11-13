@@ -11,7 +11,7 @@
  * - Protegido por SimulationErrorBoundary contra fallos en Leaflet/OSRM.
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -84,6 +84,24 @@ function RouteBoundsFitter({ points }) {
 // Controlador de seguimiento interactivo del vehículo (Cámara suave sin alterar zoom)
 function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow }) {
   const map = useMap();
+  const isPopupOpenRef = useRef(false);
+  const lastPanTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (!map) return;
+    const handlePopupOpen = () => {
+      isPopupOpenRef.current = true;
+    };
+    const handlePopupClose = () => {
+      isPopupOpenRef.current = false;
+    };
+    map.on("popupopen", handlePopupOpen);
+    map.on("popupclose", handlePopupClose);
+    return () => {
+      map.off("popupopen", handlePopupOpen);
+      map.off("popupclose", handlePopupClose);
+    };
+  }, [map]);
 
   useMapEvents({
     dragstart: () => {
@@ -95,6 +113,12 @@ function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow 
 
   useEffect(() => {
     if (!followVehicle || !currentCoord || !map) return;
+    if (isPopupOpenRef.current) return;
+
+    const now = Date.now();
+    if (now - lastPanTimeRef.current < 750) return;
+    lastPanTimeRef.current = now;
+
     try {
       map.panTo(currentCoord, { animate: true, duration: 0.6 });
     } catch {
@@ -302,6 +326,7 @@ function RouteSimulationModalInner({ order, onClose }) {
                       opacity: 0.85,
                       lineCap: "round",
                       lineJoin: "round",
+                      interactive: false,
                     }}
                   />
                 )}
@@ -316,6 +341,7 @@ function RouteSimulationModalInner({ order, onClose }) {
                       opacity: 1,
                       lineCap: "round",
                       lineJoin: "round",
+                      interactive: false,
                     }}
                   />
                 )}
