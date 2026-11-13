@@ -1,6 +1,6 @@
 import json
 from typing import List, Union
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     MAGIC_LINK_EXPIRE_HOURS: int = 48
     FRONTEND_PORTAL_URL: str = "http://localhost:5173/status"
     PASSWORD_RESET_URL: str = ""  # Vacío: usar el origen de FRONTEND_PORTAL_URL.
+
+    @model_validator(mode="after")
+    def validate_production_urls(self):
+        env = str(self.ENVIRONMENT or "development").strip().lower()
+        if self.FRONTEND_PORTAL_URL:
+            self.FRONTEND_PORTAL_URL = self.FRONTEND_PORTAL_URL.strip().rstrip("/")
+            if env == "production" and ("localhost" in self.FRONTEND_PORTAL_URL or "127.0.0.1" in self.FRONTEND_PORTAL_URL):
+                self.FRONTEND_PORTAL_URL = "https://atlas-fsm.vercel.app/status"
+        return self
 
     # CORS
     CORS_ORIGINS: Union[List[str], str] = [

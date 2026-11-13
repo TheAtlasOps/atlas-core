@@ -4,8 +4,9 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 from app.core.security import create_access_token
+from app.core.config import settings, Settings
 from app.models.enums import UserRoleEnum, OrderStatusEnum, ServiceTypeEnum, OrderPriorityEnum
-from app.models.user import User
+from app.models.user import User, Technician
 from app.models.client import Client
 from app.models.work_order import WorkOrder
 from app.models.magic_link import MagicLink
@@ -230,3 +231,148 @@ def test_send_magic_link_failure_returns_real_error(
 
         assert res.status_code == 502
         assert "error_sendgrid_401" in res.json()["detail"]
+
+
+def test_send_magic_link_uses_assigned_technician_from_database(
+    client, db, coordinator_user, coord_headers
+):
+    """Verifica que el correo incluya el nombre real del técnico asignado en BD y no un valor hardcodeado."""
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = coordinator_user
+
+    order = create_mock_order_with_client("cliente@empresa.cl")
+    tech_user = User(
+        id=uuid.uuid4(),
+        email="tech01@atlasfsm.cl",
+        full_name="Técnico Prueba ATLAS 01",
+        role=UserRoleEnum.TECNICO,
+        is_active=True,
+    )
+    tech_profile = Technician(
+        id=tech_user.id,
+        rut="12.345.678-9",
+        initials="TP",
+        vehicle_plate="JJ-9988",
+    )
+    tech_profile.user = tech_user
+    order.technician = tech_profile
+    order.technician_id = tech_profile.id
+
+    ml = MagicLink(
+        id=uuid.uuid4(),
+        work_order_id=order.id,
+        token="token_con_tecnico_real_12345",
+        is_active=True,
+        expires_at=datetime(2028, 1, 1, tzinfo=timezone.utc),
+    )
+    order.magic_links = [ml]
+
+    order_res = MagicMock()
+    order_res.scalar_one_or_none.return_value = order
+
+    db.execute.side_effect = [user_res, order_res]
+
+    with patch(
+        "app.api.v1.notifications.send_transactional_email",
+        new=AsyncMock(
+            return_value=EmailNotificationResponse(
+                success=True,
+                recipient="cliente@empresa.cl",
+                message_id="msg_tech_assigned",
+                status="delivered",
+                sent_at=datetime.now(timezone.utc),
+                simulated=True,
+            )
+        ),
+    ) as mock_send:
+        res = client.post(
+            "/api/v1/notifications/send-magic-link",
+            json={"work_order_id": str(order.id)},
+            headers=coord_headers,
+        )
+
+        assert res.status_code == 200
+        mock_send.assert_called_once()
+        html = mock_send.call_args.kwargs["html_content"]
+        # Debe reflejar el técnico asignado en la base de datos
+        assert "Técnico Prueba ATLAS 01" in html
+        # Jamás debe incluir valores hardcodeados obsoletos
+        assert "Alexander Sáez" not in html
+        # El enlace debe apuntar a la URL configurada
+        assert f"{settings.FRONTEND_PORTAL_URL}/{ml.token}" in html
+
+
+def test_send_magic_link_unassigned_technician_shows_pending(
+    client, db, coordinator_user, coord_headers
+):
+    """Verifica que una orden sin técnico muestre 'Pendiente de asignación' sin inventar técnicos."""
+    user_res = MagicMock()
+    user_res.scalar_one_or_none.return_value = coordinator_user
+
+    order = create_mock_order_with_client("cliente@empresa.cl")
+    order.technician = None
+    order.technician_id = None
+
+    ml = MagicLink(
+        id=uuid.uuid4(),
+        work_order_id=order.id,
+        token="token_sin_tecnico_12345",
+        is_active=True,
+        expires_at=datetime(2028, 1, 1, tzinfo=timezone.utc),
+    )
+    order.magic_links = [ml]
+
+    order_res = MagicMock()
+    order_res.scalar_one_or_none.return_value = order
+
+    db.execute.side_effect = [user_res, order_res]
+
+    with patch(
+        "app.api.v1.notifications.send_transactional_email",
+        new=AsyncMock(
+            return_value=EmailNotificationResponse(
+                success=True,
+                recipient="cliente@empresa.cl",
+                message_id="msg_unassigned",
+                status="delivered",
+                sent_at=datetime.now(timezone.utc),
+                simulated=True,
+            )
+        ),
+    ) as mock_send:
+        res = client.post(
+            "/api/v1/notifications/send-magic-link",
+            json={"work_order_id": str(order.id)},
+            headers=coord_headers,
+        )
+
+        assert res.status_code == 200
+        html = mock_send.call_args.kwargs["html_content"]
+        assert "Pendiente de asignación" in html
+        assert "Alexander Sáez" not in html
+
+
+def test_frontend_portal_url_production_guard():
+    """Valida que en producción FRONTEND_PORTAL_URL nunca apunte a localhost."""
+    # 1. En producción con valor por defecto localhost, debe mutar a la URL oficial de Vercel
+    prod_settings = Settings(
+        ENVIRONMENT="production",
+        FRONTEND_PORTAL_URL="http://localhost:5173/status",
+    )
+    assert prod_settings.FRONTEND_PORTAL_URL == "https://atlas-fsm.vercel.app/status"
+    assert "localhost" not in prod_settings.FRONTEND_PORTAL_URL
+
+    # 2. Con trailing slash, debe normalizarse sin slash final
+    prod_custom = Settings(
+        ENVIRONMENT="production",
+        FRONTEND_PORTAL_URL="https://atlas-fsm.vercel.app/status/",
+    )
+    assert prod_custom.FRONTEND_PORTAL_URL == "https://atlas-fsm.vercel.app/status"
+
+    # 3. En desarrollo, conserva localhost para testing local
+    dev_settings = Settings(
+        ENVIRONMENT="development",
+        FRONTEND_PORTAL_URL="http://localhost:5173/status",
+    )
+    assert dev_settings.FRONTEND_PORTAL_URL == "http://localhost:5173/status"
+

@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.api.deps import require_role
-from app.models.user import User
+from app.models.user import User, Technician
 from app.models.work_order import WorkOrder
 from app.models.magic_link import MagicLink
 from app.models.enums import UserRoleEnum
@@ -37,13 +37,13 @@ async def resend_magic_link(
     current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
 ):
     """Disparo manual de notificación transaccional."""
-    # 1. Obtener orden con cliente y magic links
+    # 1. Obtener orden con cliente, magic links y técnico asignado
     result = await db.execute(
         select(WorkOrder)
         .options(
             selectinload(WorkOrder.client),
             selectinload(WorkOrder.magic_links),
-            selectinload(WorkOrder.technician),
+            selectinload(WorkOrder.technician).selectinload(Technician.user),
         )
         .where(WorkOrder.id == request.work_order_id)
     )
@@ -87,6 +87,11 @@ async def resend_magic_link(
     service_type = order.service_type.value.replace("_", " ").title()
     date_str = order.scheduled_date.strftime("%d/%m/%Y a las %H:%M hrs")
     address = order.address_override or (order.client.address if order.client else "Dirección de visita")
+    technician_name = (
+        order.technician.user.full_name
+        if (order.technician and order.technician.user and order.technician.user.full_name)
+        else None
+    )
 
     html_content = build_magic_link_html(
         client_name=client_name,
@@ -95,6 +100,7 @@ async def resend_magic_link(
         scheduled_date_str=date_str,
         address=address,
         magic_link_url=magic_link_url,
+        technician_name=technician_name,
     )
 
     subject = f"🌍 Atlas Entel: Seguimiento de tu visita técnica ({order.order_number})"
