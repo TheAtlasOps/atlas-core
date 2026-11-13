@@ -58,7 +58,14 @@ export function WorkOrderProvider({ children }) {
   }, []);
 
   const addNotification = useCallback(
-    ({ title, message, type = "order", orderNumber = null, dedupeKey = null }) => {
+    ({
+      title,
+      message,
+      type = "order",
+      orderNumber = null,
+      dedupeKey = null,
+      isSimulated = false,
+    }) => {
       if (!title) return;
       const key = dedupeKey || `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date();
@@ -79,6 +86,7 @@ export function WorkOrderProvider({ children }) {
           time: timeStr,
           timestamp: now.getTime(),
           read: false,
+          isSimulated: Boolean(isSimulated || type === "simulation"),
         };
         return [item, ...prev].slice(0, 50);
       });
@@ -109,7 +117,16 @@ export function WorkOrderProvider({ children }) {
   );
 
   const showNotification = useCallback(
-    (title, description, { type = "order", orderNumber = null, dedupeKey = null } = {}) => {
+    (
+      title,
+      description,
+      {
+        type = "order",
+        orderNumber = null,
+        dedupeKey = null,
+        isSimulated = false,
+      } = {}
+    ) => {
       setToast({ title, description, type });
       setTimeout(() => {
         setToast(null);
@@ -121,6 +138,7 @@ export function WorkOrderProvider({ children }) {
         type,
         orderNumber,
         dedupeKey,
+        isSimulated: isSimulated || type === "simulation",
       });
     },
     [addNotification]
@@ -198,12 +216,13 @@ export function WorkOrderProvider({ children }) {
     setOnTrackingCompleted((record) => {
       if (!record || !record.orderNumber) return;
       showNotification(
-        "Recorrido simulado finalizado",
-        `La OT ${record.orderNumber} completó su recorrido de demostración. Pendiente de confirmación de llegada del técnico.`,
+        `[Simulación] Recorrido finalizado: ${record.orderNumber}`,
+        `La OT ${record.orderNumber} completó su recorrido de demostración (180 s). Pendiente de confirmación de llegada del técnico.`,
         {
-          type: "tracking",
+          type: "simulation",
           orderNumber: record.orderNumber,
           dedupeKey: `tracking_completed_${record.orderId || record.orderNumber}`,
+          isSimulated: true,
         }
       );
     });

@@ -243,5 +243,60 @@ describe("ATLAS FSM — Campana de Notificaciones y Selectores de Órdenes", () 
         "Debe considerar el estado operativo del técnico"
       );
     });
+
+    test("CustomSelectField implementa control completo por teclado y accesibilidad ARIA", () => {
+      const modalPath = path.resolve(__dirname, "../components/ui/NewWorkOrderModal.jsx");
+      const content = fs.readFileSync(modalPath, "utf-8");
+
+      assert.ok(content.includes("onKeyDown={handleKeyDown}"), "El botón debe tener handler onKeyDown");
+      assert.ok(content.includes('case "ArrowDown":'), "Debe soportar navegación hacia abajo con ArrowDown");
+      assert.ok(content.includes('case "ArrowUp":'), "Debe soportar navegación hacia arriba con ArrowUp");
+      assert.ok(content.includes('case "Enter":'), "Debe seleccionar opción con Enter");
+      assert.ok(content.includes('case "Escape":'), "Debe cerrar listbox con Escape");
+      assert.ok(content.includes("aria-activedescendant"), "Debe indicar opción activa mediante aria-activedescendant");
+      assert.ok(content.includes("scrollIntoView"), "Debe hacer scroll al elemento enfocado por teclado");
+    });
+  });
+
+  describe("3. Apertura de Orden desde Notificaciones y Alertas Simuladas", () => {
+    test("Header.jsx navega con parámetro order para abrir drawer y distingue alertas simuladas", () => {
+      const headerPath = path.resolve(__dirname, "../components/layout/Header.jsx");
+      const content = fs.readFileSync(headerPath, "utf-8");
+
+      assert.ok(
+        content.includes("/work-orders?order="),
+        "Header debe navegar con /work-orders?order= para abrir directamente la orden en el drawer"
+      );
+      assert.ok(
+        content.includes("Sparkles"),
+        "Header debe importar y utilizar el icono Sparkles para distinguir alertas simuladas"
+      );
+      assert.ok(
+        content.includes("Simulación"),
+        "Header debe renderizar badge visual 'Simulación'"
+      );
+      assert.ok(
+        content.includes("isSimulated") || content.includes('n.type === "simulation"'),
+        "Header debe comprobar isSimulated o tipo simulation"
+      );
+    });
+
+    test("WorkOrders.jsx escucha parámetro order y activa setSelectedOrder automáticamente", () => {
+      const workOrdersPath = path.resolve(__dirname, "../pages/WorkOrders.jsx");
+      const content = fs.readFileSync(workOrdersPath, "utf-8");
+
+      assert.ok(
+        content.includes('searchParams.get("order")'),
+        "WorkOrders debe consultar el parámetro order de la URL"
+      );
+      assert.ok(
+        content.includes("setSelectedOrder"),
+        "WorkOrders debe actualizar selectedOrder al detectar el parámetro order"
+      );
+      assert.ok(
+        content.includes('nextParams.delete("order")'),
+        "Al cerrar el drawer debe limpiar el parámetro order de la URL"
+      );
+    });
   });
 });
