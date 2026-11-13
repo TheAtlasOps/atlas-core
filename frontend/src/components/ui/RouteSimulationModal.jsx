@@ -11,7 +11,7 @@
  * - Protegido por SimulationErrorBoundary contra fallos en Leaflet/OSRM.
  */
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -26,6 +26,7 @@ import {
   Zap,
   RotateCcw,
   UserCheck,
+  Maximize2,
 } from "lucide-react";
 import {
   MapContainer,
@@ -34,6 +35,7 @@ import {
   Popup,
   Polyline,
   useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -57,14 +59,13 @@ import {
   restartTracking,
   getTracking,
   retryTrackingRoute,
-  computeTrackingSnapshot,
-  subscribeToTrackings,
   formatCountdown,
   SIMULATION_DURATION_SECONDS,
+  useRouteTracking,
 } from "../../lib/routeTrackingManager";
 import SimulationErrorBoundary from "./SimulationErrorBoundary";
 
-// ─── Componente para autoencuadre de la ruta en Leaflet ──────────────────────
+// ─── Componente para autoencuadre inicial de la ruta en Leaflet ─────────────
 function RouteBoundsFitter({ points }) {
   const map = useMap();
   useEffect(() => {
@@ -77,6 +78,47 @@ function RouteBoundsFitter({ points }) {
       // Ignorar si el mapa aún no está listo
     }
   }, [map, points]);
+  return null;
+}
+
+// Controlador de seguimiento interactivo del vehículo (Cámara suave sin alterar zoom)
+function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow }) {
+  const map = useMap();
+
+  useMapEvents({
+    dragstart: () => {
+      if (onDisableFollow) {
+        onDisableFollow();
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!followVehicle || !currentCoord || !map) return;
+    try {
+      map.panTo(currentCoord, { animate: true, duration: 0.6 });
+    } catch {
+      // Ignorar si el mapa no está listo
+    }
+  }, [map, currentCoord, followVehicle]);
+
+  return null;
+}
+
+// Disparador manual para encuadre completo de la ruta
+function RouteFitTrigger({ triggerFit, points, onDoneFit }) {
+  const map = useMap();
+  useEffect(() => {
+    if (triggerFit && points && points.length >= 2) {
+      try {
+        const bounds = L.latLngBounds(points);
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 16 });
+      } catch {
+        // Ignorar
+      }
+      if (onDoneFit) onDoneFit();
+    }
+  }, [map, triggerFit, points, onDoneFit]);
   return null;
 }
 
@@ -100,65 +142,21 @@ function RouteSimulationModalInner({ order, onClose }) {
     return null;
   }, [order]);
 
-  // 2. Registro de seguimiento automático en frontend
-  const [trackingRecord, setTrackingRecord] = useState(() => {
-    if (!order) return null;
-    let rec = orderId ? getTracking(orderId) : null;
-    if (!rec && destinationCoords) {
-      rec = startTracking(order);
-    }
-    return rec;
-  });
-
-  // Suscribirse a actualizaciones del almacén de seguimiento
+  // Asegura que el seguimiento comience en el motor central si aún no ha iniciado
   useEffect(() => {
-    const unsubscribe = subscribeToTrackings(() => {
-      if (orderId) {
-        const rec = getTracking(orderId);
-        setTrackingRecord(rec ? { ...rec } : null);
+    if (order && destinationCoords && orderId) {
+      if (!getTracking(orderId)) {
+        startTracking(order);
       }
-    });
-    return unsubscribe;
-  }, [orderId]);
-
-  // Si no había seguimiento activo al montar pero la orden tiene coordenadas válidas
-  useEffect(() => {
-    if (!trackingRecord && order && destinationCoords) {
-      const rec = startTracking(order);
-      if (rec) setTrackingRecord({ ...rec });
     }
-  }, [trackingRecord, order, destinationCoords]);
+  }, [order, destinationCoords, orderId]);
 
-  // 3. Estado dinámico de telemetría actualizado en tiempo real
-  const [snapshot, setSnapshot] = useState(() => {
-    return trackingRecord ? computeTrackingSnapshot(trackingRecord, Date.now()) : null;
-  });
+  // Suscripción directa al motor centralizado V2 (sin bucles rAF locales redundantes)
+  const snapshot = useRouteTracking(orderId);
+  const trackingRecord = orderId ? getTracking(orderId) : null;
 
-  // Loop de actualización visual vía requestAnimationFrame mientras el visor esté abierto
-  const animFrameRef = useRef(null);
-
-  useEffect(() => {
-    if (!trackingRecord || !trackingRecord.routeData) {
-      setSnapshot(trackingRecord ? computeTrackingSnapshot(trackingRecord, Date.now()) : null);
-      return;
-    }
-
-    const updateLoop = () => {
-      const current = getTracking(orderId) || trackingRecord;
-      const snap = computeTrackingSnapshot(current, Date.now());
-      setSnapshot(snap);
-      animFrameRef.current = requestAnimationFrame(updateLoop);
-    };
-
-    animFrameRef.current = requestAnimationFrame(updateLoop);
-
-    return () => {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-        animFrameRef.current = null;
-      }
-    };
-  }, [trackingRecord, orderId]);
+  const [followVehicle, setFollowVehicle] = useState(true);
+  const [triggerFitRoute, setTriggerFitRoute] = useState(false);
 
   // Manejo de reintento de cálculo OSRM
   const handleRetryRoute = useCallback(() => {
@@ -179,6 +177,7 @@ function RouteSimulationModalInner({ order, onClose }) {
   const currentCoord = snapshot?.currentCoord || [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
   const vehicleBearing = snapshot?.bearing || 0;
   const traveledSegment = snapshot?.traveledSegment || [];
+  const pendingSegment = snapshot?.pendingSegment || [];
   const progressPercent = snapshot?.progressPercent || 0;
   const remainingDistanceMeters = snapshot?.remainingDistanceMeters || 0;
   const remainingSeconds = snapshot?.remainingSeconds || 0;
@@ -282,14 +281,24 @@ function RouteSimulationModalInner({ order, onClose }) {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
                 />
                 <RouteBoundsFitter points={routeData?.coordinates || []} />
+                <VehicleCameraController
+                  currentCoord={currentCoord}
+                  followVehicle={followVehicle}
+                  onDisableFollow={() => setFollowVehicle(false)}
+                />
+                <RouteFitTrigger
+                  triggerFit={triggerFitRoute}
+                  points={routeData?.coordinates}
+                  onDoneFit={() => setTriggerFitRoute(false)}
+                />
 
-                {/* 1. Borde oscuro de la ruta vial */}
-                {routeData?.coordinates && (
+                {/* 1. Tramo pendiente: gris neutro sutil sin saturar (V2) */}
+                {pendingSegment.length > 1 && (
                   <Polyline
-                    positions={routeData.coordinates}
+                    positions={pendingSegment}
                     pathOptions={{
-                      color: isDark ? "#030712" : "#0f172a",
-                      weight: 8,
+                      color: isDark ? "#475569" : "#94a3b8",
+                      weight: 3.5,
                       opacity: 0.85,
                       lineCap: "round",
                       lineJoin: "round",
@@ -297,28 +306,14 @@ function RouteSimulationModalInner({ order, onClose }) {
                   />
                 )}
 
-                {/* 2. Núcleo naranja brillante de la ruta */}
-                {routeData?.coordinates && (
-                  <Polyline
-                    positions={routeData.coordinates}
-                    pathOptions={{
-                      color: "#f97316",
-                      weight: 4.5,
-                      opacity: 1,
-                      lineCap: "round",
-                      lineJoin: "round",
-                    }}
-                  />
-                )}
-
-                {/* 3. Rastro verde de avance completado */}
+                {/* 2. Tramo recorrido: naranja corporativo ATLAS continuo (V2) */}
                 {traveledSegment.length > 1 && (
                   <Polyline
                     positions={traveledSegment}
                     pathOptions={{
-                      color: "#10b981",
-                      weight: 4.5,
-                      opacity: 0.95,
+                      color: "#f97316",
+                      weight: 4,
+                      opacity: 1,
                       lineCap: "round",
                       lineJoin: "round",
                     }}
@@ -377,9 +372,40 @@ function RouteSimulationModalInner({ order, onClose }) {
                 </Marker>
               </MapContainer>
 
+              {/* Controles de cámara de seguimiento interactiva sobre el mapa */}
+              <div className="absolute top-3 right-3 z-400 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-800 rounded-lg p-1 shadow-lg text-white">
+                <button
+                  type="button"
+                  onClick={() => setFollowVehicle((prev) => !prev)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    followVehicle
+                      ? "bg-orange-500 text-white shadow-xs"
+                      : "bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-800"
+                  }`}
+                  title={followVehicle ? "Siguiendo móvil (arrastre el mapa para pausar)" : "Centrar y seguir vehículo"}
+                >
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      followVehicle ? "bg-white animate-pulse" : "bg-slate-400"
+                    }`}
+                  />
+                  <span>{followVehicle ? "Siguiendo vehículo" : "Seguir vehículo"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTriggerFitRoute(true)}
+                  className="px-2 py-1 rounded text-[11px] font-medium bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Ajustar zoom para ver toda la ruta"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  <span>Ver ruta completa</span>
+                </button>
+              </div>
+
               {/* Insignia flotante de aviso sobre el mapa */}
               {routeData?.isFallback && (
-                <div className="absolute top-3 left-3 z-[400] rounded-lg bg-amber-500/90 text-white px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur-xs flex items-center gap-1.5">
+                <div className="absolute top-3 left-3 z-400 rounded-lg bg-amber-500/90 text-white px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur-xs flex items-center gap-1.5">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   <span>Ruta de respaldo precargada (Modo presentación offline)</span>
                 </div>
@@ -491,6 +517,11 @@ function RouteSimulationModalInner({ order, onClose }) {
                   (Sincronizado con la sesión local)
                 </span>
               )}
+
+              <div className="hidden md:inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400">
+                <Gauge className="h-3 w-3 text-orange-500" />
+                <span>Velocidad est. demo: ~38 km/h (Simulada, no GPS real)</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
