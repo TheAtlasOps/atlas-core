@@ -20,6 +20,7 @@ import {
   syncOrdersWithTracking,
   resetAllTrackings,
   setOnTrackingCompleted,
+  checkAndNotifyCompletion,
 } from "../lib/routeTrackingManager.js";
 import { DEMO_ORIGIN, FALLBACK_DEMO_COORDINATES } from "../lib/routeSimulation.js";
 import { hasVerifiedRecentGps, getMapSummaryCounters } from "../lib/mapClustering.js";
@@ -335,18 +336,24 @@ test("setOnTrackingCompleted dispara el callback una sola vez al cumplirse los 1
     routeError: null,
   };
 
-  // 1. A los 90s: no debe dispararse
-  computeTrackingSnapshot(record, 1000000 + 90000);
+  // 1. A los 90s: computeTrackingSnapshot es puro y no dispara callback
+  const snap90 = computeTrackingSnapshot(record, 1000000 + 90000);
+  assert.equal(snap90.isArrived, false);
+  checkAndNotifyCompletion(record, 1000000 + 90000);
   assert.equal(completedCount, 0);
 
-  // 2. A los 180s exactos: debe dispararse una vez
-  computeTrackingSnapshot(record, 1000000 + 180000);
+  // 2. A los 180s exactos: checkAndNotifyCompletion dispara exactamente una vez
+  const snap180 = computeTrackingSnapshot(record, 1000000 + 180000);
+  assert.equal(snap180.isArrived, true);
+  checkAndNotifyCompletion(record, 1000000 + 180000);
   assert.equal(completedCount, 1);
   assert.equal(lastCompletedOrderId, "OT-CALLBACK-TEST");
 
   // 3. Próximos ticks tras los 180s: NO debe volver a dispararse
   computeTrackingSnapshot(record, 1000000 + 185000);
+  checkAndNotifyCompletion(record, 1000000 + 185000);
   computeTrackingSnapshot(record, 1000000 + 190000);
+  checkAndNotifyCompletion(record, 1000000 + 190000);
   assert.equal(completedCount, 1);
 
   // Limpiar callback

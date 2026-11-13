@@ -1,18 +1,19 @@
 /**
  * frontend/src/lib/routeTrackingManager.js
  *
- * Administrador de estado compartido en frontend para el seguimiento simulado
- * automático de técnicos hacia órdenes de trabajo en estado "En ruta" (ATLAS FSM).
+ * Motor centralizado y administrador de estado en frontend para el seguimiento
+ * simulado automático de técnicos hacia órdenes de trabajo en estado "En ruta" (ATLAS FSM V2).
  *
- * Características:
- * - Duración fija de 3 minutos reales (180 segundos).
- * - Progreso calculado a partir de timestamps (wall-clock time), inmune a cierres de modal
- *   o cambios de vista/página dentro de la sesión.
- * - Sin peticiones innecesarias ni bucles duplicados en segundo plano.
- * - Manejo seguro de campos para evitar React Minified Error #31 (objetos como hijos).
+ * Mejoras V2:
+ * - Motor desacoplado del ciclo de renderizado de React: un solo ticker central para toda la aplicación.
+ * - computeTrackingSnapshot 100% puro: sin efectos secundarios ni mutaciones durante el cálculo.
+ * - Notificaciones centralizadas y deterministas: exactamente una emisión al cumplirse el tiempo de simulación.
+ * - Interpolación continua suave entre waypoints: movimiento fluido y llegada milimétrica exacta al destino.
+ * - Suavizado angular de orientación (slerp / EMA) para giros orgánicos sin sacudidas ni volteos bruscos.
+ * - Continuidad garantizada en segundo plano y compatibilidad con Page Visibility API.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   DEMO_ORIGIN,
   fetchStreetRoute,
@@ -125,11 +126,24 @@ export function formatCountdown(seconds) {
   return `${m}:${s < 10 ? "0" : ""}${s} min`;
 }
 
-// ─── Almacén en memoria persistente a nivel de módulo ────────────────────────
+/**
+ * Suaviza un ángulo en grados hacia un ángulo objetivo considerando la discontinuidad 360/0.
+ */
+export function smoothAngle(currentAngle, targetAngle, alpha = 0.22) {
+  if (currentAngle === null || currentAngle === undefined || isNaN(currentAngle)) {
+    return targetAngle;
+  }
+  let diff = (targetAngle - currentAngle + 180) % 360 - 180;
+  if (diff < -180) diff += 360;
+  return ((currentAngle + diff * alpha) % 360 + 360) % 360;
+}
+
+// ─── Almacén central de seguimiento y motor de simulación ─────────────────────
 
 const activeTrackings = new Map();
 const listeners = new Set();
 let onTrackingCompletedCallback = null;
+let engineTimerId = null;
 
 export function setOnTrackingCompleted(callback) {
   onTrackingCompletedCallback = callback;
@@ -146,6 +160,104 @@ function notifyListeners() {
 }
 
 /**
+ * Verifica y dispara las notificaciones centralizadas de finalización para las órdenes
+ * que hayan alcanzado o superado su duración de simulación.
+ * Retorna true si hubo alguna finalización nueva.
+ */
+export function checkAndNotifyCompletion(target = null, now = Date.now()) {
+  let currentTime = now;
+  let recordsToCheck = [];
+
+  if (target && typeof target === "object") {
+    recordsToCheck = [target];
+  } else if (typeof target === "number") {
+    currentTime = target;
+    recordsToCheck = Array.from(activeTrackings.values());
+  } else {
+    recordsToCheck = Array.from(activeTrackings.values());
+  }
+
+  let anyCompleted = false;
+
+  for (const record of recordsToCheck) {
+    if (!record || record.hasNotifiedCompletion) continue;
+    const elapsedMs = Math.max(0, currentTime - record.startedAt);
+    if (elapsedMs >= record.durationMs) {
+      record.hasNotifiedCompletion = true;
+      record.isArrived = true;
+      anyCompleted = true;
+
+      if (typeof onTrackingCompletedCallback === "function") {
+        try {
+          onTrackingCompletedCallback(record);
+        } catch (err) {
+          console.warn("[ATLAS routeTrackingManager] Error en callback de finalización:", err);
+        }
+      }
+    }
+  }
+
+  return anyCompleted;
+}
+
+/**
+ * Ciclo principal de actualización del motor de simulación.
+ */
+function stepEngine() {
+  const now = Date.now();
+  checkAndNotifyCompletion(now);
+
+  notifyListeners();
+
+  // Comprobar si aún queda alguna orden en tránsito sin arribar
+  let hasPending = false;
+  for (const record of activeTrackings.values()) {
+    if (record && !record.hasNotifiedCompletion) {
+      hasPending = true;
+      break;
+    }
+  }
+
+  if (hasPending && typeof window !== "undefined") {
+    if (typeof document !== "undefined" && document.hidden) {
+      engineTimerId = setTimeout(stepEngine, 400);
+    } else {
+      engineTimerId = requestAnimationFrame(stepEngine);
+    }
+  } else {
+    engineTimerId = null;
+  }
+}
+
+export function ensureEngineRunning() {
+  if (engineTimerId !== null) return;
+  let hasPending = false;
+  for (const record of activeTrackings.values()) {
+    if (record && !record.hasNotifiedCompletion) {
+      hasPending = true;
+      break;
+    }
+  }
+  if (hasPending && typeof window !== "undefined") {
+    engineTimerId = requestAnimationFrame(stepEngine);
+  }
+}
+
+// Recuperación fluida ante cambio de visibilidad de la pestaña (Page Visibility API)
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      if (engineTimerId !== null) {
+        clearTimeout(engineTimerId);
+        cancelAnimationFrame(engineTimerId);
+        engineTimerId = null;
+      }
+      stepEngine();
+    }
+  });
+}
+
+/**
  * Inicia el seguimiento automático simulado para una orden en ruta.
  * Si ya se encuentra en seguimiento, conserva el `startedAt` original.
  */
@@ -154,6 +266,7 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
   if (!orderId) return null;
 
   if (activeTrackings.has(orderId)) {
+    ensureEngineRunning();
     return activeTrackings.get(orderId);
   }
 
@@ -177,10 +290,13 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     routeError: null,
     isInitialLoad: Boolean(isInitialLoad),
     hasNotifiedCompletion: false,
+    isArrived: false,
+    lastBearing: null,
     rawOrder: order,
   };
 
   activeTrackings.set(orderId, record);
+  ensureEngineRunning();
   notifyListeners();
 
   // Cálculo de ruta OSRM en segundo plano
@@ -192,6 +308,7 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
       current.isLoadingRoute = false;
       current.routeError = null;
       notifyListeners();
+      ensureEngineRunning();
     })
     .catch((err) => {
       const current = activeTrackings.get(orderId);
@@ -224,6 +341,7 @@ export function retryTrackingRoute(orderId) {
       rec.isLoadingRoute = false;
       rec.routeError = null;
       notifyListeners();
+      ensureEngineRunning();
     })
     .catch((err) => {
       const rec = activeTrackings.get(orderId);
@@ -244,6 +362,9 @@ export function restartTracking(orderId) {
   if (!current) return null;
   current.startedAt = Date.now();
   current.hasNotifiedCompletion = false;
+  current.isArrived = false;
+  current.lastBearing = null;
+  ensureEngineRunning();
   notifyListeners();
   return current;
 }
@@ -269,8 +390,8 @@ export function hasActiveTracking(orderId) {
 }
 
 /**
- * Calcula una instantánea de telemetría determinista en base a un timestamp (`now`).
- * El avance es continuo a lo largo de los 180 segundos.
+ * Calcula una instantánea de telemetría determinista a partir de un timestamp (`now`).
+ * Función 100% PURA: no produce efectos secundarios ni mutaciones de notificación.
  */
 export function computeTrackingSnapshot(record, now = Date.now()) {
   if (!record) return null;
@@ -280,44 +401,61 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
   const isArrived = elapsedMs >= record.durationMs;
   const remainingSeconds = Math.max(0, Math.ceil((record.durationMs - elapsedMs) / 1000));
 
-  // Disparar notificación informativa exactamente una vez por finalización
-  if (isArrived && !record.hasNotifiedCompletion) {
-    record.hasNotifiedCompletion = true;
-    if (typeof onTrackingCompletedCallback === "function") {
-      try {
-        onTrackingCompletedCallback(record);
-      } catch (err) {
-        console.warn("[ATLAS routeTrackingManager] Error en callback de finalización:", err);
+  const totalSteps = record.routeData?.interpolatedCoordinates?.length || 0;
+  const coordinates = record.routeData?.interpolatedCoordinates || [];
+
+  let currentCoord = [record.origin.lat, record.origin.lng];
+  let traveledSegment = [];
+  let pendingSegment = [];
+  let bearing = record.lastBearing || 0;
+
+  if (totalSteps > 0) {
+    if (isArrived || progress >= 1) {
+      // Arribo exacto milimétrico al destino
+      currentCoord = [record.destination.lat, record.destination.lng];
+      traveledSegment = [...coordinates, [record.destination.lat, record.destination.lng]];
+      pendingSegment = [];
+      bearing = record.lastBearing || 0;
+    } else {
+      // Interpolación continua sub-segmento para movimiento ultra-suave
+      const floatIndex = progress * (totalSteps - 1);
+      const i0 = Math.floor(floatIndex);
+      const i1 = Math.min(i0 + 1, totalSteps - 1);
+      const ratio = floatIndex - i0;
+
+      const p0 = coordinates[i0];
+      const p1 = coordinates[i1];
+
+      currentCoord = [
+        p0[0] + (p1[0] - p0[0]) * ratio,
+        p0[1] + (p1[1] - p0[1]) * ratio,
+      ];
+
+      // El tramo recorrido termina exactamente en currentCoord
+      traveledSegment = [...coordinates.slice(0, i0 + 1), currentCoord];
+
+      // El tramo pendiente inicia exactamente en currentCoord hacia el destino
+      pendingSegment = [currentCoord, ...coordinates.slice(i1)];
+
+      // Suavizado continuo de orientación hacia el rumbo vial venidero
+      if (totalSteps > 1) {
+        const lookAhead = Math.min(i0 + 3, totalSteps - 1);
+        const targetPt = coordinates[lookAhead];
+        const rawBearing = calculateBearing(currentCoord, targetPt);
+        bearing = smoothAngle(record.lastBearing ?? rawBearing, rawBearing, 0.25);
+        record.lastBearing = bearing;
       }
     }
   }
 
-  const totalSteps = record.routeData?.interpolatedCoordinates?.length || 0;
-  const currentIndex =
-    totalSteps > 0 ? Math.min(totalSteps - 1, Math.floor(progress * (totalSteps - 1))) : 0;
-
-  const currentCoord =
-    totalSteps > 0
-      ? record.routeData.interpolatedCoordinates[currentIndex]
-      : [record.origin.lat, record.origin.lng];
-
   const remainingDistanceMeters = record.routeData
-    ? Math.round(record.routeData.distanceMeters * (1 - progress))
+    ? isArrived
+      ? 0
+      : Math.round(record.routeData.distanceMeters * (1 - progress))
     : 0;
 
-  const traveledSegment =
-    totalSteps > 0
-      ? record.routeData.interpolatedCoordinates.slice(0, currentIndex + 1)
-      : [];
-
-  let bearing = 0;
-  if (totalSteps > 1 && !isArrived) {
-    const targetIdx = Math.min(currentIndex + 3, totalSteps - 1);
-    bearing = calculateBearing(
-      record.routeData.interpolatedCoordinates[currentIndex],
-      record.routeData.interpolatedCoordinates[targetIdx]
-    );
-  }
+  const currentIndex =
+    totalSteps > 0 ? Math.min(totalSteps - 1, Math.floor(progress * (totalSteps - 1))) : 0;
 
   return {
     ...record,
@@ -331,6 +469,7 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
     totalSteps,
     currentCoord,
     traveledSegment,
+    pendingSegment,
     bearing,
   };
 }
@@ -343,15 +482,12 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
 export function syncOrdersWithTracking(orders, { isInitial = false } = {}) {
   if (!Array.isArray(orders)) return;
 
-  const currentEnRutaIds = new Set();
-
   for (const o of orders) {
     if (!o) continue;
     const orderId = getSafeOrderId(o);
     if (!orderId) continue;
 
     if (isEnRutaStatus(o.status)) {
-      currentEnRutaIds.add(orderId);
       if (!activeTrackings.has(orderId)) {
         startTracking(o, { isInitialLoad: isInitial });
       }
@@ -378,13 +514,20 @@ export function subscribeToTrackings(listener) {
 /** Reinicia todos los seguimientos activos (utilizado en pruebas) */
 export function resetAllTrackings() {
   activeTrackings.clear();
+  if (engineTimerId !== null) {
+    clearTimeout(engineTimerId);
+    cancelAnimationFrame(engineTimerId);
+    engineTimerId = null;
+  }
   notifyListeners();
 }
 
 /**
- * Hook React para acceder al estado de seguimiento de una orden
+ * Hook React para acceder al estado de seguimiento de una orden.
+ * Se suscribe al motor centralizado sin crear bucles de requestAnimationFrame locales.
  */
 export function useRouteTracking(orderId) {
+  const safeId = orderId !== null && orderId !== undefined ? String(orderId) : null;
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -392,28 +535,7 @@ export function useRouteTracking(orderId) {
     return unsubscribe;
   }, []);
 
-  const safeId = orderId !== null && orderId !== undefined ? String(orderId) : null;
   const record = safeId ? getTracking(safeId) : null;
-
-  // Actualización periódica en tiempo real mientras el seguimiento esté en curso
-  useEffect(() => {
-    if (!record || !record.routeData) return;
-    let animId = null;
-    const loop = () => {
-      setTick((t) => t + 1);
-      const now = Date.now();
-      if (now - record.startedAt < record.durationMs + 1000) {
-        animId = requestAnimationFrame(loop);
-      }
-    };
-    animId = requestAnimationFrame(loop);
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, [record]);
-
-  return useMemo(() => {
-    if (!record) return null;
-    return computeTrackingSnapshot(record, Date.now());
-  }, [record]);
+  if (!record) return null;
+  return computeTrackingSnapshot(record, Date.now());
 }

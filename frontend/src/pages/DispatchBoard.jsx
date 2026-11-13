@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Sparkles,
@@ -25,8 +25,9 @@ import {
   ChevronUp,
   RotateCcw,
   Navigation,
+  Gauge,
 } from "lucide-react";
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import KpiGrid from "../components/layout/KpiGrid";
@@ -98,20 +99,31 @@ function FilterPill({ label, active, onClick }) {
   );
 }
 
-// Componente auxiliar para ajustar encuadre a marcadores reales o ruta activa
-function MapAutoBounds({ markers, trackingRoutePoints }) {
+// Componente auxiliar para ajustar encuadre a marcadores reales o ruta activa inicial
+function MapAutoBounds({ markers, trackingRoutePoints, activeTrackingId }) {
   const map = useMap();
+  const lastFittedIdRef = useRef(null);
+
   useEffect(() => {
-    if (trackingRoutePoints && trackingRoutePoints.length >= 2) {
-      try {
-        const bounds = L.latLngBounds(trackingRoutePoints);
-        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 15 });
-        map.invalidateSize();
-        return;
-      } catch {
-        // Continuar con markers normales
+    // Si hay una orden en seguimiento activa y aún no hemos encuadrado su ruta
+    if (activeTrackingId && trackingRoutePoints && trackingRoutePoints.length >= 2) {
+      if (lastFittedIdRef.current !== activeTrackingId) {
+        lastFittedIdRef.current = activeTrackingId;
+        try {
+          const bounds = L.latLngBounds(trackingRoutePoints);
+          map.fitBounds(bounds, { padding: [35, 35], maxZoom: 15 });
+          map.invalidateSize();
+        } catch {
+          // Ignorar si el mapa no está montado
+        }
       }
+      return;
     }
+
+    if (!activeTrackingId) {
+      lastFittedIdRef.current = null;
+    }
+
     if (!markers || markers.length === 0) return;
     const valid = markers.filter(
       (m) =>
@@ -128,28 +140,71 @@ function MapAutoBounds({ markers, trackingRoutePoints }) {
         // Ignorar si el mapa no está montado
       }
     }
-  }, [map, markers, trackingRoutePoints]);
+  }, [map, markers, trackingRoutePoints, activeTrackingId]);
   return null;
 }
 
-// ── Capa interactiva de ruta y vehículo simulado en el mapa principal ────────
+// Controlador de seguimiento interactivo del vehículo (Cámara suave sin alterar nivel de zoom)
+function VehicleCameraController({ currentCoord, followVehicle, onDisableFollow }) {
+  const map = useMap();
+
+  useMapEvents({
+    dragstart: () => {
+      if (onDisableFollow) {
+        onDisableFollow();
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!followVehicle || !currentCoord || !map) return;
+    try {
+      map.panTo(currentCoord, { animate: true, duration: 0.6 });
+    } catch {
+      // Ignorar si el mapa no está listo
+    }
+  }, [map, currentCoord, followVehicle]);
+
+  return null;
+}
+
+// Disparador manual para encuadre completo de la ruta
+function RouteFitTrigger({ triggerFit, routeCoordinates, onDoneFit }) {
+  const map = useMap();
+  useEffect(() => {
+    if (triggerFit && routeCoordinates && routeCoordinates.length >= 2) {
+      try {
+        const bounds = L.latLngBounds(routeCoordinates);
+        map.fitBounds(bounds, { padding: [35, 35], maxZoom: 15 });
+      } catch {
+        // Ignorar
+      }
+      if (onDoneFit) onDoneFit();
+    }
+  }, [map, triggerFit, routeCoordinates, onDoneFit]);
+  return null;
+}
+
+// ── Capa interactiva de ruta y vehículo simulado en el mapa principal (V2) ────
 function TrackingMapLayer({ snapshot, isDark }) {
   if (!snapshot || !snapshot.routeData) return null;
-  const { coordinates } = snapshot.routeData;
   const traveledSegment = snapshot.traveledSegment || [];
+  const pendingSegment = snapshot.pendingSegment || [];
   const currentCoord = snapshot.currentCoord || [DEMO_ORIGIN.lat, DEMO_ORIGIN.lng];
   const isArrived = Boolean(snapshot.isArrived);
   const vehicleBearing = snapshot.bearing || 0;
 
+  const pendingColor = isDark ? "#475569" : "#94a3b8";
+
   return (
     <>
-      {/* 1. Borde oscuro de la ruta vial */}
-      {coordinates && (
+      {/* 1. Tramo pendiente: gris neutro sutil sin saturar */}
+      {pendingSegment.length > 1 && (
         <Polyline
-          positions={coordinates}
+          positions={pendingSegment}
           pathOptions={{
-            color: isDark ? "#030712" : "#0f172a",
-            weight: 7,
+            color: pendingColor,
+            weight: 3.5,
             opacity: 0.85,
             lineCap: "round",
             lineJoin: "round",
@@ -157,28 +212,14 @@ function TrackingMapLayer({ snapshot, isDark }) {
         />
       )}
 
-      {/* 2. Núcleo naranja brillante */}
-      {coordinates && (
-        <Polyline
-          positions={coordinates}
-          pathOptions={{
-            color: "#f97316",
-            weight: 4,
-            opacity: 1,
-            lineCap: "round",
-            lineJoin: "round",
-          }}
-        />
-      )}
-
-      {/* 3. Tramo verde completado */}
+      {/* 2. Tramo recorrido: naranja corporativo ATLAS con continuidad en currentCoord */}
       {traveledSegment.length > 1 && (
         <Polyline
           positions={traveledSegment}
           pathOptions={{
-            color: "#10b981",
+            color: "#f97316",
             weight: 4,
-            opacity: 0.95,
+            opacity: 1,
             lineCap: "round",
             lineJoin: "round",
           }}
@@ -239,27 +280,30 @@ function TrackingMapLayer({ snapshot, isDark }) {
   );
 }
 
-// ── Tarjeta de telemetría flotante sobre el mapa de despacho (Oscuro y Naranja) ─
+// ── Tarjeta de telemetría flotante sobre el mapa de despacho (Oscuro y Naranja V2) ─
 function TrackingFloatingCard({
   snapshot,
   order,
   onOpenModal,
   onClose,
   isExpandedView = false,
+  followVehicle = true,
+  onToggleFollow,
+  onFitRoute,
 }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   if (!snapshot || !order) return null;
   const isArrived = Boolean(snapshot.isArrived);
 
-  // Estado contraído (Píldora discreta sin bloquear marcadores del mapa)
+  // Estado contraído: Píldora discreta de 32px sin bloquear marcadores del mapa
   if (isCollapsed) {
     return (
       <div className="absolute bottom-3 left-3 z-400 animate-in fade-in slide-in-from-bottom-2 duration-200">
         <button
           type="button"
           onClick={() => setIsCollapsed(false)}
-          className="flex items-center gap-2 rounded-full border border-orange-500/40 bg-slate-950/95 text-white px-3 py-1.5 shadow-2xl backdrop-blur-md hover:border-orange-500/70 hover:bg-slate-900 transition-all cursor-pointer group"
+          className="flex h-8 items-center gap-2 rounded-full border border-orange-500/40 bg-slate-950/95 text-white px-3 shadow-2xl backdrop-blur-md hover:border-orange-500/70 hover:bg-slate-900 transition-all cursor-pointer group"
           title="Expandir telemetría de seguimiento"
         >
           <img
@@ -396,9 +440,15 @@ function TrackingFloatingCard({
           </div>
         </div>
 
+        {/* Aclaración obligatoria de velocidad simulada (Requerimiento F) */}
+        <div className="mt-2 text-center text-[10px] text-slate-400 border-t border-slate-800/80 pt-1.5 flex items-center justify-center gap-1.5">
+          <Gauge className="h-3 w-3 text-orange-400 shrink-0" />
+          <span>Velocidad est. demo: ~38 km/h (Simulada, no GPS real)</span>
+        </div>
+
         {/* Mensaje de estado operativo */}
         <div
-          className={`mt-2.5 rounded-lg px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 ${
+          className={`mt-2 rounded-lg px-3 py-1.5 text-[11px] font-medium flex items-center gap-2 ${
             isArrived
               ? "bg-emerald-950/50 border border-emerald-500/30 text-emerald-300"
               : "bg-orange-950/40 border border-orange-500/30 text-orange-300"
@@ -416,8 +466,40 @@ function TrackingFloatingCard({
           </span>
         </div>
 
+        {/* Controles de cámara interactiva (Requerimiento E) */}
+        <div className="flex items-center gap-1.5 mt-2.5">
+          <button
+            type="button"
+            onClick={onToggleFollow}
+            className={`flex-1 py-1.5 px-2.5 rounded-lg font-semibold text-[11px] transition-colors flex items-center justify-center gap-1.5 cursor-pointer border ${
+              followVehicle
+                ? "bg-orange-500/20 text-orange-400 border-orange-500/50 hover:bg-orange-500/30"
+                : "bg-slate-900 text-slate-300 border-slate-800 hover:text-white hover:bg-slate-850"
+            }`}
+            title={followVehicle ? "Siguiendo móvil automáticamente (arrastre el mapa para pausar)" : "Activar seguimiento de cámara al vehículo"}
+          >
+            <span
+              className={`h-2 w-2 rounded-full shrink-0 ${
+                followVehicle ? "bg-orange-400 animate-pulse" : "bg-slate-500"
+              }`}
+            />
+            <span>{followVehicle ? "Siguiendo vehículo" : "Seguir vehículo"}</span>
+          </button>
+          {onFitRoute && (
+            <button
+              type="button"
+              onClick={onFitRoute}
+              className="py-1.5 px-2.5 rounded-lg font-semibold text-[11px] bg-slate-900 text-slate-300 border border-slate-800 hover:text-white hover:bg-slate-850 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              title="Ajustar encuadre para ver la ruta completa"
+            >
+              <Maximize2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>Ver ruta completa</span>
+            </button>
+          )}
+        </div>
+
         {/* Acciones */}
-        <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-800">
+        <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-slate-800">
           {isArrived && (
             <button
               type="button"
@@ -457,7 +539,7 @@ function TrackingFloatingCard({
           <span className="font-bold text-[11px] text-white truncate">
             Seguimiento {snapshot.orderNumber}
           </span>
-          <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-orange-500/20 text-orange-400 border border-orange-500/30">
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-orange-500/20 text-orange-400 border border-orange-500/30">
             Demo
           </span>
         </div>
@@ -526,8 +608,46 @@ function TrackingFloatingCard({
         </div>
       </div>
 
+      {/* Nota técnica de telemetría simulada (Requerimiento F) */}
+      <div className="mt-1.5 text-center text-[9px] text-slate-400 border-t border-slate-800/80 pt-1 flex items-center justify-center gap-1">
+        <Gauge className="h-2.5 w-2.5 text-orange-400 shrink-0" />
+        <span>Velocidad est. demo: ~38 km/h (Simulada, no GPS real)</span>
+      </div>
+
+      {/* Controles de cámara rápida */}
+      <div className="flex items-center gap-1 mt-2">
+        <button
+          type="button"
+          onClick={onToggleFollow}
+          className={`flex-1 py-1 px-1.5 rounded font-semibold text-[10px] transition-colors flex items-center justify-center gap-1 cursor-pointer border ${
+            followVehicle
+              ? "bg-orange-500/20 text-orange-400 border-orange-500/40"
+              : "bg-slate-900 text-slate-300 border-slate-800 hover:text-white"
+          }`}
+          title={followVehicle ? "Siguiendo móvil (arrastre el mapa para pausar)" : "Seguir móvil"}
+        >
+          <span
+            className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+              followVehicle ? "bg-orange-400 animate-pulse" : "bg-slate-500"
+            }`}
+          />
+          <span>{followVehicle ? "Siguiendo" : "Seguir"}</span>
+        </button>
+        {onFitRoute && (
+          <button
+            type="button"
+            onClick={onFitRoute}
+            className="py-1 px-1.5 rounded font-semibold text-[10px] bg-slate-900 text-slate-300 border border-slate-800 hover:text-white transition-colors flex items-center justify-center gap-1 cursor-pointer"
+            title="Ajustar ruta completa"
+          >
+            <Maximize2 className="h-3 w-3 shrink-0 text-slate-400" />
+            <span>Ruta</span>
+          </button>
+        )}
+      </div>
+
       {/* Botones de acción */}
-      <div className="flex items-center gap-1.5 mt-2.5 pt-1.5 border-t border-slate-800">
+      <div className="flex items-center gap-1.5 mt-2 pt-1.5 border-t border-slate-800">
         {onOpenModal && (
           <button
             type="button"
@@ -543,8 +663,9 @@ function TrackingFloatingCard({
             type="button"
             onClick={onClose}
             className="py-1.5 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-[10px] transition-colors cursor-pointer border border-slate-700"
+            title="Cerrar seguimiento"
           >
-            Cerrar ruta
+            <X className="h-3 w-3" />
           </button>
         )}
       </div>
@@ -583,6 +704,8 @@ export function ActiveZonesCard({
   const [isExpanded, setIsExpanded] = useState(false);
   const [statusFilter, setStatusFilter] = useState("TODAS");
   const [showUnlocatedModal, setShowUnlocatedModal] = useState(false);
+  const [followVehicle, setFollowVehicle] = useState(true);
+  const [triggerFitRoute, setTriggerFitRoute] = useState(false);
 
   // Hook de seguimiento en tiempo real para la orden activa
   const trackingOrderId = trackingOrder ? getSafeOrderId(trackingOrder) : null;
@@ -782,7 +905,21 @@ export function ActiveZonesCard({
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={allMapPoints} trackingRoutePoints={trackingRoutePoints} />
+                <MapAutoBounds
+                  markers={allMapPoints}
+                  trackingRoutePoints={trackingRoutePoints}
+                  activeTrackingId={trackingOrderId}
+                />
+                <VehicleCameraController
+                  currentCoord={trackingSnapshot?.currentCoord}
+                  followVehicle={followVehicle}
+                  onDisableFollow={() => setFollowVehicle(false)}
+                />
+                <RouteFitTrigger
+                  triggerFit={triggerFitRoute}
+                  routeCoordinates={trackingSnapshot?.routeData?.coordinates}
+                  onDoneFit={() => setTriggerFitRoute(false)}
+                />
 
                 {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
                 <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
@@ -975,6 +1112,9 @@ export function ActiveZonesCard({
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}
                 isExpandedView={false}
+                followVehicle={followVehicle}
+                onToggleFollow={() => setFollowVehicle((prev) => !prev)}
+                onFitRoute={() => setTriggerFitRoute(true)}
               />
             </div>
             <div className="flex flex-wrap gap-2.5 items-center text-xs">
@@ -1066,7 +1206,21 @@ export function ActiveZonesCard({
                   maxZoom={19}
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>'
                 />
-                <MapAutoBounds markers={allMapPoints} trackingRoutePoints={trackingRoutePoints} />
+                <MapAutoBounds
+                  markers={allMapPoints}
+                  trackingRoutePoints={trackingRoutePoints}
+                  activeTrackingId={trackingOrderId}
+                />
+                <VehicleCameraController
+                  currentCoord={trackingSnapshot?.currentCoord}
+                  followVehicle={followVehicle}
+                  onDisableFollow={() => setFollowVehicle(false)}
+                />
+                <RouteFitTrigger
+                  triggerFit={triggerFitRoute}
+                  routeCoordinates={trackingSnapshot?.routeData?.coordinates}
+                  onDoneFit={() => setTriggerFitRoute(false)}
+                />
 
                 {/* Capa de seguimiento interactivo en tiempo real (Ruta, Origen, Destino y Vehículo) */}
                 <TrackingMapLayer snapshot={trackingSnapshot} isDark={isDark} />
@@ -1243,6 +1397,9 @@ export function ActiveZonesCard({
                 onOpenModal={onOpenTrackingModal || onSimulateRoute}
                 onClose={onCloseTrackingRoute}
                 isExpandedView={true}
+                followVehicle={followVehicle}
+                onToggleFollow={() => setFollowVehicle((prev) => !prev)}
+                onFitRoute={() => setTriggerFitRoute(true)}
               />
             </div>
             <div className="flex items-center justify-between border-t border-border px-6 py-3 bg-slate-50 dark:bg-card">
