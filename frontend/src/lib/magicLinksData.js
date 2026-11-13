@@ -237,7 +237,7 @@ export function mapApiSummaryToTrackingOrder(summary) {
   const orderNumber = summary.order_number || "#OT-00000";
   const statusKey = (summary.status_key || "idle").toLowerCase();
   const tech = summary.technician || null;
-  const techName = tech?.name || "Sin técnico asignado";
+  const techName = tech?.name || summary.technician_name || "Sin técnico asignado";
   const hasAssignedTech = Boolean(techName && techName !== "Sin técnico asignado");
 
   let statusLabel = STATUS_KEY_LABELS[statusKey] || "Visita Técnica Programada";
@@ -288,6 +288,7 @@ export function mapApiSummaryToTrackingOrder(summary) {
       : summary.eta || "Por confirmar";
 
   return {
+    id: summary.order_id,
     order_id: summary.order_id,
     order_number: orderNumber,
     orderNumber: orderNumber,
