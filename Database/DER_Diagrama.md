@@ -14,6 +14,7 @@ erDiagram
     users ||--o| technicians : "perfil extendido"
     users ||--o{ work_orders : "crea"
     users ||--o{ order_status_history : "registra cambio"
+    users ||--o{ password_reset_tokens : "solicita"
 
     technicians ||--o{ work_orders : "tiene asignadas"
     technicians ||--o{ sim_cards : "custodia en vehiculo"
@@ -36,12 +37,22 @@ erDiagram
         uuid id PK
         string email UK
         string password_hash
+        int auth_version
         string full_name
         string phone
         enum role "ADMIN, COORDINADOR, TECNICO, CLIENTE"
         boolean is_active
         timestamp created_at
         timestamp updated_at
+    }
+
+    password_reset_tokens {
+        uuid id PK
+        uuid user_id FK
+        string token_hash UK
+        timestamp created_at
+        timestamp expires_at
+        timestamp used_at
     }
 
     technicians {
@@ -52,6 +63,7 @@ erDiagram
         string vehicle_plate
         numeric current_lat
         numeric current_lng
+        timestamp last_location_at
         boolean is_available
         timestamp updated_at
     }
@@ -65,8 +77,11 @@ erDiagram
         string contact_email
         string address
         string comuna
+        string region
         numeric lat
         numeric lng
+        timestamp created_at
+        timestamp updated_at
     }
 
     work_orders {
@@ -86,7 +101,12 @@ erDiagram
         numeric lat
         numeric lng
         string tag
+        boolean is_audited
+        timestamp audited_at
+        uuid audited_by_user_id FK
+        text audit_notes
         timestamp created_at
+        timestamp updated_at
     }
 
     magic_links {
@@ -174,3 +194,5 @@ erDiagram
    * Respaldo técnico de la App Móvil para auditar calidad de instalación (fotos, potencias dBm de señal 4G/5G y mediciones de ancho de banda).
 7. **`order_status_history`:**
    * Trazabilidad inmutable que registra cada transición de estado con coordenadas del técnico, impidiendo manipulación de SLAs.
+8. **`password_reset_tokens`:**
+   * Almacenamiento seguro de tokens hash SHA-256 para recuperación de contraseña con TTL y control de expiración.

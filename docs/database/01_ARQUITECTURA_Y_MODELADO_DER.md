@@ -33,6 +33,7 @@ erDiagram
     users ||--o| technicians : "perfil operativo"
     users ||--o{ work_orders : "crea orden"
     users ||--o{ order_status_history : "registra transicion"
+    users ||--o{ password_reset_tokens : "solicita recuperacion"
 
     technicians ||--o{ work_orders : "tiene asignadas"
     technicians ||--o{ sim_cards : "custodia en movil"
@@ -55,12 +56,22 @@ erDiagram
         uuid id PK "gen_random_uuid()"
         varchar email UK "Email corporativo"
         varchar password_hash "Bcrypt hash"
+        int auth_version "Version invalidacion sesion"
         varchar full_name "Nombre completo"
         varchar phone "Telefono contacto"
         enum role "ADMIN, COORDINADOR, TECNICO, CLIENTE"
         boolean is_active "Estado usuario"
         timestamptz created_at
         timestamptz updated_at
+    }
+
+    password_reset_tokens {
+        uuid id PK "gen_random_uuid()"
+        uuid user_id FK "Referencia a users(id)"
+        varchar token_hash UK "Hash SHA-256 unico"
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz used_at
     }
 
     technicians {
@@ -71,21 +82,25 @@ erDiagram
         varchar vehicle_plate "Patente camioneta"
         numeric current_lat "Ultima latitud GPS"
         numeric current_lng "Ultima longitud GPS"
+        timestamptz last_location_at "Timestamp ultimo latido GPS"
         boolean is_available "Disponibilidad despacho"
         timestamptz updated_at
     }
 
     clients {
         uuid id PK "gen_random_uuid()"
-        varchar rut UK "RUT empresa o persona"
+        varchar rut UK "RUT empresa o persona (nullable)"
         varchar business_name "Razon social o nombre"
         varchar contact_person "Contacto en sitio"
         varchar contact_phone "Telefono"
         varchar contact_email "Email para Magic Link"
         varchar address "Direccion fisica"
         varchar comuna "Comuna despacho"
+        varchar region "Region (ej. Metropolitana)"
         numeric lat "Latitud geocodificada"
         numeric lng "Longitud geocodificada"
+        timestamptz created_at
+        timestamptz updated_at
     }
 
     work_orders {
@@ -98,6 +113,23 @@ erDiagram
         enum status "IDLE, CONFIRMADA, EN_RUTA, EN_SITIO, COMPLETADA, CANCELADA"
         uuid client_id FK "Cliente receptor"
         uuid technician_id FK "Tecnico asignado"
+        timestamptz scheduled_date "Fecha acordada (nullable)"
+        timestamptz eta "Tiempo estimado llegada"
+        varchar address_override "Direccion especifica"
+        varchar comuna_override "Comuna especifica"
+        numeric lat "Latitud orden"
+        numeric lng "Longitud orden"
+        varchar tag "Tag visual Kanban"
+        boolean is_audited "Estado auditoria administrativa"
+        timestamptz audited_at "Fecha de auditoria"
+        uuid audited_by_user_id FK "Auditor responsable"
+        text audit_notes "Observaciones de auditoria"
+        timestamptz started_at
+        timestamptz completed_at
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
         timestamptz scheduled_date "Fecha compromiso"
         timestamptz eta "Hora estimada de llegada"
         varchar tag "Tag visual Kanban"

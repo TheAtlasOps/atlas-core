@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
+    auth_version INTEGER NOT NULL DEFAULT 0,
     full_name VARCHAR(150) NOT NULL,
     phone VARCHAR(50),
     role user_role_enum NOT NULL DEFAULT 'TECNICO',
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS technicians (
     vehicle_plate VARCHAR(20),
     current_lat NUMERIC(10, 7),
     current_lng NUMERIC(10, 7),
+    last_location_at TIMESTAMP WITH TIME ZONE,
     is_available BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -177,7 +179,7 @@ CREATE TABLE IF NOT EXISTS work_orders (
     status order_status_enum NOT NULL DEFAULT 'IDLE',
     client_id UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
     technician_id UUID REFERENCES technicians(id) ON DELETE SET NULL,
-    scheduled_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    scheduled_date TIMESTAMP WITH TIME ZONE,
     eta TIMESTAMP WITH TIME ZONE,
     address_override VARCHAR(300),
     comuna_override VARCHAR(100),
@@ -186,6 +188,10 @@ CREATE TABLE IF NOT EXISTS work_orders (
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
     tag VARCHAR(50), -- Tag visual para el Kanban (Fibra, SIM, Red, Hardware, Magic Link)
+    is_audited BOOLEAN NOT NULL DEFAULT FALSE,
+    audited_at TIMESTAMP WITH TIME ZONE,
+    audited_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    audit_notes TEXT,
     created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -247,6 +253,17 @@ CREATE TABLE IF NOT EXISTS order_status_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- TABLA: password_reset_tokens (Tokens temporales para recuperación segura de contraseña)
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) UNIQUE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT ck_password_reset_expiration CHECK (expires_at > created_at)
+);
+
 -- =============================================================================
 -- 5. ÍNDICES DE OPTIMIZACIÓN (QUERY PERFORMANCE)
 -- =============================================================================
@@ -254,7 +271,9 @@ CREATE INDEX IF NOT EXISTS idx_work_orders_status ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_work_orders_technician ON work_orders(technician_id);
 CREATE INDEX IF NOT EXISTS idx_work_orders_client ON work_orders(client_id);
 CREATE INDEX IF NOT EXISTS idx_work_orders_scheduled_date ON work_orders(scheduled_date);
+CREATE INDEX IF NOT EXISTS ix_work_orders_is_audited ON work_orders(is_audited);
 CREATE INDEX IF NOT EXISTS idx_magic_links_token ON magic_links(token);
+CREATE INDEX IF NOT EXISTS ix_password_reset_user_created ON password_reset_tokens(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sim_cards_iccid ON sim_cards(iccid);
 CREATE INDEX IF NOT EXISTS idx_sim_cards_status ON sim_cards(status);
 CREATE INDEX IF NOT EXISTS idx_equipment_serial ON equipment(serial_number);
