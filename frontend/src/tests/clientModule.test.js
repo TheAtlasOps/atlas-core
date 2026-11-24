@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateChileanRut, formatChileanRut, normalizeRutKey } from "../lib/rut.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -144,6 +145,56 @@ describe("ATLAS FSM — Módulo Clientes", () => {
       assert.ok(content.includes("setIsClientModalOpen(true)"), "Debe permitir abrir ClientModal desde el modal de OT");
       assert.ok(content.includes("clientId"), "Debe almacenar y pasar clientId para evitar duplicación de registros");
       assert.ok(content.includes("initialClientPreset"), "Debe aceptar cliente predeterminado al crear OT desde la ficha");
+      assert.ok(content.includes("nameMatches"), "Debe permitir desambiguar clientes residenciales con el mismo nombre");
+    });
+  });
+
+  describe("6. Clientes Empresariales y Residenciales + Validación de RUT", () => {
+    test("rut.js valida dígitos verificadores chilenos y formatea RUTs correctamente", () => {
+      assert.equal(validateChileanRut(""), true);
+      assert.equal(validateChileanRut("12345678-5"), true);
+      assert.equal(validateChileanRut("97.036.000-k"), true);
+      assert.equal(validateChileanRut("76.123.456-0"), true);
+      assert.equal(validateChileanRut("12.345.678-9"), false);
+      assert.equal(validateChileanRut("abc-1"), false);
+      assert.equal(formatChileanRut("123456785"), "12.345.678-5");
+      assert.equal(normalizeRutKey("76.123.456-k"), "76123456K");
+    });
+
+    test("ClientModal.jsx incorpora selector Empresarial/Residencial con iconos Building2 y Home y adapta campos", () => {
+      const modalPath = path.resolve(__dirname, "../components/ui/ClientModal.jsx");
+      const content = fs.readFileSync(modalPath, "utf-8");
+
+      assert.ok(content.includes("EMPRESARIAL"), "Debe soportar tipo EMPRESARIAL");
+      assert.ok(content.includes("RESIDENCIAL"), "Debe soportar tipo RESIDENCIAL");
+      assert.ok(content.includes("Building2"), "Debe usar icono de edificio para Empresarial");
+      assert.ok(content.includes("Home"), "Debe usar icono de casa para Residencial");
+      assert.ok(content.includes("Nombre Completo"), "Debe adaptar etiqueta a Nombre Completo en residencial");
+      assert.ok(content.includes("RUT Personal"), "Debe adaptar etiqueta a RUT Personal en residencial");
+      assert.ok(content.includes("secondary_phone"), "Debe incluir campo teléfono alternativo opcional");
+      assert.ok(content.includes("Dirección del Domicilio"), "Debe adaptar dirección a domicilio en residencial");
+      assert.ok(content.includes("validateChileanRut"), "Debe validar RUT chileno cuando se proporciona");
+    });
+
+    test("Clients.jsx incluye filtro por tipo de cliente e identificación visual en tarjetas", () => {
+      const clientsPath = path.resolve(__dirname, "../pages/Clients.jsx");
+      const content = fs.readFileSync(clientsPath, "utf-8");
+
+      assert.ok(content.includes("typeFilter"), "Debe manejar filtro por tipo de cliente");
+      assert.ok(content.includes("EMPRESARIAL"), "Debe filtrar por clientes Empresariales");
+      assert.ok(content.includes("RESIDENCIAL"), "Debe filtrar por clientes Residenciales");
+      assert.ok(content.includes("Home"), "Debe mostrar icono Home en tarjetas/filtros residenciales");
+      assert.ok(content.includes("secondary_phone"), "Debe permitir buscar y mostrar teléfono alternativo");
+    });
+
+    test("ClientDetailDrawer.jsx adapta visualmente la ficha técnica según tipo de cliente", () => {
+      const drawerPath = path.resolve(__dirname, "../components/ui/ClientDetailDrawer.jsx");
+      const content = fs.readFileSync(drawerPath, "utf-8");
+
+      assert.ok(content.includes("isResidential"), "Debe distinguir si el cliente es residencial");
+      assert.ok(content.includes("Home"), "Debe usar icono Home en cabecera residencial");
+      assert.ok(content.includes("Teléfono Alternativo"), "Debe mostrar teléfono alternativo si existe");
+      assert.ok(content.includes("Dirección del domicilio:"), "Debe adaptar etiqueta de dirección");
     });
   });
 });

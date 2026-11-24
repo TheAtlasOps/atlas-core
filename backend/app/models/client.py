@@ -18,10 +18,14 @@ class Client(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    client_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="EMPRESARIAL", server_default="EMPRESARIAL", index=True
+    )
     rut: Mapped[Optional[str]] = mapped_column(String(20), unique=True, nullable=True)
     business_name: Mapped[str] = mapped_column(String(200), nullable=False)
     contact_person: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     contact_phone: Mapped[str] = mapped_column(String(50), nullable=False)
+    secondary_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     contact_email: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(300), nullable=False)
     comuna: Mapped[str] = mapped_column(String(100), nullable=False)

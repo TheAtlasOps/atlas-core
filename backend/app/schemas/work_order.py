@@ -9,9 +9,12 @@ from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum
 # ─── Resúmenes de Entidades Relacionadas ─────────────────────────────────────
 class ClientSummary(BaseModel):
     id: uuid.UUID
+    client_type: Optional[str] = "EMPRESARIAL"
+    rut: Optional[str] = None
     business_name: str
     contact_person: Optional[str] = None
     contact_phone: str
+    secondary_phone: Optional[str] = None
     contact_email: str
     address: str
     comuna: str

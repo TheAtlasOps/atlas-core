@@ -9,7 +9,8 @@ from fastapi import HTTPException, status
 from app.models.client import Client
 from app.models.work_order import WorkOrder
 from app.models.user import Technician
-from app.models.enums import OrderStatusEnum
+from app.models.enums import OrderStatusEnum, ClientTypeEnum
+from app.utils.rut import normalize_rut_key
 from app.schemas.client import (
     ClientCreate,
     ClientUpdate,
@@ -26,14 +27,58 @@ ACTIVE_ORDER_STATUSES = [
 ]
 
 
+def _normalized_db_rut_expr():
+    return func.replace(
+        func.replace(func.upper(func.coalesce(Client.rut, "")), ".", ""),
+        "-",
+        "",
+    )
+
+
+def _effective_client_type(client_obj: Client) -> str:
+    raw = getattr(client_obj, "client_type", None)
+    if hasattr(raw, "value"):
+        return raw.value
+    return str(raw or ClientTypeEnum.EMPRESARIAL.value)
+
+
+def _to_client_response(client_obj: Client, orders: Optional[List[WorkOrder]] = None) -> ClientResponse:
+    linked_orders = orders if orders is not None else (client_obj.work_orders or [])
+    active_orders = sum(1 for o in linked_orders if o.status in ACTIVE_ORDER_STATUSES)
+    return ClientResponse(
+        id=client_obj.id,
+        client_type=_effective_client_type(client_obj),
+        rut=client_obj.rut,
+        business_name=client_obj.business_name,
+        contact_person=client_obj.contact_person,
+        contact_phone=client_obj.contact_phone,
+        secondary_phone=getattr(client_obj, "secondary_phone", None),
+        contact_email=client_obj.contact_email,
+        address=client_obj.address,
+        comuna=client_obj.comuna,
+        region=client_obj.region or "Metropolitana",
+        lat=client_obj.lat,
+        lng=client_obj.lng,
+        created_at=client_obj.created_at,
+        updated_at=client_obj.updated_at,
+        active_orders_count=active_orders,
+        total_orders_count=len(linked_orders),
+    )
+
+
 async def list_clients(
-    db: AsyncSession, search: Optional[str] = None
+    db: AsyncSession,
+    search: Optional[str] = None,
+    client_type: Optional[ClientTypeEnum] = None,
 ) -> List[ClientResponse]:
     """
     Retorna el listado de clientes registrados en Neon con el conteo de órdenes activas y totales.
-    Permite filtrar por nombre/razón social, contacto, correo, rut o comuna.
+    Permite filtrar por tipo de cliente y buscar por nombre/razón social, contacto, correo, teléfonos, rut o comuna.
     """
     query = select(Client).options(selectinload(Client.work_orders))
+
+    if client_type is not None:
+        query = query.where(Client.client_type == client_type.value)
 
     if search and search.strip():
         term = f"%{search.strip().lower()}%"
@@ -43,6 +88,8 @@ async def list_clients(
                 func.lower(Client.contact_email).like(term),
                 func.lower(func.coalesce(Client.contact_person, "")).like(term),
                 func.lower(func.coalesce(Client.rut, "")).like(term),
+                func.lower(Client.contact_phone).like(term),
+                func.lower(func.coalesce(Client.secondary_phone, "")).like(term),
                 func.lower(Client.address).like(term),
                 func.lower(Client.comuna).like(term),
             )
@@ -52,32 +99,7 @@ async def list_clients(
     result = await db.execute(query)
     clients = result.scalars().all()
 
-    response_items = []
-    for c in clients:
-        orders = c.work_orders or []
-        total_orders = len(orders)
-        active_orders = sum(1 for o in orders if o.status in ACTIVE_ORDER_STATUSES)
-
-        item = ClientResponse(
-            id=c.id,
-            rut=c.rut,
-            business_name=c.business_name,
-            contact_person=c.contact_person,
-            contact_phone=c.contact_phone,
-            contact_email=c.contact_email,
-            address=c.address,
-            comuna=c.comuna,
-            region=c.region or "Metropolitana",
-            lat=c.lat,
-            lng=c.lng,
-            created_at=c.created_at,
-            updated_at=c.updated_at,
-            active_orders_count=active_orders,
-            total_orders_count=total_orders,
-        )
-        response_items.append(item)
-
-    return response_items
+    return [_to_client_response(c) for c in clients]
 
 
 async def get_client_detail(
@@ -104,7 +126,6 @@ async def get_client_detail(
         )
 
     raw_orders = client_obj.work_orders or []
-    # Ordenar órdenes por fecha más reciente primero
     sorted_orders = sorted(
         raw_orders,
         key=lambda o: o.created_at or datetime.min.replace(tzinfo=timezone.utc),
@@ -139,10 +160,12 @@ async def get_client_detail(
 
     return ClientDetailResponse(
         id=client_obj.id,
+        client_type=_effective_client_type(client_obj),
         rut=client_obj.rut,
         business_name=client_obj.business_name,
         contact_person=client_obj.contact_person,
         contact_phone=client_obj.contact_phone,
+        secondary_phone=getattr(client_obj, "secondary_phone", None),
         contact_email=client_obj.contact_email,
         address=client_obj.address,
         comuna=client_obj.comuna,
@@ -161,17 +184,19 @@ async def create_client(
     db: AsyncSession, client_in: ClientCreate
 ) -> ClientResponse:
     """
-    Registra un nuevo cliente corporativo o residencial en PostgreSQL/Neon.
-    Valida unicidad de RUT y nombre comercial.
+    Registra un nuevo cliente empresarial o residencial en PostgreSQL/Neon.
+    Valida unicidad de RUT cuando se proporciona; permite personas residenciales con nombres iguales.
     """
+    target_type = client_in.client_type.value if hasattr(client_in.client_type, "value") else str(client_in.client_type)
     clean_business_name = client_in.business_name.strip()
     clean_email = str(client_in.contact_email).strip().lower()
     clean_rut = client_in.rut.strip() if client_in.rut else None
+    rut_key = normalize_rut_key(clean_rut)
 
-    # Validar duplicados de RUT si viene provisto
-    if clean_rut:
+    # Validar duplicados de RUT normalizado si viene provisto (aplica a todo tipo de cliente)
+    if rut_key:
         rut_check = await db.execute(
-            select(Client).where(func.lower(Client.rut) == clean_rut.lower())
+            select(Client).where(_normalized_db_rut_expr() == rut_key)
         )
         if rut_check.scalar_one_or_none():
             raise HTTPException(
@@ -179,21 +204,28 @@ async def create_client(
                 detail=f"Ya existe un cliente registrado con el RUT '{clean_rut}'",
             )
 
-    # Validar duplicados de nombre de empresa exacto
-    name_check = await db.execute(
-        select(Client).where(func.lower(Client.business_name) == clean_business_name.lower())
-    )
-    if name_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ya existe un cliente registrado con la razón social '{clean_business_name}'",
+    # Validar duplicados de razón social solo para clientes empresariales;
+    # en clientes residenciales se permiten personas con nombres iguales.
+    if target_type == ClientTypeEnum.EMPRESARIAL.value:
+        name_check = await db.execute(
+            select(Client).where(
+                Client.client_type == ClientTypeEnum.EMPRESARIAL.value,
+                func.lower(Client.business_name) == clean_business_name.lower(),
+            )
         )
+        if name_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe un cliente registrado con la razón social '{clean_business_name}'",
+            )
 
     new_client = Client(
         id=uuid.uuid4(),
+        client_type=target_type,
         business_name=clean_business_name,
         contact_email=clean_email,
         contact_phone=client_in.contact_phone.strip(),
+        secondary_phone=client_in.secondary_phone.strip() if client_in.secondary_phone else None,
         address=client_in.address.strip(),
         comuna=client_in.comuna.strip() if client_in.comuna else "Santiago",
         region=client_in.region.strip() if client_in.region else "Metropolitana",
@@ -209,30 +241,14 @@ async def create_client(
     await db.commit()
     await db.refresh(new_client)
 
-    return ClientResponse(
-        id=new_client.id,
-        rut=new_client.rut,
-        business_name=new_client.business_name,
-        contact_person=new_client.contact_person,
-        contact_phone=new_client.contact_phone,
-        contact_email=new_client.contact_email,
-        address=new_client.address,
-        comuna=new_client.comuna,
-        region=new_client.region or "Metropolitana",
-        lat=new_client.lat,
-        lng=new_client.lng,
-        created_at=new_client.created_at,
-        updated_at=new_client.updated_at,
-        active_orders_count=0,
-        total_orders_count=0,
-    )
+    return _to_client_response(new_client, orders=[])
 
 
 async def update_client(
     db: AsyncSession, client_id: uuid.UUID, client_in: ClientUpdate
 ) -> ClientResponse:
     """
-    Actualiza los datos comerciales y de contacto de un cliente existente.
+    Actualiza los datos comerciales, residenciales y de contacto de un cliente existente.
     """
     result = await db.execute(
         select(Client).options(selectinload(Client.work_orders)).where(Client.id == client_id)
@@ -245,13 +261,21 @@ async def update_client(
             detail=f"Cliente con ID {client_id} no encontrado",
         )
 
-    # Validar RUT si se intenta modificar
-    if client_in.rut is not None:
+    target_type = (
+        client_in.client_type.value
+        if client_in.client_type is not None
+        else _effective_client_type(client_obj)
+    )
+
+    # Validar RUT si se intenta modificar o limpiar
+    if "rut" in client_in.model_fields_set:
         clean_rut = client_in.rut.strip() if client_in.rut else None
-        if clean_rut and (not client_obj.rut or clean_rut.lower() != client_obj.rut.lower()):
+        new_rut_key = normalize_rut_key(clean_rut)
+        current_rut_key = normalize_rut_key(client_obj.rut)
+        if new_rut_key and new_rut_key != current_rut_key:
             rut_check = await db.execute(
                 select(Client).where(
-                    func.lower(Client.rut) == clean_rut.lower(),
+                    _normalized_db_rut_expr() == new_rut_key,
                     Client.id != client_id,
                 )
             )
@@ -262,12 +286,20 @@ async def update_client(
                 )
         client_obj.rut = clean_rut
 
-    # Validar business_name si se intenta modificar
+    # Validar business_name si corresponde a un cliente empresarial
     if client_in.business_name is not None:
         clean_name = client_in.business_name.strip()
-        if clean_name.lower() != client_obj.business_name.lower():
+        type_switched_to_business = (
+            client_in.client_type is not None
+            and target_type == ClientTypeEnum.EMPRESARIAL.value
+            and _effective_client_type(client_obj) != ClientTypeEnum.EMPRESARIAL.value
+        )
+        if target_type == ClientTypeEnum.EMPRESARIAL.value and (
+            clean_name.lower() != client_obj.business_name.lower() or type_switched_to_business
+        ):
             name_check = await db.execute(
                 select(Client).where(
+                    Client.client_type == ClientTypeEnum.EMPRESARIAL.value,
                     func.lower(Client.business_name) == clean_name.lower(),
                     Client.id != client_id,
                 )
@@ -279,12 +311,20 @@ async def update_client(
                 )
         client_obj.business_name = clean_name
 
+    if client_in.client_type is not None:
+        client_obj.client_type = target_type
     if client_in.contact_email is not None:
         client_obj.contact_email = str(client_in.contact_email).strip().lower()
     if client_in.contact_phone is not None:
         client_obj.contact_phone = client_in.contact_phone.strip()
-    if client_in.contact_person is not None:
-        client_obj.contact_person = client_in.contact_person.strip() if client_in.contact_person else None
+    if "secondary_phone" in client_in.model_fields_set:
+        client_obj.secondary_phone = (
+            client_in.secondary_phone.strip() if client_in.secondary_phone else None
+        )
+    if "contact_person" in client_in.model_fields_set:
+        client_obj.contact_person = (
+            client_in.contact_person.strip() if client_in.contact_person else None
+        )
     if client_in.address is not None:
         client_obj.address = client_in.address.strip()
     if client_in.comuna is not None:
@@ -300,26 +340,7 @@ async def update_client(
     await db.commit()
     await db.refresh(client_obj)
 
-    orders = client_obj.work_orders or []
-    active_count = sum(1 for o in orders if o.status in ACTIVE_ORDER_STATUSES)
-
-    return ClientResponse(
-        id=client_obj.id,
-        rut=client_obj.rut,
-        business_name=client_obj.business_name,
-        contact_person=client_obj.contact_person,
-        contact_phone=client_obj.contact_phone,
-        contact_email=client_obj.contact_email,
-        address=client_obj.address,
-        comuna=client_obj.comuna,
-        region=client_obj.region or "Metropolitana",
-        lat=client_obj.lat,
-        lng=client_obj.lng,
-        created_at=client_obj.created_at,
-        updated_at=client_obj.updated_at,
-        active_orders_count=active_count,
-        total_orders_count=len(orders),
-    )
+    return _to_client_response(client_obj)
 
 
 async def delete_client(db: AsyncSession, client_id: uuid.UUID) -> None:

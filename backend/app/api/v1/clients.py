@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.deps import get_current_active_user, require_role
-from app.models.enums import UserRoleEnum
+from app.models.enums import UserRoleEnum, ClientTypeEnum
 from app.models.user import User
 from app.schemas.client import (
     ClientCreate,
@@ -31,12 +31,13 @@ router = APIRouter()
     description="Retorna el listado de clientes en Neon con conteo de órdenes activas y totales. Soporta búsqueda por nombre, email, RUT o comuna.",
 )
 async def get_clients(
-    search: Optional[str] = Query(None, description="Término de búsqueda (empresa, contacto, correo, rut o comuna)"),
+    search: Optional[str] = Query(None, description="Término de búsqueda (empresa, nombre, contacto, correo, rut o comuna)"),
+    client_type: Optional[ClientTypeEnum] = Query(None, description="Filtrar por tipo de cliente (EMPRESARIAL o RESIDENCIAL)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Consulta de clientes registrados para roles autorizados."""
-    return await service_list_clients(db=db, search=search)
+    return await service_list_clients(db=db, search=search, client_type=client_type)
 
 
 @router.post(
