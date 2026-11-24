@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Building2,
+  Home,
   Plus,
   Search,
   Phone,
@@ -48,6 +49,7 @@ export default function Clients() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState("ALL"); // ALL, ACTIVE_ORDERS, NO_ACTIVE_ORDERS
+  const [typeFilter, setTypeFilter] = useState("ALL"); // ALL, EMPRESARIAL, RESIDENCIAL
   const [toast, setToast] = useState(null);
 
   // Modales y drawers
@@ -114,6 +116,14 @@ export default function Clients() {
 
   // KPIs
   const totalClients = clients.length;
+  const businessClientsCount = useMemo(
+    () => clients.filter((c) => (c.client_type || "EMPRESARIAL") === "EMPRESARIAL").length,
+    [clients]
+  );
+  const residentialClientsCount = useMemo(
+    () => clients.filter((c) => c.client_type === "RESIDENCIAL").length,
+    [clients]
+  );
   const clientsWithActiveOrders = useMemo(
     () => clients.filter((c) => (c.active_orders_count || 0) > 0).length,
     [clients]
@@ -131,6 +141,11 @@ export default function Clients() {
   const filteredClients = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return clients.filter((c) => {
+      const clientType = c.client_type || "EMPRESARIAL";
+      if (typeFilter !== "ALL" && clientType !== typeFilter) {
+        return false;
+      }
+
       const matchesSearch =
         !q ||
         c.business_name?.toLowerCase().includes(q) ||
@@ -138,6 +153,7 @@ export default function Clients() {
         c.contact_person?.toLowerCase().includes(q) ||
         c.contact_email?.toLowerCase().includes(q) ||
         c.contact_phone?.toLowerCase().includes(q) ||
+        c.secondary_phone?.toLowerCase().includes(q) ||
         c.address?.toLowerCase().includes(q) ||
         c.comuna?.toLowerCase().includes(q);
 
@@ -151,7 +167,7 @@ export default function Clients() {
       }
       return true;
     });
-  }, [clients, searchQuery, filterMode]);
+  }, [clients, searchQuery, filterMode, typeFilter]);
 
   return (
     <div className="flex h-full flex-col gap-6">
@@ -235,7 +251,11 @@ export default function Clients() {
           <p className="mt-1.5 text-2xl font-bold text-foreground">
             {isLoading ? "—" : totalClients}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Registrados en Neon</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {isLoading
+              ? "Registrados en Neon"
+              : `${businessClientsCount} empresarial · ${residentialClientsCount} residencial`}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-4 shadow-xs">
@@ -270,24 +290,64 @@ export default function Clients() {
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shrink-0">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por empresa, contacto, RUT, correo o comuna..."
-            aria-label="Buscar clientes"
-            className="w-full rounded-xl border border-border bg-card py-2 pl-9 pr-4 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
-          />
+      <div className="flex flex-col gap-3 shrink-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nombre, empresa, contacto, RUT, correo o comuna..."
+              aria-label="Buscar clientes"
+              className="w-full rounded-xl border border-border bg-card py-2 pl-9 pr-4 text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              type="button"
+              onClick={() => setTypeFilter("ALL")}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                typeFilter === "ALL"
+                  ? "bg-slate-900 text-white font-bold dark:bg-white dark:text-slate-900"
+                  : "border border-border bg-card text-muted-foreground hover:bg-secondary"
+              }`}
+            >
+              Todos los tipos ({clients.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("EMPRESARIAL")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                typeFilter === "EMPRESARIAL"
+                  ? "bg-orange-500 text-white font-bold"
+                  : "border border-border bg-card text-muted-foreground hover:bg-secondary"
+              }`}
+            >
+              <Building2 className="h-3.5 w-3.5" />
+              Empresarial ({businessClientsCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter("RESIDENCIAL")}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                typeFilter === "RESIDENCIAL"
+                  ? "bg-emerald-600 text-white font-bold"
+                  : "border border-border bg-card text-muted-foreground hover:bg-secondary"
+              }`}
+            >
+              <Home className="h-3.5 w-3.5" />
+              Residencial ({residentialClientsCount})
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
           <button
             type="button"
             onClick={() => setFilterMode("ALL")}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
               filterMode === "ALL"
                 ? "bg-orange-500 text-white font-bold"
                 : "border border-border bg-card text-muted-foreground hover:bg-secondary"
@@ -298,7 +358,7 @@ export default function Clients() {
           <button
             type="button"
             onClick={() => setFilterMode("ACTIVE_ORDERS")}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
               filterMode === "ACTIVE_ORDERS"
                 ? "bg-orange-500 text-white font-bold"
                 : "border border-border bg-card text-muted-foreground hover:bg-secondary"
@@ -309,7 +369,7 @@ export default function Clients() {
           <button
             type="button"
             onClick={() => setFilterMode("NO_ACTIVE_ORDERS")}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0 ${
               filterMode === "NO_ACTIVE_ORDERS"
                 ? "bg-orange-500 text-white font-bold"
                 : "border border-border bg-card text-muted-foreground hover:bg-secondary"
@@ -368,6 +428,7 @@ export default function Clients() {
             {filteredClients.map((clientItem) => {
               const activeCount = clientItem.active_orders_count || 0;
               const totalCount = clientItem.total_orders_count || 0;
+              const isResidential = clientItem.client_type === "RESIDENCIAL";
 
               return (
                 <div
@@ -377,21 +438,45 @@ export default function Clients() {
                   <div>
                     {/* Header de la tarjeta */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-foreground group-hover:text-orange-500 transition-colors truncate">
-                          {clientItem.business_name}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-1">
-                          {clientItem.rut ? (
-                            <span className="font-mono text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                              {clientItem.rut}
-                            </span>
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <div
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl shrink-0 mt-0.5 ${
+                            isResidential
+                              ? "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                              : "bg-orange-500/10 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400"
+                          }`}
+                          title={isResidential ? "Cliente Residencial" : "Cliente Empresarial"}
+                        >
+                          {isResidential ? (
+                            <Home className="h-4 w-4" />
                           ) : (
-                            <span className="text-[11px] text-muted-foreground">Corporativo</span>
+                            <Building2 className="h-4 w-4" />
                           )}
-                          <span className="text-[11px] text-muted-foreground truncate">
-                            · {clientItem.comuna}
-                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-bold text-foreground group-hover:text-orange-500 transition-colors truncate">
+                            {clientItem.business_name}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                isResidential
+                                  ? "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                                  : "bg-orange-500/10 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300"
+                              }`}
+                            >
+                              {isResidential ? "Residencial" : "Empresarial"}
+                            </span>
+                            {clientItem.rut && (
+                              <span className="font-mono text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
+                                {clientItem.rut}
+                              </span>
+                            )}
+                            <span className="text-[11px] text-muted-foreground truncate">
+                              · {clientItem.comuna}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -408,7 +493,7 @@ export default function Clients() {
 
                     {/* Información de contacto */}
                     <div className="mt-4 space-y-2 text-xs text-muted-foreground border-t border-border/60 pt-3">
-                      {clientItem.contact_person && (
+                      {!isResidential && clientItem.contact_person && (
                         <div className="flex items-center gap-2 truncate">
                           <User className="h-3.5 w-3.5 text-orange-500 shrink-0" />
                           <span className="truncate">{clientItem.contact_person}</span>
@@ -422,7 +507,10 @@ export default function Clients() {
 
                       <div className="flex items-center gap-2 truncate font-mono">
                         <Phone className="h-3.5 w-3.5 text-orange-500 shrink-0" />
-                        <span>{clientItem.contact_phone}</span>
+                        <span className="truncate">
+                          {clientItem.contact_phone}
+                          {clientItem.secondary_phone ? ` · ${clientItem.secondary_phone}` : ""}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-2 truncate">

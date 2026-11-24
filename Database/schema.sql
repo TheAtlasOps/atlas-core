@@ -117,10 +117,12 @@ CREATE OR REPLACE TRIGGER update_technicians_updated_at BEFORE UPDATE ON technic
 -- TABLA: clients (Clientes corporativos y residenciales)
 CREATE TABLE IF NOT EXISTS clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_type VARCHAR(20) NOT NULL DEFAULT 'EMPRESARIAL' CHECK (client_type IN ('EMPRESARIAL', 'RESIDENCIAL')),
     rut VARCHAR(20) UNIQUE,
     business_name VARCHAR(200) NOT NULL,
     contact_person VARCHAR(150),
     contact_phone VARCHAR(50) NOT NULL,
+    secondary_phone VARCHAR(50),
     contact_email VARCHAR(255) NOT NULL,
     address VARCHAR(300) NOT NULL,
     comuna VARCHAR(100) NOT NULL,

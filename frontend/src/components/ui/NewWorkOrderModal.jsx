@@ -555,12 +555,12 @@ function WorkOrderForm({
     );
     const technicianId = matchedTech ? matchedTech.id : null;
 
-    // Determinar ID del cliente
-    const matchedClient = availableClients.find(
-      (c) =>
-        (form.clientId && c.id === form.clientId) ||
-        c.business_name.toLowerCase() === (form.clientName || "").trim().toLowerCase()
-    );
+    // Determinar ID del cliente (priorizando clientId explícito ante homónimos)
+    const matchedClient =
+      (form.clientId && availableClients.find((c) => c.id === form.clientId)) ||
+      availableClients.find(
+        (c) => c.business_name.toLowerCase() === (form.clientName || "").trim().toLowerCase()
+      );
     const clientId = matchedClient ? matchedClient.id : form.clientId || null;
 
     // Manejo de fecha programada
@@ -744,16 +744,18 @@ function WorkOrderForm({
             value={form.clientName}
             onChange={(e) => {
               const val = e.target.value;
-              const matched = availableClients.find(
+              const matches = availableClients.filter(
                 (c) => c.business_name.toLowerCase() === val.trim().toLowerCase()
               );
               setForm((prev) => {
+                const keptPreset =
+                  prev.clientId && matches.find((c) => c.id === prev.clientId);
+                const matched = keptPreset || (matches.length === 1 ? matches[0] : null);
                 let clientAddress = prev.address;
                 let clientLat = prev.lat;
                 let clientLng = prev.lng;
-                let matchedId = prev.clientId;
+                let matchedId = matched ? matched.id : null;
                 if (matched) {
-                  matchedId = matched.id;
                   const addr = matched.address ? matched.address.trim() : "";
                   const com = matched.comuna ? matched.comuna.trim() : "";
                   if (addr && com) {
@@ -767,8 +769,6 @@ function WorkOrderForm({
                     clientLat = Number(matched.lat);
                     clientLng = Number(matched.lng);
                   }
-                } else {
-                  matchedId = null;
                 }
                 return {
                   ...prev,
@@ -780,14 +780,62 @@ function WorkOrderForm({
                 };
               });
             }}
-            placeholder="Ej: Entel B2B - Soluciones SpA"
+            placeholder="Ej: Entel B2B - Soluciones SpA o nombre residencial"
             className={FIELD_CLASS}
           />
+          {(() => {
+            const nameMatches = availableClients.filter(
+              (c) =>
+                form.clientName.trim() &&
+                c.business_name.toLowerCase() === form.clientName.trim().toLowerCase()
+            );
+            if (nameMatches.length <= 1) return null;
+            return (
+              <div className="mt-2 rounded-lg border border-amber-300/70 bg-amber-50/70 p-2.5 dark:border-amber-800/60 dark:bg-amber-950/30">
+                <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 mb-1.5">
+                  Hay {nameMatches.length} clientes con este nombre. Selecciona el registro exacto:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {nameMatches.map((c) => {
+                    const isSelected = form.clientId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            clientId: c.id,
+                            address: c.address
+                              ? c.comuna && !c.address.toLowerCase().includes(c.comuna.toLowerCase())
+                                ? `${c.address}, ${c.comuna}`
+                                : c.address
+                              : prev.address,
+                            lat: c.lat != null ? Number(c.lat) : prev.lat,
+                            lng: c.lng != null ? Number(c.lng) : prev.lng,
+                          }))
+                        }
+                        className={`rounded-md px-2 py-1 text-[11px] font-medium border transition-colors cursor-pointer ${
+                          isSelected
+                            ? "border-orange-500 bg-orange-500 text-white"
+                            : "border-border bg-white text-foreground hover:bg-secondary dark:bg-[#121212]"
+                        }`}
+                      >
+                        {c.client_type === "RESIDENCIAL" ? "Residencial" : "Empresarial"}
+                        {c.rut ? ` · ${c.rut}` : ""} · {c.address}, {c.comuna}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           {availableClients.length > 0 && (
             <datalist id="clients-datalist">
               {availableClients.map((c) => (
                 <option key={c.id} value={c.business_name}>
-                  {c.business_name} ({c.comuna})
+                  {c.business_name} · {c.client_type === "RESIDENCIAL" ? "Residencial" : "Empresarial"}
+                  {c.rut ? ` · ${c.rut}` : ""} ({c.comuna})
                 </option>
               ))}
             </datalist>

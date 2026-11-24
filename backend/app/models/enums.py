@@ -8,6 +8,11 @@ class UserRoleEnum(str, enum.Enum):
     CLIENTE = "CLIENTE"
 
 
+class ClientTypeEnum(str, enum.Enum):
+    EMPRESARIAL = "EMPRESARIAL"
+    RESIDENCIAL = "RESIDENCIAL"
+
+
 class OrderStatusEnum(str, enum.Enum):
     IDLE = "IDLE"
     CONFIRMADA = "CONFIRMADA"

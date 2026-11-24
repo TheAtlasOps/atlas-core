@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import {
   X,
   Building2,
+  Home,
   Mail,
   Phone,
   MapPin,
@@ -111,6 +112,7 @@ export default function ClientDetailDrawer({
   if (!client) return null;
 
   const currentClient = detailData || client;
+  const isResidential = currentClient.client_type === "RESIDENCIAL";
   const orders = detailData?.orders || [];
   const activeOrdersCount =
     detailData?.active_orders_count ?? currentClient.active_orders_count ?? 0;
@@ -139,8 +141,18 @@ export default function ClientDetailDrawer({
           {/* Header */}
           <div className="flex items-start justify-between p-5 border-b border-border">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400 shrink-0">
-                <Building2 className="h-6 w-6" />
+              <div
+                className={`flex h-11 w-11 items-center justify-center rounded-xl shrink-0 ${
+                  isResidential
+                    ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                    : "bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400"
+                }`}
+              >
+                {isResidential ? (
+                  <Home className="h-6 w-6" />
+                ) : (
+                  <Building2 className="h-6 w-6" />
+                )}
               </div>
               <div>
                 <h2
@@ -149,14 +161,21 @@ export default function ClientDetailDrawer({
                 >
                   {currentClient.business_name}
                 </h2>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                      isResidential
+                        ? "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                        : "bg-orange-500/10 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300"
+                    }`}
+                  >
+                    {isResidential ? "Residencial" : "Empresarial"}
+                  </span>
                   {currentClient.rut ? (
                     <span className="font-mono text-xs text-muted-foreground bg-secondary px-1.5 py-0.5 rounded">
-                      RUT: {currentClient.rut}
+                      {isResidential ? "RUT Personal" : "RUT"}: {currentClient.rut}
                     </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Cliente Registrado</span>
-                  )}
+                  ) : null}
                   {activeOrdersCount > 0 && (
                     <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-[11px] font-bold text-orange-600 dark:text-orange-400 border border-orange-500/20">
                       {activeOrdersCount} {activeOrdersCount === 1 ? "OT Activa" : "OTs Activas"}
@@ -214,7 +233,7 @@ export default function ClientDetailDrawer({
                 Información de Contacto
               </h3>
               <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden text-xs">
-                {currentClient.contact_person && (
+                {!isResidential && currentClient.contact_person && (
                   <div className="p-3 flex items-center justify-between gap-2">
                     <span className="text-muted-foreground flex items-center gap-2">
                       <User className="h-4 w-4 text-orange-500" />
@@ -252,10 +271,25 @@ export default function ClientDetailDrawer({
                   </a>
                 </div>
 
+                {currentClient.secondary_phone && (
+                  <div className="p-3 flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-orange-500" />
+                      Teléfono Alternativo:
+                    </span>
+                    <a
+                      href={`tel:${currentClient.secondary_phone}`}
+                      className="font-medium text-foreground hover:text-orange-500 text-right font-mono"
+                    >
+                      {currentClient.secondary_phone}
+                    </a>
+                  </div>
+                )}
+
                 <div className="p-3 flex items-start justify-between gap-2">
                   <span className="text-muted-foreground flex items-center gap-2 shrink-0">
                     <MapPin className="h-4 w-4 text-orange-500 mt-0.5" />
-                    Dirección:
+                    {isResidential ? "Dirección del domicilio:" : "Dirección:"}
                   </span>
                   <div className="text-right">
                     <p className="font-medium text-foreground">{currentClient.address}</p>

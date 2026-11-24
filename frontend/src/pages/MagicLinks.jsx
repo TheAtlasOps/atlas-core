@@ -293,9 +293,11 @@ export default function MagicLinks() {
           const clientName =
             o.client?.contact_person ||
             o.client?.business_name ||
-            "Contacto Corporativo";
+            (o.client?.client_type === "RESIDENCIAL" ? "Cliente Residencial" : "Contacto Corporativo");
           const clientEmail = o.client?.contact_email || "";
-          const company = o.client?.business_name || "Cliente Corporativo";
+          const company =
+            o.client?.business_name ||
+            (o.client?.client_type === "RESIDENCIAL" ? "Cliente Residencial" : "Cliente Corporativo");
           const phone = o.client?.contact_phone || "";
 
           const techName =
