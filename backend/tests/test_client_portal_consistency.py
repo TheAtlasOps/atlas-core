@@ -595,3 +595,45 @@ async def test_admin_simulation_start_and_restart_syncs_portal_without_mixing_gp
     assert restored_gps.active_tracking_mode == "LIVE_GPS"
     assert restored_gps.is_live is True
     assert restored_gps.route_started_at is None
+
+
+@pytest.mark.asyncio
+async def test_sync_simulation_blocks_terminal_orders_and_refreshes_expired_start(monkeypatch):
+    """
+    Valida que:
+    - Órdenes COMPLETADA o CANCELADA rechacen simulaciones con HTTP 409.
+    - Un nuevo start desde AUTO o tras expirar (>180s) genere timestamp fresco, mientras una simulación activa (<180s) lo conserve.
+    """
+    db = MagicMock(spec=AsyncSession)
+    db.commit = AsyncMock()
+
+    for terminal_status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA):
+        term_order = make_test_order(status=terminal_status)
+
+        async def fake_term(_db, _order_id, current=term_order):
+            return current
+
+        monkeypatch.setattr("app.services.order_service.get_order_by_id", fake_term)
+        with pytest.raises(HTTPException) as exc_info:
+            await sync_order_tracking_simulation(db, term_order.id, action="start", mode="SIMULATION")
+        assert exc_info.value.status_code == 409
+
+    active_order = make_test_order(status=OrderStatusEnum.EN_RUTA)
+    active_order.tracking_mode = "SIMULATION"
+    ongoing_ts = datetime.now(timezone.utc) - timedelta(seconds=45)
+    active_order.simulation_started_at = ongoing_ts
+
+    async def fake_active(_db, _order_id):
+        return active_order
+
+    monkeypatch.setattr("app.services.order_service.get_order_by_id", fake_active)
+
+    # Simulación activa (<180s) conserva su timestamp si otro visor abre start
+    res_active = await sync_order_tracking_simulation(db, active_order.id, action="start", mode="SIMULATION")
+    assert res_active.simulation_started_at == ongoing_ts
+
+    # Simulación expirada (>=180s) genera timestamp nuevo al iniciar
+    expired_ts = datetime.now(timezone.utc) - timedelta(seconds=220)
+    active_order.simulation_started_at = expired_ts
+    res_refreshed = await sync_order_tracking_simulation(db, active_order.id, action="start", mode="SIMULATION")
+    assert res_refreshed.simulation_started_at > expired_ts

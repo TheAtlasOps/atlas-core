@@ -207,7 +207,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
               last_updated_at: tracking.last_updated_at,
               is_live: Boolean(tracking.is_live),
             });
-          } else if (nextMode !== "LIVE_GPS") {
+          } else {
             setLiveTechLocation(null);
           }
         }
