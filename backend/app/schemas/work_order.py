@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Literal
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from app.models.enums import OrderStatusEnum, OrderPriorityEnum, ServiceTypeEnum
 
@@ -270,6 +270,8 @@ class WorkOrderResponse(WorkOrderBase):
     technician_id: Optional[uuid.UUID] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    tracking_mode: str = "AUTO"
+    simulation_started_at: Optional[datetime] = None
     created_by: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
@@ -297,6 +299,17 @@ class WorkOrderResponse(WorkOrderBase):
     items: List[WorkOrderItemResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WorkOrderTrackingSyncRequest(BaseModel):
+    action: Literal["start", "restart", "set_mode"] = Field(
+        default="start",
+        description="start: activa/conserva inicio compartido; restart: reinicia los 180s; set_mode: cambia entre AUTO, SIMULATION y LIVE_GPS",
+    )
+    mode: Optional[Literal["AUTO", "SIMULATION", "LIVE_GPS"]] = Field(
+        default=None,
+        description="Modo activo definido por el administrador",
+    )
 
 
 class WorkOrderListResponse(BaseModel):

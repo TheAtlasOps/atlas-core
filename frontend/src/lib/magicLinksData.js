@@ -288,10 +288,18 @@ export function mapApiSummaryToTrackingOrder(summary) {
       : summary.eta || "Por confirmar";
 
   const enRutaStep = timelineSteps.find((s) => s.key === "en_ruta");
+  const trackingMode = String(summary.tracking_mode || "AUTO").toUpperCase();
+  const activeTrackingMode = summary.active_tracking_mode
+    ? String(summary.active_tracking_mode).toUpperCase()
+    : statusKey === "en_ruta"
+    ? summary.technician_location?.is_live
+      ? "LIVE_GPS"
+      : "SIMULATION"
+    : "NONE";
   const routeStartedAt =
     summary.route_started_at ||
-    enRutaStep?.raw_timestamp ||
-    null;
+    summary.simulation_started_at ||
+    (statusKey === "en_ruta" ? enRutaStep?.raw_timestamp || null : null);
 
   return {
     id: summary.order_id,
@@ -316,6 +324,9 @@ export function mapApiSummaryToTrackingOrder(summary) {
         : "seguimiento",
     lat: summary.lat !== null && summary.lat !== undefined ? parseFloat(summary.lat) : null,
     lng: summary.lng !== null && summary.lng !== undefined ? parseFloat(summary.lng) : null,
+    tracking_mode: trackingMode,
+    active_tracking_mode: activeTrackingMode,
+    simulation_started_at: routeStartedAt,
     route_started_at: routeStartedAt,
     technician_location: summary.technician_location
       ? {

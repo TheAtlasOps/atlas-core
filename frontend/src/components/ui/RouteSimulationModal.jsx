@@ -49,6 +49,7 @@ import {
   makeVehicleIcon,
 } from "../../lib/routeSimulation";
 import { extractOrderCoordinates } from "../../lib/mapClustering";
+import { api } from "../../lib/api";
 import {
   getSafeOrderId,
   getSafeOrderNumber,
@@ -57,6 +58,7 @@ import {
   getSafeTechnicianName,
   startTracking,
   restartTracking,
+  applySharedTrackingTimestamp,
   getTracking,
   retryTrackingRoute,
   formatCountdown,
@@ -166,14 +168,50 @@ function RouteSimulationModalInner({ order, onClose }) {
     return null;
   }, [order]);
 
-  // Asegura que el seguimiento comience en el motor central si aún no ha iniciado
+  const syncedStartRef = useRef(null);
+
+  // Asegura que el seguimiento comience en el motor central y se publique en backend para el Portal Cliente
   useEffect(() => {
     if (order && destinationCoords && orderId) {
-      if (!getTracking(orderId)) {
-        startTracking(order);
+      startTracking(order);
+      if (syncedStartRef.current !== orderId) {
+        syncedStartRef.current = orderId;
+        api.orders
+          .syncTrackingSimulation(orderId, "start", "SIMULATION")
+          .then((updated) => {
+            if (updated?.simulation_started_at) {
+              applySharedTrackingTimestamp(orderId, updated.simulation_started_at);
+            }
+          })
+          .catch(() => {
+            // Mantener ejecución local si la petición administrativa no está disponible
+          });
       }
     }
   }, [order, destinationCoords, orderId]);
+
+  const handleRestartSimulation = useCallback(async () => {
+    if (!orderId) return;
+    restartTracking(orderId);
+    try {
+      const updated = await api.orders.syncTrackingSimulation(orderId, "restart", "SIMULATION");
+      if (updated?.simulation_started_at) {
+        applySharedTrackingTimestamp(orderId, updated.simulation_started_at);
+      }
+    } catch {
+      // Continuar con el reinicio local si no hay conexión
+    }
+  }, [orderId]);
+
+  const handleUseAutoGps = useCallback(async () => {
+    if (!orderId) return;
+    try {
+      await api.orders.syncTrackingSimulation(orderId, "set_mode", "AUTO");
+    } catch {
+      // Ignorar si falla actualización
+    }
+    if (onClose) onClose();
+  }, [orderId, onClose]);
 
   // Suscripción directa al motor centralizado V2 (sin bucles rAF locales redundantes)
   const snapshot = useRouteTracking(orderId);
@@ -550,16 +588,12 @@ function RouteSimulationModalInner({ order, onClose }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Botón Repetir demo cuando ha finalizado */}
-              {isArrived && (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Botón Repetir demo sincronizado con el Portal Cliente */}
+              {!routeError && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (orderId) {
-                      restartTracking(orderId);
-                    }
-                  }}
+                  onClick={handleRestartSimulation}
                   className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-orange-500 hover:bg-orange-600 text-white transition-colors cursor-pointer shadow-xs"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -567,9 +601,18 @@ function RouteSimulationModalInner({ order, onClose }) {
                 </button>
               )}
 
+              <button
+                type="button"
+                onClick={handleUseAutoGps}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 transition-colors cursor-pointer"
+                title="Devolver control al GPS real automático en Portal Cliente"
+              >
+                <span>Modo GPS automático</span>
+              </button>
+
               <div className="hidden lg:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Simulación en frontend · Sin alterar base de datos</span>
+                <span>Sincronizado con Portal Cliente</span>
               </div>
 
               <button

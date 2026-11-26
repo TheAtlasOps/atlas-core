@@ -39,6 +39,8 @@ class ClientTrackingLocationResponse(BaseModel):
     lng: Optional[Decimal] = None
     last_updated_at: Optional[datetime] = None
     is_live: bool = False
+    tracking_mode: str = "AUTO"
+    active_tracking_mode: str = "NONE"  # LIVE_GPS | SIMULATION | NONE
     route_started_at: Optional[datetime] = None
     message: Optional[str] = None
 
@@ -64,6 +66,8 @@ class ClientOrderSummaryResponse(BaseModel):
     contact_phone: Optional[str] = None
     technician: Optional[ClientTechnicianBadge] = None
     technician_location: Optional[ClientTechnicianLocation] = None
+    tracking_mode: str = "AUTO"
+    active_tracking_mode: str = "NONE"  # LIVE_GPS | SIMULATION | NONE
     route_started_at: Optional[datetime] = None
     timeline_steps: List[TimelineStepItem]
     client_confirmed_at: Optional[datetime] = None

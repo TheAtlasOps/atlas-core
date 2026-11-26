@@ -497,11 +497,21 @@ async def update_order_status(
     order.status = new_status
     order.updated_at = now_utc
 
-    # Marcar hitos temporales
-    if new_status == OrderStatusEnum.EN_SITIO and not order.started_at:
-        order.started_at = now_utc
+    # Marcar hitos temporales y estado compartido de seguimiento
+    if new_status == OrderStatusEnum.EN_RUTA:
+        order.simulation_started_at = now_utc
+    elif new_status == OrderStatusEnum.EN_SITIO:
+        if not order.started_at:
+            order.started_at = now_utc
+        if getattr(order, "tracking_mode", "AUTO") == "SIMULATION":
+            order.tracking_mode = "AUTO"
     elif new_status == OrderStatusEnum.COMPLETADA:
         order.completed_at = now_utc
+        if getattr(order, "tracking_mode", "AUTO") == "SIMULATION":
+            order.tracking_mode = "AUTO"
+    elif new_status == OrderStatusEnum.CANCELADA:
+        if getattr(order, "tracking_mode", "AUTO") == "SIMULATION":
+            order.tracking_mode = "AUTO"
 
     # Inactivar Magic Links si la orden culmina o se cancela (RNF-SEG-03)
     if new_status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA):
@@ -1222,4 +1232,64 @@ async def approve_order_audit(
 
     await db.commit()
     await db.refresh(order)
+    return await get_order_by_id(db, order.id)
+
+
+async def sync_order_tracking_simulation(
+    db: AsyncSession,
+    order_id: uuid.UUID,
+    action: str = "start",
+    mode: Optional[str] = None,
+) -> WorkOrder:
+    """
+    Persiste el modo de seguimiento activo (AUTO / SIMULATION / LIVE_GPS) y el timestamp
+    compartido de inicio/repetición de la simulación V2 (180 s) en la orden.
+    Impide iniciar o repetir simulaciones en órdenes completadas o canceladas.
+    """
+    order = await get_order_by_id(db, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Orden de trabajo con ID {order_id} no encontrada",
+        )
+
+    if order.status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No es posible iniciar ni repetir simulaciones de seguimiento en órdenes completadas o canceladas.",
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    normalized_action = str(action or "start").lower()
+    requested_mode = (
+        str(mode).upper()
+        if mode
+        else ("SIMULATION" if normalized_action in ("start", "restart") else "AUTO")
+    )
+    if requested_mode not in ("AUTO", "SIMULATION", "LIVE_GPS"):
+        requested_mode = "AUTO"
+
+    current_mode = str(getattr(order, "tracking_mode", "AUTO") or "AUTO").upper()
+    current_sim_ts = getattr(order, "simulation_started_at", None)
+    if current_sim_ts and current_sim_ts.tzinfo is None:
+        current_sim_ts = current_sim_ts.replace(tzinfo=timezone.utc)
+
+    if normalized_action == "restart":
+        order.tracking_mode = requested_mode
+        order.simulation_started_at = now_utc
+    elif normalized_action == "start":
+        order.tracking_mode = requested_mode
+        is_expired = (
+            current_sim_ts is not None
+            and (now_utc - current_sim_ts).total_seconds() >= 180
+        )
+        if current_mode != "SIMULATION" or current_sim_ts is None or is_expired:
+            order.simulation_started_at = now_utc
+    else:
+        order.tracking_mode = requested_mode
+        if requested_mode == "SIMULATION" and current_sim_ts is None:
+            order.simulation_started_at = now_utc
+
+    order.updated_at = now_utc
+    await db.commit()
     return await get_order_by_id(db, order.id)

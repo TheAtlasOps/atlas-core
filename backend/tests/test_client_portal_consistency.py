@@ -11,6 +11,7 @@ Valida que:
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -35,6 +36,7 @@ from app.services.client_service import (
     submit_client_signature,
     validate_magic_link_token,
 )
+from app.services.order_service import sync_order_tracking_simulation
 
 
 def make_test_order(
@@ -518,9 +520,120 @@ async def test_route_started_at_synced_across_summary_and_tracking():
     assert tracking.route_started_at == summary.route_started_at
     assert tracking.is_live is False
 
-    # Cuando no está EN_RUTA, route_started_at no debe exponerse
+    # Cuando no está EN_RUTA y tracking_mode es AUTO, no debe exponerse simulación
     confirm_order = make_test_order(status=OrderStatusEnum.CONFIRMADA)
     confirm_order.status_history = order.status_history
     confirm_link = make_test_link(confirm_order, is_active=True)
     confirm_summary = _build_summary_response(confirm_order, confirm_link)
     assert confirm_summary.route_started_at is None
+    assert confirm_summary.active_tracking_mode == "NONE"
+
+
+@pytest.mark.asyncio
+async def test_admin_simulation_start_and_restart_syncs_portal_without_mixing_gps(monkeypatch):
+    """
+    Valida sincronización entre sesión Admin y Portal Cliente:
+    - Al iniciar o presionar Repetir en Admin, simulation_started_at y tracking_mode='SIMULATION'
+      se comparten con el Portal Cliente incluso si existe GPS reciente (sin mezclar coordenadas reales).
+    - Al devolver modo a AUTO con GPS reciente en EN_RUTA, el cliente vuelve a LIVE_GPS.
+    """
+    now = datetime.now(timezone.utc)
+    order = make_test_order(status=OrderStatusEnum.EN_RUTA)
+    order.tracking_mode = "AUTO"
+    order.simulation_started_at = None
+    order.technician.current_lat = Decimal("-33.4105")
+    order.technician.current_lng = Decimal("-70.5702")
+    order.technician.last_location_at = now - timedelta(seconds=30)
+    link = make_test_link(order, is_active=True)
+
+    db = MagicMock(spec=AsyncSession)
+    db.commit = AsyncMock()
+    res_mock = MagicMock()
+    res_mock.scalar_one_or_none.return_value = link
+    db.execute = AsyncMock(return_value=res_mock)
+
+    async def fake_get_order_by_id(_db, _order_id):
+        return order
+
+    monkeypatch.setattr("app.services.order_service.get_order_by_id", fake_get_order_by_id)
+
+    # 1. Con tracking_mode=AUTO y GPS reciente, el cliente ve LIVE_GPS sin datos simulados
+    gps_tracking = await get_client_live_tracking(db, link.token)
+    assert gps_tracking.active_tracking_mode == "LIVE_GPS"
+    assert gps_tracking.is_live is True
+    assert gps_tracking.lat == order.technician.current_lat
+    assert gps_tracking.route_started_at is None
+
+    # 2. Admin inicia simulación V2 -> Portal Cliente cambia automáticamente a SIMULATION sin GPS mezclado
+    started_order = await sync_order_tracking_simulation(db, order.id, action="start", mode="SIMULATION")
+    assert started_order.tracking_mode == "SIMULATION"
+    assert started_order.simulation_started_at is not None
+
+    sim_tracking = await get_client_live_tracking(db, link.token)
+    sim_summary = _build_summary_response(order, link)
+    assert sim_tracking.active_tracking_mode == "SIMULATION"
+    assert sim_tracking.route_started_at == started_order.simulation_started_at
+    assert sim_tracking.lat is None
+    assert sim_tracking.lng is None
+    assert sim_tracking.is_live is False
+    assert sim_summary.active_tracking_mode == "SIMULATION"
+    assert sim_summary.technician_location is None
+
+    # 3. Admin presiona Repetir -> nuevo simulation_started_at compartido automáticamente
+    first_ts = started_order.simulation_started_at - timedelta(seconds=120)
+    order.simulation_started_at = first_ts
+    restarted_order = await sync_order_tracking_simulation(db, order.id, action="restart", mode="SIMULATION")
+    assert restarted_order.simulation_started_at > first_ts
+
+    replayed_tracking = await get_client_live_tracking(db, link.token)
+    assert replayed_tracking.active_tracking_mode == "SIMULATION"
+    assert replayed_tracking.route_started_at == restarted_order.simulation_started_at
+
+    # 4. Admin devuelve modo a AUTO -> Portal Cliente retoma LIVE_GPS limpio
+    await sync_order_tracking_simulation(db, order.id, action="set_mode", mode="AUTO")
+    restored_gps = await get_client_live_tracking(db, link.token)
+    assert restored_gps.active_tracking_mode == "LIVE_GPS"
+    assert restored_gps.is_live is True
+    assert restored_gps.route_started_at is None
+
+
+@pytest.mark.asyncio
+async def test_sync_simulation_blocks_terminal_orders_and_refreshes_expired_start(monkeypatch):
+    """
+    Valida que:
+    - Órdenes COMPLETADA o CANCELADA rechacen simulaciones con HTTP 409.
+    - Un nuevo start desde AUTO o tras expirar (>180s) genere timestamp fresco, mientras una simulación activa (<180s) lo conserve.
+    """
+    db = MagicMock(spec=AsyncSession)
+    db.commit = AsyncMock()
+
+    for terminal_status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA):
+        term_order = make_test_order(status=terminal_status)
+
+        async def fake_term(_db, _order_id, current=term_order):
+            return current
+
+        monkeypatch.setattr("app.services.order_service.get_order_by_id", fake_term)
+        with pytest.raises(HTTPException) as exc_info:
+            await sync_order_tracking_simulation(db, term_order.id, action="start", mode="SIMULATION")
+        assert exc_info.value.status_code == 409
+
+    active_order = make_test_order(status=OrderStatusEnum.EN_RUTA)
+    active_order.tracking_mode = "SIMULATION"
+    ongoing_ts = datetime.now(timezone.utc) - timedelta(seconds=45)
+    active_order.simulation_started_at = ongoing_ts
+
+    async def fake_active(_db, _order_id):
+        return active_order
+
+    monkeypatch.setattr("app.services.order_service.get_order_by_id", fake_active)
+
+    # Simulación activa (<180s) conserva su timestamp si otro visor abre start
+    res_active = await sync_order_tracking_simulation(db, active_order.id, action="start", mode="SIMULATION")
+    assert res_active.simulation_started_at == ongoing_ts
+
+    # Simulación expirada (>=180s) genera timestamp nuevo al iniciar
+    expired_ts = datetime.now(timezone.utc) - timedelta(seconds=220)
+    active_order.simulation_started_at = expired_ts
+    res_refreshed = await sync_order_tracking_simulation(db, active_order.id, action="start", mode="SIMULATION")
+    assert res_refreshed.simulation_started_at > expired_ts

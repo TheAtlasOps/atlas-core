@@ -26,10 +26,9 @@ import {
 } from "../lib/routeSimulation.js";
 
 import {
-  extractSharedRouteStartedAt,
   startTracking,
   restartTracking,
-  restoreSharedTracking,
+  applySharedTrackingTimestamp,
   resetAllTrackings,
   computeTrackingSnapshot,
   getSafeOrderId,
@@ -207,60 +206,59 @@ describe("ATLAS FSM — Seguimiento V2 en Portal Cliente", () => {
     assert.ok(content.includes("dragstart"), "Debe escuchar dragstart para liberar la cámara al arrastrar");
     assert.ok(content.includes("followVehicle"), "Debe permitir alternar seguimiento de cámara libremente");
 
-    // Verificación de rótulo claro de MODO DEMOSTRACIÓN y GPS EN VIVO
+    // Verificación de rótulo discreto de demostración y GPS EN VIVO
     assert.ok(
-      content.includes("Modo Demostración · Seguimiento V2"),
-      "Debe identificar claramente el seguimiento simulado como MODO DEMOSTRACIÓN"
+      content.includes("Recorrido en curso · Demostración"),
+      "Debe identificar discretamente el seguimiento simulado como demostración"
     );
     assert.ok(
       content.includes("GPS en Vivo · Satelital"),
-      "Debe identificar el modo GPS satelital cuando exists señal real verificada"
+      "Debe identificar el modo GPS satelital cuando existe señal real verificada"
     );
 
-    // Verificación de controles interactivos visibles y etiquetas consistentes con V2
+    // Verificación de controles interactivos visibles y eliminación de Repetir / Repetición local en Portal Cliente
     assert.ok(content.includes("Seguir vehículo"), "Debe tener botón Seguir vehículo");
     assert.ok(content.includes("Siguiendo vehículo"), "Debe reflejar estado Siguiendo vehículo");
     assert.ok(content.includes("Ver ruta completa"), "Debe tener botón Ver ruta completa siempre visible");
     assert.ok(!content.includes('hidden sm:inline">Ver ruta'), "No debe ocultar la etiqueta Ver ruta completa en móviles");
-    assert.ok(content.includes("Repetir"), "Debe tener botón para reiniciar la demostración");
+    assert.ok(!content.includes("Repetir"), "Portal Cliente no debe mostrar botón Repetir");
+    assert.ok(!content.includes("Repetición local"), "Portal Cliente no debe mostrar mensajes de repetición local");
 
     // Verificación de contraste en popups para tema claro/oscuro
     assert.ok(content.includes("dark:text-white"), "Los popups deben incluir texto contrastado para modo oscuro");
     assert.ok(content.includes("dark:text-gray-300"), "Los detalles en popups deben ser legibles en modo oscuro");
   });
 
-  test("8. CustomerTrackingView.jsx integra LiveTrackingMap con toggle de previsualización para órdenes en cualquier estado", () => {
+  test("8. CustomerTrackingView.jsx sigue automáticamente el modo activo del administrador sin selector ni preview manual", () => {
     const viewPath = path.resolve(__dirname, "../pages/CustomerTrackingView.jsx");
     const content = fs.readFileSync(viewPath, "utf-8");
 
     // Verificación de importación de LiveTrackingMap
     assert.ok(content.includes("LiveTrackingMap"), "Debe importar LiveTrackingMap");
 
-    // Verificación del botón de previsualización para órdenes no en ruta
-    assert.ok(
-      content.includes("Previsualizar recorrido técnico (Modo Demostración)"),
-      "Debe permitir previsualizar el recorrido para demostración en órdenes no en tránsito"
-    );
-    assert.ok(content.includes("isDemoPreviewActive"), "Debe gestionar estado de previsualización demo");
+    // Verificación de que no expone selector GPS/Simulación ni preview manual en el Portal Cliente
+    assert.ok(!content.includes("preferredTrackingMode"), "Portal Cliente no debe incluir selector GPS vs Simulación V2");
+    assert.ok(!content.includes("Simulación V2 (Demo)"), "Portal Cliente no debe mostrar botón de selector Simulación V2");
+    assert.ok(!content.includes("isDemoPreviewActive"), "Portal Cliente no debe permitir activar manualmente simulaciones locales");
+    assert.ok(content.includes("active_tracking_mode"), "Portal Cliente debe respetar active_tracking_mode del backend");
 
     // Verificación de que no expone acciones mutables de órdenes ni controles de edición
     assert.ok(!content.includes("api.orders.updateStatus"), "Portal Cliente no debe permitir modificar estados de órdenes");
     assert.ok(!content.includes("api.orders.delete"), "Portal Cliente no debe permitir eliminar órdenes");
+    assert.ok(!content.includes("syncTrackingSimulation"), "Portal Cliente no debe invocar endpoints administrativos");
   });
 
-  test("9. Sincronización Admin <-> Cliente de 180s y repetición local aislada sin desincronizar", () => {
-    const startedMs = Date.now() - 90_000;
+  test("9. Dos sesiones independientes (Admin <-> Portal Cliente) comparten inicio, avance, repetición y finalización de 180s", () => {
+    const startedMs = Date.now() - 60_000;
     const naiveIso = new Date(startedMs).toISOString().replace("Z", "");
-    const orderFromPortal = {
+
+    // Sesión Admin (GET /orders)
+    const adminOrder = {
       id: "8501",
       order_number: "#OT-8501",
-      lat: -33.43,
-      lng: -70.61,
-      route_started_at: new Date(startedMs).toISOString(),
-    };
-    const orderFromAdmin = {
-      id: "8501",
-      order_number: "#OT-8501",
+      status: "EN_RUTA",
+      tracking_mode: "SIMULATION",
+      simulation_started_at: new Date(startedMs).toISOString(),
       lat: -33.43,
       lng: -70.61,
       status_history: [
@@ -269,91 +267,76 @@ describe("ATLAS FSM — Seguimiento V2 en Portal Cliente", () => {
       ],
     };
 
-    const adminSharedTs = extractSharedRouteStartedAt(orderFromAdmin);
-    const portalRec = startTracking(orderFromPortal);
-    assert.ok(portalRec);
-    assert.equal(portalRec.startedAt, adminSharedTs);
+    // Sesión Cliente independiente (GET /client/order-summary o /client/tracking)
+    const clientSummaryOrder = mapApiSummaryToTrackingOrder({
+      order_id: "8501",
+      order_number: "#OT-8501",
+      status: "En ruta",
+      status_key: "en_ruta",
+      service_type: "INSTALACION",
+      address: "Av. Apoquindo 4500",
+      comuna: "Las Condes",
+      lat: -33.43,
+      lng: -70.61,
+      tracking_mode: "SIMULATION",
+      active_tracking_mode: "SIMULATION",
+      route_started_at: new Date(startedMs).toISOString(),
+      timeline_steps: [],
+      is_confirmed: false,
+      is_completed: false,
+    });
 
-    const checkNow = startedMs + 90_000;
-    const portalSnap = computeTrackingSnapshot(portalRec, checkNow);
+    const adminRec = startTracking(adminOrder);
+    const adminSnapBeforeReload = computeTrackingSnapshot(adminRec, startedMs + 60_000);
+
+    // Simular segunda sesión independiente limpia (sin localStorage compartido)
     resetAllTrackings();
-    const adminRec = startTracking(orderFromAdmin);
-    const adminSnap = computeTrackingSnapshot(adminRec, checkNow);
-    assert.equal(portalSnap.progressPercent, adminSnap.progressPercent);
-    assert.equal(portalSnap.remainingSeconds, adminSnap.remainingSeconds);
+    const portalRec = startTracking(clientSummaryOrder);
+    const portalSnap = computeTrackingSnapshot(portalRec, startedMs + 60_000);
 
-    // Ruta completada (>= 180s) debe permanecer al 100% / arribado sin reiniciarse a 0%
-    resetAllTrackings();
-    const expiredMs = Date.now() - 240_000;
-    const storageMap = new Map();
-    const originalWindow = globalThis.window;
-    globalThis.window = {
-      localStorage: {
-        getItem: (k) => storageMap.get(k) || null,
-        setItem: (k, v) => storageMap.set(k, String(v)),
-        removeItem: (k) => storageMap.delete(k),
-      },
-    };
+    assert.equal(portalRec.startedAt, adminRec.startedAt);
+    assert.equal(portalSnap.progressPercent, adminSnapBeforeReload.progressPercent);
+    assert.equal(portalSnap.remainingSeconds, adminSnapBeforeReload.remainingSeconds);
 
-    try {
-      const finishedRec = startTracking({
-        id: "8502",
-        order_number: "#OT-8502",
-        lat: -33.43,
-        lng: -70.61,
-        route_started_at: new Date(expiredMs).toISOString(),
-      });
-      assert.ok(finishedRec);
-      assert.equal(finishedRec.startedAt, expiredMs);
-      assert.equal(finishedRec.isArrived, true);
+    // Simular recarga cuando el recorrido ya finalizó (>= 180s) -> ambos ven 100% sin reiniciarse
+    const afterFinishTs = startedMs + 200_000;
+    const finishedSnap = computeTrackingSnapshot(portalRec, afterFinishTs);
+    assert.equal(finishedSnap.progressPercent, 100);
+    assert.equal(finishedSnap.isArrived, true);
 
-      const snap = computeTrackingSnapshot(finishedRec, Date.now());
-      assert.equal(snap.progressPercent, 100);
-      assert.equal(snap.isArrived, true);
+    // Simular que el Administrador presiona Repetir -> nuevo simulation_started_at desde backend
+    const replayStartedMs = Date.now() - 5_000;
+    const updatedFromAdminRestart = applySharedTrackingTimestamp(
+      "8501",
+      new Date(replayStartedMs).toISOString()
+    );
+    assert.equal(updatedFromAdminRestart.startedAt, replayStartedMs);
+    assert.equal(updatedFromAdminRestart.isArrived, false);
 
-      // Repetición local NO debe sobrescribir localStorage compartido y sí identificarse como local
-      const replayed = restartTracking("8502", { localOnly: true });
-      assert.ok(replayed.isManualReplay);
-      assert.equal(replayed.isLocalReplay, true);
-      assert.equal(storageMap.get("atlas_sim_started_at_8502"), String(expiredMs));
+    // El polling del Portal Cliente recibe el nuevo route_started_at y reinicia automáticamente el mismo ciclo
+    const syncedPortalRec = startTracking({
+      ...clientSummaryOrder,
+      route_started_at: new Date(replayStartedMs).toISOString(),
+    });
+    assert.equal(syncedPortalRec.startedAt, replayStartedMs);
+    assert.equal(syncedPortalRec.isArrived, false);
 
-      const replaySnap = computeTrackingSnapshot(replayed, Date.now());
-      assert.equal(replaySnap.isLocalReplay, true);
-      assert.equal(replaySnap.hasSharedStartedAt, true);
-
-      // Polling posterior mantiene repetición local hasta que el usuario vuelva al avance compartido
-      const afterPoll = startTracking({
-        id: "8502",
-        order_number: "#OT-8502",
-        lat: -33.43,
-        lng: -70.61,
-        route_started_at: new Date(expiredMs).toISOString(),
-      });
-      assert.equal(afterPoll.startedAt, replayed.startedAt);
-
-      const restored = restoreSharedTracking("8502");
-      assert.equal(restored.isLocalReplay, false);
-      assert.equal(restored.startedAt, expiredMs);
-      assert.equal(restored.isArrived, true);
-    } finally {
-      globalThis.window = originalWindow;
-    }
+    const syncedSnap = computeTrackingSnapshot(syncedPortalRec, replayStartedMs + 5_000);
+    assert.ok(syncedSnap.progressPercent >= 2 && syncedSnap.progressPercent <= 5);
   });
 
-  test("10. GPS real evita DEMO_ORIGIN/rutas ficticias y Portal Cliente permite alternar a Simulación V2", () => {
+  test("10. GPS real evita DEMO_ORIGIN/rutas ficticias y RouteSimulationModal persiste inicio y repetición en backend", () => {
     const mapPath = path.resolve(__dirname, "../components/ui/LiveTrackingMap.jsx");
     const mapContent = fs.readFileSync(mapPath, "utf-8");
-    const viewPath = path.resolve(__dirname, "../pages/CustomerTrackingView.jsx");
-    const viewContent = fs.readFileSync(viewPath, "utf-8");
+    const modalPath = path.resolve(__dirname, "../components/ui/RouteSimulationModal.jsx");
+    const modalContent = fs.readFileSync(modalPath, "utf-8");
 
     assert.ok(!mapContent.includes("liveTotalReferenceMeters"), "GPS real no debe calcular progreso usando DEMO_ORIGIN");
     assert.ok(!mapContent.includes("liveProgressPercent"), "GPS real no debe inventar porcentaje de ruta desde DEMO_ORIGIN");
     assert.ok(mapContent.includes("en línea recta aprox."), "GPS real debe identificar estimaciones directas en línea recta");
-    assert.ok(mapContent.includes("Repetición local"), "Repetición local debe identificarse explícitamente en la UI");
-    assert.ok(mapContent.includes("Volver al avance compartido"), "Debe permitir volver al avance compartido tras repetir");
 
-    assert.ok(viewContent.includes("preferredTrackingMode"), "Portal Cliente debe permitir alternar entre GPS en Vivo y Simulación V2");
-    assert.ok(viewContent.includes("Simulación V2 (Demo)"), "Debe ofrecer botón explícito para ver Simulación V2 incluso con GPS reciente");
+    assert.ok(modalContent.includes("syncTrackingSimulation"), "Admin debe persistir start/restart en backend para sincronizar dispositivos");
+    assert.ok(modalContent.includes("Modo GPS automático"), "Admin debe poder devolver control a GPS automático");
 
     const samePointDist = calculateHaversineDistanceMeters(DEMO_ORIGIN, DEMO_ORIGIN);
     assert.equal(samePointDist, 0);

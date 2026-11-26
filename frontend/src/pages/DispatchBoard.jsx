@@ -43,6 +43,7 @@ import {
   getSafeTechnicianName,
   startTracking,
   restartTracking,
+  applySharedTrackingTimestamp,
   formatCountdown,
   useRouteTracking,
   useTrackingRouteCoordinates,
@@ -584,7 +585,20 @@ function TrackingFloatingCard({
           {isArrived && (
             <button
               type="button"
-              onClick={() => restartTracking(snapshot.orderId)}
+              onClick={() => {
+                restartTracking(snapshot.orderId);
+                api.orders
+                  .syncTrackingSimulation(snapshot.orderId, "restart", "SIMULATION")
+                  .then((updated) => {
+                    if (updated?.simulation_started_at) {
+                      applySharedTrackingTimestamp(
+                        snapshot.orderId,
+                        updated.simulation_started_at
+                      );
+                    }
+                  })
+                  .catch(() => {});
+              }}
               className="flex-1 py-1.5 px-3 rounded-lg bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -2503,12 +2517,17 @@ export default function DispatchBoard() {
     }
   }, [selectedOrder]);
 
-  // Polling silencioso en segundo plano para actualizar telemetría GPS cada 30s sin recargar la pantalla
+  // Polling silencioso en segundo plano para actualizar telemetría GPS y órdenes compartidas
   useEffect(() => {
     const timer = setInterval(async () => {
       try {
-        const data = await api.orders.getTechnicians();
-        if (Array.isArray(data)) {
+        const [techRes, ordersRes] = await Promise.allSettled([
+          api.orders.getTechnicians(),
+          api.orders.getAll({ size: 100 }),
+        ]);
+
+        if (techRes.status === "fulfilled" && Array.isArray(techRes.value)) {
+          const data = techRes.value;
           setTechniciansList(data);
           const tMarkers = data
             .filter((t) => {
@@ -2539,10 +2558,14 @@ export default function DispatchBoard() {
             }));
           setTechnicianMarkers(tMarkers);
         }
+
+        if (ordersRes.status === "fulfilled" && Array.isArray(ordersRes.value?.items)) {
+          setDashboardOrders(ordersRes.value.items);
+        }
       } catch {
         // Continuar silenciosamente sin interrumpir la interacción del usuario
       }
-    }, 30000);
+    }, 15000);
     return () => clearInterval(timer);
   }, []);
 
@@ -2895,6 +2918,17 @@ export default function DispatchBoard() {
           setSelectedOrder(null);
           startTracking(order);
           setSelectedTrackingOrder(order);
+          const safeId = getSafeOrderId(order);
+          if (safeId) {
+            api.orders
+              .syncTrackingSimulation(safeId, "start", "SIMULATION")
+              .then((updated) => {
+                if (updated?.simulation_started_at) {
+                  applySharedTrackingTimestamp(safeId, updated.simulation_started_at);
+                }
+              })
+              .catch(() => {});
+          }
         }}
       />
 
@@ -3112,6 +3146,17 @@ export default function DispatchBoard() {
                 onSimulateRoute={(order) => {
                   startTracking(order);
                   setSelectedTrackingOrder(order);
+                  const safeId = getSafeOrderId(order);
+                  if (safeId) {
+                    api.orders
+                      .syncTrackingSimulation(safeId, "start", "SIMULATION")
+                      .then((updated) => {
+                        if (updated?.simulation_started_at) {
+                          applySharedTrackingTimestamp(safeId, updated.simulation_started_at);
+                        }
+                      })
+                      .catch(() => {});
+                  }
                 }}
                 trackingOrder={selectedTrackingOrder}
                 onCloseTrackingRoute={() => setSelectedTrackingOrder(null)}

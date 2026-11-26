@@ -117,6 +117,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ lat, lng }),
       }),
+    syncTrackingSimulation: (orderId, action = "start", mode = null) =>
+      request(`/orders/${orderId}/tracking-simulation`, {
+        method: "POST",
+        body: JSON.stringify({ action, ...(mode ? { mode } : {}) }),
+      }),
     createTechnician: (techData) =>
       request("/orders/technicians", { method: "POST", body: JSON.stringify(techData) }),
     toggleTechnicianAvailability: (id) =>
