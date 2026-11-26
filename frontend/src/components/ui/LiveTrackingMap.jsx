@@ -309,37 +309,38 @@ export default function LiveTrackingMap({
   }, []);
 
   return (
-    <div className="flex flex-col gap-3 w-full">
-      {/* ── BARRA SUPERIOR DE ESTADO Y CONTROLES ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-slate-100/90 dark:bg-gray-800/80 border border-slate-200 dark:border-gray-700/80 text-xs">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
+    <div className="flex flex-col gap-3 w-full min-w-0">
+      {/* ── BARRA SUPERIOR: ETIQUETA/DESCRIPCIÓN + FILA INDEPENDIENTE DE CONTROLES ── */}
+      <div className="flex flex-col gap-2.5 p-3 sm:p-3.5 rounded-xl bg-slate-100/90 dark:bg-gray-800/80 border border-slate-200 dark:border-gray-700/80 text-xs min-w-0">
+        {/* Fila 1: Etiqueta de modo y descripción */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-3 min-w-0">
           {isLiveGps ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
-              <span className="relative flex h-2 w-2">
+            <span className="inline-flex items-center self-start gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+              <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              GPS en Vivo · Satelital
+              <span>GPS en Vivo · Satelital</span>
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/25 shrink-0">
-              Recorrido en curso · Demostración
+            <span className="inline-flex items-center self-start gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/25 shrink-0">
+              <span>Recorrido en curso · Demostración</span>
             </span>
           )}
 
-          <span className="text-[11px] text-slate-600 dark:text-gray-300 leading-snug">
+          <p className="text-[11px] sm:text-xs text-slate-600 dark:text-gray-300 leading-snug min-w-0">
             {isLiveGps
               ? "Telemetría directa reportada por dispositivo GPS"
               : "Trayecto simulado por calles de Santiago (180 s)"}
-          </span>
+          </p>
         </div>
 
-        {/* Acciones interactivas del mapa (distribución responsive equilibrada) */}
-        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto shrink-0">
+        {/* Fila 2: Botones de cámara en fila independiente y tamaño equilibrado */}
+        <div className="grid grid-cols-2 gap-2 w-full pt-2 border-t border-slate-200/80 dark:border-gray-700/70">
           <button
             type="button"
             onClick={handleToggleFollowVehicle}
-            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+            className={`w-full min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer min-w-0 ${
               followVehicle
                 ? "bg-orange-500 text-white shadow-2xs"
                 : "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600"
@@ -347,39 +348,39 @@ export default function LiveTrackingMap({
             title="Activar o desactivar seguimiento automático de cámara"
           >
             <LocateFixed className="h-3.5 w-3.5 shrink-0" />
-            <span>{followVehicle ? "Siguiendo vehículo" : "Seguir vehículo"}</span>
+            <span className="truncate">{followVehicle ? "Siguiendo vehículo" : "Seguir vehículo"}</span>
           </button>
 
           <button
             type="button"
             onClick={handleFitFullRoute}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600 transition-colors cursor-pointer whitespace-nowrap"
+            className="w-full min-h-[38px] inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-[11px] sm:text-xs font-semibold bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600 transition-colors cursor-pointer min-w-0"
             title="Ajustar zoom para ver origen, vehículo y destino"
           >
             <Maximize2 className="h-3.5 w-3.5 shrink-0" />
-            <span>Ver ruta completa</span>
+            <span className="truncate">Ver ruta completa</span>
           </button>
         </div>
       </div>
 
       {/* ── TARJETA DE PROGRESO Y TELEMETRÍA ── */}
       {hasTelemetry && (
-        <div className="p-3.5 rounded-xl bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 shadow-2xs flex flex-col gap-2.5 transition-colors">
+        <div className="p-3.5 rounded-xl bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 shadow-2xs flex flex-col gap-2.5 transition-colors min-w-0">
           {isLiveGps ? (
             <>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs min-w-0">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <span className="font-semibold text-slate-900 dark:text-white">
                     {isArrived
                       ? "Especialista próximo al domicilio"
                       : "Especialista en ruta (GPS real)"}
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/25">
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/25 shrink-0">
                     Estimación directa · No es ruta vial
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300 sm:shrink-0">
                   <span className="inline-flex items-center gap-1" title="Tiempo estimado en línea recta">
                     <Clock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                     <strong>
@@ -393,10 +394,10 @@ export default function LiveTrackingMap({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-gray-400 pt-1.5 border-t border-slate-100 dark:border-gray-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 text-[11px] text-slate-500 dark:text-gray-400 pt-1.5 border-t border-slate-100 dark:border-gray-800 min-w-0">
                 <span>Posición reportada directamente por dispositivo GPS del especialista.</span>
                 {formattedGpsTimestamp && (
-                  <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                  <span className="font-medium text-emerald-700 dark:text-emerald-400 shrink-0">
                     Última señal: {formattedGpsTimestamp} hrs
                   </span>
                 )}
@@ -404,20 +405,20 @@ export default function LiveTrackingMap({
             </>
           ) : (
             <>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs min-w-0">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <span className="font-semibold text-slate-900 dark:text-white">
                     {isArrived ? "Especialista en destino" : "En camino al domicilio"}
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-orange-600 dark:text-orange-400">
+                  <span className="text-[11px] font-mono font-bold text-orange-600 dark:text-orange-400 shrink-0">
                     {progressPercent}%
                   </span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-400 font-medium">
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-400 font-medium shrink-0">
                     Demostración
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300 sm:shrink-0">
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5 text-orange-500 shrink-0" />
                     <strong>{formatCountdown(remainingSeconds)}</strong>
@@ -444,7 +445,7 @@ export default function LiveTrackingMap({
       )}
 
       {/* ── CONTENEDOR PRINCIPAL DEL MAPA LEAFLET ── */}
-      <div className="h-72 sm:h-84 md:h-96 w-full rounded-xl overflow-hidden border border-slate-200 dark:border-gray-800 relative z-0 shadow-xs">
+      <div className="h-64 sm:h-80 md:h-96 w-full rounded-xl overflow-hidden border border-slate-200 dark:border-gray-800 relative z-0 shadow-xs">
         {isLoadingRoute ? (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/85 dark:bg-gray-900/85 backdrop-blur-xs p-4 text-center">
             <RefreshCw className="h-7 w-7 text-orange-500 animate-spin mb-2" />
@@ -650,10 +651,10 @@ export default function LiveTrackingMap({
       </div>
 
       {/* Nota legal / Transparencia de la simulación vs GPS real */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-gray-400 px-1">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2 text-[11px] text-slate-500 dark:text-gray-400 px-1 min-w-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <Navigation className={`h-3.5 w-3.5 shrink-0 ${isLiveGps ? "text-emerald-500" : "text-orange-500"}`} />
-          <span>
+          <span className="leading-snug">
             {isLiveGps
               ? lastGpsUpdateAt
                 ? "GPS en Vivo · Línea de referencia directa (sin ruta vial)"
@@ -662,7 +663,7 @@ export default function LiveTrackingMap({
           </span>
         </div>
         {technicianName && (
-          <span className="font-medium text-slate-700 dark:text-gray-300">
+          <span className="font-medium text-slate-700 dark:text-gray-300 shrink-0">
             {technicianName}
           </span>
         )}
