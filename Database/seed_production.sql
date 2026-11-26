@@ -85,14 +85,16 @@ ON CONFLICT (rut) DO NOTHING;
 -- 3. CLIENTES EMPRESARIALES (CON CORREOS REALES PARA ENVIO DE MAGIC LINKS)
 -- =============================================================================
 
-INSERT INTO clients (id, rut, business_name, contact_person, contact_phone, contact_email, address, comuna, region, lat, lng)
+INSERT INTO clients (id, client_type, rut, business_name, contact_person, contact_phone, secondary_phone, contact_email, address, comuna, region, lat, lng)
 VALUES
     (
         'c0000000-0000-0000-0000-000000000001',
-        '18.987.654-3',
+        'EMPRESARIAL',
+        '76.987.654-3',
         'Entel B2B - Soluciones SpA',
         'Diego Jiménez Escobar',
         '+56 9 8765 4321',
+        '+56 2 2345 6789',
         'di.jimeneze@duocuc.cl',
         'Av. Vitacura 2939, Torre Entel',
         'Las Condes',

@@ -89,10 +89,12 @@ erDiagram
 
     clients {
         uuid id PK "gen_random_uuid()"
+        varchar client_type "Tipo cliente: EMPRESARIAL o RESIDENCIAL"
         varchar rut UK "RUT empresa o persona (nullable)"
         varchar business_name "Razon social o nombre"
         varchar contact_person "Contacto en sitio"
         varchar contact_phone "Telefono"
+        varchar secondary_phone "Telefono secundario (opcional)"
         varchar contact_email "Email para Magic Link"
         varchar address "Direccion fisica"
         varchar comuna "Comuna despacho"
@@ -236,16 +238,18 @@ Especialización 1:1 de `users` para personal de operaciones en terreno.
 | `is_available` | `BOOLEAN` | `NOT NULL`, Default: `TRUE` | Estado de disponibilidad para recibir nuevas órdenes. |
 
 ### 3.3 Tabla: `clients`
-Registra a los clientes corporativos o particulares que reciben atención en terreno.
+Registra a los clientes corporativos, pymes y residenciales que reciben atención técnica en terreno.
 
 | Columna | Tipo de Dato | Modificadores | Descripción |
 | :--- | :--- | :--- | :--- |
 | `id` | `UUID` | `PRIMARY KEY`, Default: `gen_random_uuid()` | Identificador único del cliente. |
-| `rut` | `VARCHAR(20)` | `UNIQUE`, `NULL` | RUT de la empresa o cliente titular. |
-| `business_name` | `VARCHAR(200)` | `NOT NULL` | Razón social o nombre completo del cliente. |
+| `client_type` | `VARCHAR(20)` | `NOT NULL`, Default: `'EMPRESARIAL'`, Check: `('EMPRESARIAL', 'RESIDENCIAL')`, Index: `ix_clients_client_type` | Segmento comercial: cliente corporativo/empresa o particular/residencial. |
+| `rut` | `VARCHAR(20)` | `UNIQUE`, `NULL` | RUT de la empresa o cliente titular con validación de dígito verificador. |
+| `business_name` | `VARCHAR(200)` | `NOT NULL` | Razón social o nombre completo del cliente titular. |
 | `contact_person` | `VARCHAR(150)` | `NULL` | Nombre de la persona de contacto en el domicilio/oficina. |
-| `contact_phone` | `VARCHAR(50)` | `NOT NULL` | Teléfono para coordinación de llegada técnica. |
-| `contact_email` | `VARCHAR(255)` | `NOT NULL` | Correo donde se despachan los Magic Links. |
+| `contact_phone` | `VARCHAR(50)` | `NOT NULL` | Teléfono principal para coordinación de llegada técnica. |
+| `secondary_phone` | `VARCHAR(50)` | `NULL` | Teléfono secundario o de respaldo para emergencias de terreno. |
+| `contact_email` | `VARCHAR(255)` | `NOT NULL` | Correo donde se despachan los Magic Links de seguimiento. |
 | `address` | `VARCHAR(300)` | `NOT NULL` | Dirección completa (calle, número, piso/oficina). |
 | `comuna` | `VARCHAR(100)` | `NOT NULL` | Comuna de la visita (usada para filtros geográficos). |
 | `region` | `VARCHAR(100)` | Default: `'Metropolitana'` | Región administrativa. |

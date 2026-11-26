@@ -20,7 +20,9 @@ from build_defects_docx import w_tag, make_p, make_cell, make_table, W_NS
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ATLAS_CORE_DIR = os.path.dirname(SCRIPT_DIR)
-TEMPLATE_PATH = os.path.join(ATLAS_CORE_DIR, "docs", "Fase 2 Capstone", "Evidencia Proyecto", "Product_Backlog.docx")
+TEMPLATE_PATH = os.path.join(ATLAS_CORE_DIR, "docs", "Fase 2 Capstone", "Evidencia Proyecto", "Evidencias de documentación", "Product_Backlog.docx")
+if not os.path.exists(TEMPLATE_PATH):
+    TEMPLATE_PATH = os.path.join(ATLAS_CORE_DIR, "docs", "Fase 2 Capstone", "Evidencia Proyecto", "Product_Backlog.docx")
 
 DEST_DIRS = [
     os.path.join(ATLAS_CORE_DIR, "docs", "Fase 2 Capstone", "Evidencia Proyecto"),

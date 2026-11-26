@@ -70,10 +70,12 @@ erDiagram
 
     clients {
         uuid id PK
+        string client_type "EMPRESARIAL, RESIDENCIAL"
         string rut UK
         string business_name
         string contact_person
         string contact_phone
+        string secondary_phone
         string contact_email
         string address
         string comuna
@@ -183,7 +185,7 @@ erDiagram
 1. **`users` y `technicians` (Especialización 1:1):**
    * Se desacopla la autenticación general de los datos específicos de campo del técnico (patente de vehículo, iniciales, última geolocalización GPS y estado de disponibilidad).
 2. **`clients`:**
-   * Almacena clientes corporativos (Entel HQ, BancoEstado) y pymes, incluyendo dirección y coordenadas para cálculo de rutas del Dispatch Board.
+   * Almacena clientes corporativos (Entel HQ, BancoEstado), pymes y clientes particulares/residenciales (`client_type`: EMPRESARIAL o RESIDENCIAL). Incluye teléfono secundario (`secondary_phone`), validación y formato de RUT chileno, dirección y coordenadas para cálculo de rutas del Dispatch Board.
 3. **`work_orders` (Núcleo FSM):**
    * Representa los tickets de servicio. Maneja los 6 estados estandarizados: `IDLE` (Pendiente), `CONFIRMADA` (Visita aprobada), `EN_RUTA` (Técnico viajando), `EN_SITIO` (En el lugar), `COMPLETADA` y `CANCELADA`.
 4. **`magic_links`:**
