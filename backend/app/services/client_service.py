@@ -164,13 +164,22 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
     return items
 
 
-def _extract_route_started_at(order: WorkOrder) -> Optional[datetime]:
+def _extract_route_started_at(order: WorkOrder, allow_simulation: bool = False) -> Optional[datetime]:
     """
-    Obtiene el timestamp UTC en que la orden pasó a EN_RUTA desde su historial real.
-    Permite sincronizar la simulación V2 entre administrador y Portal Cliente sin migraciones.
+    Obtiene el timestamp UTC compartido del seguimiento V2:
+    1. simulation_started_at (cuando el administrador inicia o presiona Repetir).
+    2. Último evento EN_RUTA en order_status_history (cuando está EN_RUTA).
+    3. updated_at como respaldo cuando está EN_RUTA.
     """
-    if order.status != OrderStatusEnum.EN_RUTA:
+    is_terminal = order.status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA)
+    if is_terminal:
         return None
+    if order.status != OrderStatusEnum.EN_RUTA and not allow_simulation:
+        return None
+
+    sim_started = getattr(order, "simulation_started_at", None)
+    if sim_started is not None:
+        return sim_started if sim_started.tzinfo else sim_started.replace(tzinfo=timezone.utc)
 
     latest_en_ruta: Optional[datetime] = None
     if getattr(order, "status_history", None):
@@ -188,9 +197,70 @@ def _extract_route_started_at(order: WorkOrder) -> Optional[datetime]:
         return latest_en_ruta
 
     updated_at = getattr(order, "updated_at", None)
-    if updated_at:
+    if updated_at and (order.status == OrderStatusEnum.EN_RUTA or allow_simulation):
         return updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
     return None
+
+
+def _resolve_client_tracking_state(order: WorkOrder):
+    """
+    Resuelve el modo autoritativo definido por el administrador (LIVE_GPS, SIMULATION o NONE)
+    sin mezclar coordenadas GPS reales con el recorrido simulado V2.
+    """
+    configured_mode = str(getattr(order, "tracking_mode", "AUTO") or "AUTO").upper()
+    if configured_mode not in ("AUTO", "SIMULATION", "LIVE_GPS"):
+        configured_mode = "AUTO"
+
+    is_terminal = order.status in (OrderStatusEnum.COMPLETADA, OrderStatusEnum.CANCELADA)
+    if is_terminal:
+        return configured_mode, "NONE", None, None, False
+
+    tech_loc_data = None
+    has_recent_gps = False
+    order_tech = getattr(order, "technician", None)
+    if order.status == OrderStatusEnum.EN_RUTA and order_tech:
+        tech_lat = getattr(order_tech, "current_lat", None)
+        tech_lng = getattr(order_tech, "current_lng", None)
+        real_last_gps = getattr(order_tech, "last_location_at", None)
+        if tech_lat is not None and tech_lng is not None and real_last_gps is not None:
+            gps_utc = (
+                real_last_gps
+                if real_last_gps.tzinfo
+                else real_last_gps.replace(tzinfo=timezone.utc)
+            )
+            now_utc = datetime.now(timezone.utc)
+            has_recent_gps = 0 <= (now_utc - gps_utc).total_seconds() <= 1800
+            tech_loc_data = {
+                "lat": tech_lat,
+                "lng": tech_lng,
+                "last_updated_at": gps_utc,
+                "is_live": has_recent_gps,
+            }
+
+    if configured_mode == "SIMULATION":
+        active_mode = "SIMULATION"
+    elif configured_mode == "LIVE_GPS":
+        active_mode = "LIVE_GPS" if order.status == OrderStatusEnum.EN_RUTA else "NONE"
+    else:
+        if order.status == OrderStatusEnum.EN_RUTA:
+            active_mode = "LIVE_GPS" if has_recent_gps else "SIMULATION"
+        else:
+            active_mode = "NONE"
+
+    if active_mode == "LIVE_GPS":
+        return configured_mode, "LIVE_GPS", tech_loc_data, None, False
+
+    if active_mode == "SIMULATION":
+        has_stale_gps = bool(tech_loc_data is not None and not has_recent_gps)
+        return (
+            configured_mode,
+            "SIMULATION",
+            None,
+            _extract_route_started_at(order, allow_simulation=True),
+            has_stale_gps,
+        )
+
+    return configured_mode, "NONE", None, None, False
 
 
 def _build_summary_response(
@@ -321,25 +391,12 @@ def _build_summary_response(
     order_lat = getattr(order, "lat", None) if getattr(order, "lat", None) is not None else client_lat
     order_lng = getattr(order, "lng", None) if getattr(order, "lng", None) is not None else client_lng
 
-    technician_loc = None
-    # Privacidad estricta: ÚNICAMENTE exponer ubicación si la orden está EN_RUTA
-    order_tech = getattr(order, "technician", None)
-    if order.status == OrderStatusEnum.EN_RUTA and order_tech:
-        tech_lat = getattr(order_tech, "current_lat", None)
-        tech_lng = getattr(order_tech, "current_lng", None)
-        real_last_gps = getattr(order_tech, "last_location_at", None)
-        # No mostrar coordenadas antiguas sin timestamp real de recepción
-        if tech_lat is not None and tech_lng is not None and real_last_gps is not None:
-            now_utc = datetime.now(timezone.utc)
-            is_recent = 0 <= (now_utc - real_last_gps).total_seconds() <= 1800
-            technician_loc = ClientTechnicianLocation(
-                lat=tech_lat,
-                lng=tech_lng,
-                last_updated_at=real_last_gps,
-                is_live=is_recent,
-            )
-
-    route_started_at = _extract_route_started_at(order)
+    configured_mode, active_mode, tech_loc_data, route_started_at, _ = _resolve_client_tracking_state(order)
+    technician_loc = (
+        ClientTechnicianLocation(**tech_loc_data)
+        if tech_loc_data is not None
+        else None
+    )
 
     return ClientOrderSummaryResponse(
         order_id=order.id,
@@ -361,6 +418,8 @@ def _build_summary_response(
         contact_phone=contact_phone,
         technician=tech_badge,
         technician_location=technician_loc,
+        tracking_mode=configured_mode,
+        active_tracking_mode=active_mode,
         route_started_at=route_started_at,
         timeline_steps=timeline,
         client_confirmed_at=confirmed_at,
@@ -379,28 +438,27 @@ def _build_summary_response(
 
 async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTrackingLocationResponse:
     """
-    Consulta ultraligera y segura por Magic Link para seguimiento cartográfico en vivo (RF-CLI-05).
-    Retorna coordenadas solo si la orden se encuentra actualmente en estado EN_RUTA.
-    Si la orden avanzó a EN_SITIO o posterior, o fue cancelada, oculta las coordenadas del técnico.
+    Consulta ultraligera y segura por Magic Link para seguimiento compartido (RF-CLI-05).
+    Retorna GPS real o estado de simulación V2 según el modo activo del administrador,
+    ocultando coordenadas cuando la orden culmina o es cancelada.
     """
     magic_link = await validate_magic_link_token(db, token)
     order = magic_link.work_order
-    route_started_at = _extract_route_started_at(order)
+    configured_mode, active_mode, tech_loc_data, route_started_at, has_stale_gps = _resolve_client_tracking_state(order)
 
-    if order.status == OrderStatusEnum.EN_RUTA and order.technician:
-        t = order.technician
-        real_last_gps = getattr(t, "last_location_at", None)
-        if t.current_lat is not None and t.current_lng is not None and real_last_gps is not None:
-            now_utc = datetime.now(timezone.utc)
-            is_recent = 0 <= (now_utc - real_last_gps).total_seconds() <= 1800
+    if active_mode == "LIVE_GPS":
+        if tech_loc_data is not None:
+            is_recent = bool(tech_loc_data["is_live"])
             return ClientTrackingLocationResponse(
                 order_id=order.id,
                 order_status=order.status.value,
-                lat=t.current_lat,
-                lng=t.current_lng,
-                last_updated_at=real_last_gps,
+                lat=tech_loc_data["lat"],
+                lng=tech_loc_data["lng"],
+                last_updated_at=tech_loc_data["last_updated_at"],
                 is_live=is_recent,
-                route_started_at=route_started_at,
+                tracking_mode=configured_mode,
+                active_tracking_mode="LIVE_GPS",
+                route_started_at=None,
                 message="Técnico en ruta hacia tu dirección" if is_recent else "Técnico en camino. Señal GPS en espera de actualización.",
             )
         return ClientTrackingLocationResponse(
@@ -410,8 +468,28 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
             lng=None,
             last_updated_at=None,
             is_live=False,
-            route_started_at=route_started_at,
+            tracking_mode=configured_mode,
+            active_tracking_mode="LIVE_GPS",
+            route_started_at=None,
             message="Técnico en camino. Esperando señal de geolocalización.",
+        )
+
+    if active_mode == "SIMULATION":
+        return ClientTrackingLocationResponse(
+            order_id=order.id,
+            order_status=order.status.value,
+            lat=None,
+            lng=None,
+            last_updated_at=None,
+            is_live=False,
+            tracking_mode=configured_mode,
+            active_tracking_mode="SIMULATION",
+            route_started_at=route_started_at,
+            message=(
+                "Técnico en camino. Señal GPS en espera de actualización · Seguimiento de recorrido V2 activo."
+                if has_stale_gps
+                else "Seguimiento de recorrido V2 activo."
+            ),
         )
 
     return ClientTrackingLocationResponse(
@@ -421,7 +499,9 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
         lng=None,
         last_updated_at=None,
         is_live=False,
-        route_started_at=route_started_at,
+        tracking_mode=configured_mode,
+        active_tracking_mode="NONE",
+        route_started_at=None,
         message="Seguimiento GPS no disponible para el estado actual de la visita.",
     )
 

@@ -292,13 +292,18 @@ function parseSharedTimestampMs(value) {
 }
 
 /**
- * Extrae el timestamp compartido de inicio de ruta (EN_RUTA) desde el backend/historial.
- * Permite que Admin y Portal Cliente compartan exactamente el mismo avance de 3 minutos.
+ * Extrae el timestamp compartido de inicio de ruta / simulación desde el backend/historial.
+ * Permite que Admin y Portal Cliente compartan exactamente el mismo avance de 180 segundos.
  */
 export function extractSharedRouteStartedAt(order) {
   if (!order || typeof order !== "object") return null;
 
+  const simTs = parseSharedTimestampMs(order.simulation_started_at);
   const directTs = parseSharedTimestampMs(order.route_started_at);
+  if (simTs !== null && directTs !== null) {
+    return Math.max(simTs, directTs);
+  }
+  if (simTs !== null) return simTs;
   if (directTs !== null) return directTs;
 
   if (Array.isArray(order.status_history) && order.status_history.length > 0) {
@@ -340,24 +345,21 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     const existing = activeTrackings.get(orderId);
     if (sharedStartedAt !== null) {
       existing.sharedStartedAt = sharedStartedAt;
-    }
-    if (
-      sharedStartedAt !== null &&
-      !existing.isManualReplay &&
-      Math.abs(existing.startedAt - sharedStartedAt) > 1000
-    ) {
-      existing.startedAt = sharedStartedAt;
-      const elapsed = Math.max(0, Date.now() - sharedStartedAt);
-      existing.isArrived = elapsed >= existing.durationMs;
-      existing.hasNotifiedCompletion = existing.isArrived;
-      if (typeof window !== "undefined" && window.localStorage) {
-        try {
-          window.localStorage.setItem(storageKey, String(sharedStartedAt));
-        } catch {
-          // Ignorar restricciones en entornos con storage deshabilitado
+      if (Math.abs(existing.startedAt - sharedStartedAt) > 1000) {
+        existing.startedAt = sharedStartedAt;
+        const elapsed = Math.max(0, Date.now() - sharedStartedAt);
+        existing.isArrived = elapsed >= existing.durationMs;
+        existing.hasNotifiedCompletion = existing.isArrived;
+        existing.lastBearing = null;
+        if (typeof window !== "undefined" && window.localStorage) {
+          try {
+            window.localStorage.setItem(storageKey, String(sharedStartedAt));
+          } catch {
+            // Ignorar restricciones en entornos con storage deshabilitado
+          }
         }
+        notifyListeners();
       }
-      notifyListeners();
     }
     if (order && typeof order === "object") {
       existing.rawOrder = { ...(existing.rawOrder || {}), ...order };
@@ -483,30 +485,26 @@ export function retryTrackingRoute(orderId) {
 }
 
 /**
- * Reinicia la simulación local de una orden (botón 'Repetir').
- * No modifica BD, Neon ni estados operativos reales.
- * Cuando es localOnly o existe sharedStartedAt desde backend, no sobrescribe
- * la clave compartida en localStorage para evitar desincronizar otras sesiones.
+ * Aplica un timestamp compartido proveniente del backend (ej: respuesta de start/restart)
+ * para garantizar coincidencia milimétrica entre administrador y Portal Cliente.
  */
-export function restartTracking(orderId, { localOnly = false } = {}) {
+export function applySharedTrackingTimestamp(orderId, startedAtValue) {
   if (!orderId) return null;
   const safeId = String(orderId);
   const current = activeTrackings.get(safeId);
-  if (!current) return null;
+  const parsedMs = parseSharedTimestampMs(startedAtValue);
+  if (!current || parsedMs === null) return current || null;
 
-  const hasSharedAnchor = current.sharedStartedAt !== null && current.sharedStartedAt !== undefined;
-  const isLocalOnly = Boolean(localOnly || hasSharedAnchor);
-
-  current.startedAt = Date.now();
-  current.isManualReplay = true;
-  current.isLocalReplay = isLocalOnly;
-  current.hasNotifiedCompletion = false;
-  current.isArrived = false;
+  current.startedAt = parsedMs;
+  current.sharedStartedAt = parsedMs;
+  const elapsed = Math.max(0, Date.now() - parsedMs);
+  current.isArrived = elapsed >= current.durationMs;
+  current.hasNotifiedCompletion = current.isArrived;
   current.lastBearing = null;
 
-  if (!isLocalOnly && typeof window !== "undefined" && window.localStorage) {
+  if (typeof window !== "undefined" && window.localStorage) {
     try {
-      window.localStorage.setItem(`atlas_sim_started_at_${safeId}`, String(current.startedAt));
+      window.localStorage.setItem(`atlas_sim_started_at_${safeId}`, String(parsedMs));
     } catch {
       // Ignorar restricciones en entornos con storage deshabilitado
     }
@@ -516,37 +514,30 @@ export function restartTracking(orderId, { localOnly = false } = {}) {
   return current;
 }
 
-/** Restaura la reproducción al timestamp compartido real (descarta repetición local) */
-export function restoreSharedTracking(orderId) {
+/**
+ * Reinicia el recorrido simulado V2 (180 s).
+ * La sincronización compartida con el servidor la ejecuta el llamador administrativo.
+ */
+export function restartTracking(orderId) {
   if (!orderId) return null;
   const safeId = String(orderId);
   const current = activeTrackings.get(safeId);
   if (!current) return null;
 
-  let restoredTs = current.sharedStartedAt ?? null;
-  if (restoredTs === null && typeof window !== "undefined" && window.localStorage) {
+  const nowTs = Date.now();
+  current.startedAt = nowTs;
+  current.sharedStartedAt = nowTs;
+  current.hasNotifiedCompletion = false;
+  current.isArrived = false;
+  current.lastBearing = null;
+
+  if (typeof window !== "undefined" && window.localStorage) {
     try {
-      const saved = window.localStorage.getItem(`atlas_sim_started_at_${safeId}`);
-      if (saved) {
-        const parsed = parseInt(saved, 10);
-        if (!isNaN(parsed) && parsed > 0 && Date.now() >= parsed) {
-          restoredTs = parsed;
-        }
-      }
+      window.localStorage.setItem(`atlas_sim_started_at_${safeId}`, String(nowTs));
     } catch {
-      // Ignorar
+      // Ignorar restricciones en entornos con storage deshabilitado
     }
   }
-
-  current.isManualReplay = false;
-  current.isLocalReplay = false;
-  if (restoredTs !== null) {
-    current.startedAt = restoredTs;
-    const elapsed = Math.max(0, Date.now() - restoredTs);
-    current.isArrived = elapsed >= current.durationMs;
-    current.hasNotifiedCompletion = current.isArrived;
-  }
-  current.lastBearing = null;
   ensureEngineRunning();
   notifyListeners();
   return current;
@@ -646,7 +637,6 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
     progress,
     progressPercent: Math.round(progress * 100),
     isArrived,
-    isLocalReplay: Boolean(record.isLocalReplay),
     hasSharedStartedAt:
       record.sharedStartedAt !== null && record.sharedStartedAt !== undefined,
     remainingSeconds,
@@ -673,15 +663,18 @@ export function syncOrdersWithTracking(orders, { isInitial = false } = {}) {
     const orderId = getSafeOrderId(o);
     if (!orderId) continue;
 
-    if (isEnRutaStatus(o.status)) {
+    const isSimMode = String(o.tracking_mode || "").toUpperCase() === "SIMULATION";
+    if (isEnRutaStatus(o.status) || isSimMode) {
       startTracking(o, { isInitialLoad: isInitial });
     }
   }
 
-  // Detener seguimiento si la orden cambió de estado (ej: COMPLETADA o EN_SITIO)
+  // Detener seguimiento si la orden cambió de estado (ej: COMPLETADA o EN_SITIO) y no está en SIMULATION
   for (const trackedId of Array.from(activeTrackings.keys())) {
     const matchingOrder = orders.find((o) => getSafeOrderId(o) === trackedId);
-    if (matchingOrder && !isEnRutaStatus(matchingOrder.status)) {
+    const isSimMode =
+      matchingOrder && String(matchingOrder.tracking_mode || "").toUpperCase() === "SIMULATION";
+    if (matchingOrder && !isEnRutaStatus(matchingOrder.status) && !isSimMode) {
       stopTracking(trackedId);
     }
   }

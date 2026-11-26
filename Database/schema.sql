@@ -189,6 +189,8 @@ CREATE TABLE IF NOT EXISTS work_orders (
     lng NUMERIC(10, 7),
     started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
+    tracking_mode VARCHAR(20) NOT NULL DEFAULT 'AUTO', -- AUTO | SIMULATION | LIVE_GPS
+    simulation_started_at TIMESTAMP WITH TIME ZONE,
     tag VARCHAR(50), -- Tag visual para el Kanban (Fibra, SIM, Red, Hardware, Magic Link)
     is_audited BOOLEAN NOT NULL DEFAULT FALSE,
     audited_at TIMESTAMP WITH TIME ZONE,
@@ -309,6 +311,8 @@ ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS is_audited BOOLEAN NOT NULL DEF
 ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audited_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audited_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audit_notes TEXT;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS tracking_mode VARCHAR(20) NOT NULL DEFAULT 'AUTO';
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS simulation_started_at TIMESTAMP WITH TIME ZONE;
 
 -- =============================================================================
 -- 5. ÍNDICES DE OPTIMIZACIÓN (QUERY PERFORMANCE)

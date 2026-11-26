@@ -42,11 +42,13 @@ from app.schemas.work_order import (
     MagicLinkDetailSummary,
     ClientContactEmailUpdate,
     ClientUpdate,
+    WorkOrderTrackingSyncRequest,
 )
 from app.services.order_service import (
     list_orders,
     get_order_by_id,
     approve_order_audit,
+    sync_order_tracking_simulation,
     create_order,
     update_order,
     update_order_status,
@@ -229,6 +231,10 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
     resolved_lat = order.lat if order.lat is not None else client_lat
     resolved_lng = order.lng if order.lng is not None else client_lng
 
+    sim_started_at = getattr(order, "simulation_started_at", None)
+    if sim_started_at and sim_started_at.tzinfo is None:
+        sim_started_at = sim_started_at.replace(tzinfo=timezone.utc)
+
     return WorkOrderResponse(
         id=order.id,
         order_number=order.order_number,
@@ -248,6 +254,8 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
         tag=order.tag,
         started_at=order.started_at,
         completed_at=order.completed_at,
+        tracking_mode=getattr(order, "tracking_mode", "AUTO") or "AUTO",
+        simulation_started_at=sim_started_at,
         created_by=order.created_by,
         created_at=order.created_at,
         updated_at=order.updated_at,
@@ -647,6 +655,28 @@ async def assign_tech(
     """Asignación de técnico responsable."""
     assigned = await assign_technician(db, order_id, assign_data, current_user=current_user)
     return build_order_response(assigned)
+
+
+@router.post(
+    "/{order_id}/tracking-simulation",
+    response_model=WorkOrderResponse,
+    summary="Sincronizar modo y simulación V2 de seguimiento",
+    description="Permite al administrador o coordinador iniciar, repetir o cambiar el modo de seguimiento compartido con el Portal Cliente.",
+)
+async def sync_tracking_simulation_endpoint(
+    order_id: uuid.UUID,
+    payload: WorkOrderTrackingSyncRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role([UserRoleEnum.COORDINADOR, UserRoleEnum.ADMIN])),
+):
+    """Persiste el estado compartido de seguimiento V2 (inicio, repetición y modo activo)."""
+    updated = await sync_order_tracking_simulation(
+        db,
+        order_id,
+        action=payload.action,
+        mode=payload.mode,
+    )
+    return build_order_response(updated)
 
 
 @router.post(

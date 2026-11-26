@@ -58,6 +58,12 @@ class WorkOrder(Base):
     lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    tracking_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="AUTO", server_default="AUTO"
+    )
+    simulation_started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     tag: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     is_audited: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False, index=True

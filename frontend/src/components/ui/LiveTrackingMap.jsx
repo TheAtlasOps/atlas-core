@@ -36,18 +36,14 @@ import {
 import {
   getSafeOrderId,
   startTracking,
-  restartTracking,
-  restoreSharedTracking,
   getTracking,
   retryTrackingRoute,
   formatCountdown,
   useRouteTracking,
 } from "../../lib/routeTrackingManager";
 import {
-  Sparkles,
   Navigation,
   Clock,
-  RotateCcw,
   Maximize2,
   RefreshCw,
   AlertCircle,
@@ -172,7 +168,6 @@ export default function LiveTrackingMap({
   address = "",
   technicianName = "",
   isDemoActive = true,
-  onRestartDemo = null,
 }) {
   const { isDark } = useTheme();
 
@@ -220,23 +215,6 @@ export default function LiveTrackingMap({
   const handleRetryRoute = useCallback(() => {
     if (safeOrderId) {
       retryTrackingRoute(safeOrderId);
-    }
-  }, [safeOrderId]);
-
-  // Manejador para reiniciar únicamente la vista local de demostración sin alterar el avance compartido
-  const handleRestart = useCallback(() => {
-    if (safeOrderId) {
-      restartTracking(safeOrderId, { localOnly: true });
-      setFollowVehicle(true);
-      if (onRestartDemo) onRestartDemo();
-    }
-  }, [safeOrderId, onRestartDemo]);
-
-  // Manejador para volver al avance compartido real de 180s
-  const handleRestoreShared = useCallback(() => {
-    if (safeOrderId) {
-      restoreSharedTracking(safeOrderId);
-      setFollowVehicle(true);
     }
   }, [safeOrderId]);
 
@@ -298,10 +276,6 @@ export default function LiveTrackingMap({
   const remainingDistanceMeters = isSimulated ? snapshot?.remainingDistanceMeters || 0 : 0;
   const traveledSegment = isSimulated ? snapshot?.traveledSegment || [] : [];
   const pendingSegment = isSimulated ? snapshot?.pendingSegment || [] : [];
-  const isLocalReplay = Boolean(isSimulated && snapshot?.isLocalReplay);
-  const hasSharedAnchor = Boolean(
-    isSimulated && (snapshot?.hasSharedStartedAt || trackingRecord?.sharedStartedAt)
-  );
   const hasTelemetry =
     (isSimulated && Boolean(snapshot)) || (isLiveGps && Boolean(currentCoord && destinationCoords));
 
@@ -340,7 +314,7 @@ export default function LiveTrackingMap({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-slate-100/90 dark:bg-gray-800/80 border border-slate-200 dark:border-gray-700/80 text-xs">
         <div className="flex flex-wrap items-center gap-2 min-w-0">
           {isLiveGps ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shrink-0">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -348,25 +322,24 @@ export default function LiveTrackingMap({
               GPS en Vivo · Satelital
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-orange-500/15 text-orange-700 dark:text-orange-400 border border-orange-500/30 shrink-0">
-              <Sparkles className="h-3 w-3 text-orange-500" />
-              Modo Demostración · Seguimiento V2
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/25 shrink-0">
+              Recorrido en curso · Demostración
             </span>
           )}
 
           <span className="text-[11px] text-slate-600 dark:text-gray-300 leading-snug">
             {isLiveGps
-              ? "Telemetría real del dispositivo del especialista"
-              : "Recorrido simulado de 3 min por calles de Santiago (OSRM)"}
+              ? "Telemetría directa reportada por dispositivo GPS"
+              : "Trayecto simulado por calles de Santiago (180 s)"}
           </span>
         </div>
 
-        {/* Acciones interactivas del mapa (siempre visibles y adaptables en móvil) */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-start sm:justify-end shrink-0">
+        {/* Acciones interactivas del mapa (distribución responsive equilibrada) */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto shrink-0">
           <button
             type="button"
             onClick={handleToggleFollowVehicle}
-            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer shrink-0 ${
+            className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               followVehicle
                 ? "bg-orange-500 text-white shadow-2xs"
                 : "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600"
@@ -380,24 +353,12 @@ export default function LiveTrackingMap({
           <button
             type="button"
             onClick={handleFitFullRoute}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600 transition-colors cursor-pointer shrink-0"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-200 border border-slate-200 dark:border-gray-600 hover:bg-slate-50 dark:hover:bg-gray-600 transition-colors cursor-pointer whitespace-nowrap"
             title="Ajustar zoom para ver origen, vehículo y destino"
           >
             <Maximize2 className="h-3.5 w-3.5 shrink-0" />
             <span>Ver ruta completa</span>
           </button>
-
-          {isSimulated && (
-            <button
-              type="button"
-              onClick={handleRestart}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors cursor-pointer shrink-0"
-              title="Reiniciar simulación desde la base ATLAS"
-            >
-              <RotateCcw className="h-3.5 w-3.5 shrink-0" />
-              <span>Repetir</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -406,7 +367,7 @@ export default function LiveTrackingMap({
         <div className="p-3.5 rounded-xl bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 shadow-2xs flex flex-col gap-2.5 transition-colors">
           {isLiveGps ? (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <span className="font-semibold text-slate-900 dark:text-white">
                     {isArrived
@@ -418,21 +379,21 @@ export default function LiveTrackingMap({
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-gray-300">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300">
                   <span className="inline-flex items-center gap-1" title="Tiempo estimado en línea recta">
-                    <Clock className="h-3.5 w-3.5 text-emerald-500" />
+                    <Clock className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                     <strong>
                       {isArrived ? "< 1 min aprox." : `~${liveEtaMinutes} min aprox.`}
                     </strong>
                   </span>
                   <span className="inline-flex items-center gap-1" title="Distancia geodésica directa entre técnico y domicilio">
-                    <Navigation className="h-3.5 w-3.5 text-emerald-500" />
+                    <Navigation className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                     <span>{formatDistance(liveDistanceMeters)} (en línea recta aprox.)</span>
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-gray-400 pt-1 border-t border-slate-100 dark:border-gray-800">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-gray-400 pt-1.5 border-t border-slate-100 dark:border-gray-800">
                 <span>Posición reportada directamente por dispositivo GPS del especialista.</span>
                 {formattedGpsTimestamp && (
                   <span className="font-medium text-emerald-700 dark:text-emerald-400">
@@ -443,7 +404,7 @@ export default function LiveTrackingMap({
             </>
           ) : (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <span className="font-semibold text-slate-900 dark:text-white">
                     {isArrived ? "Especialista en destino" : "En camino al domicilio"}
@@ -451,24 +412,18 @@ export default function LiveTrackingMap({
                   <span className="text-[11px] font-mono font-bold text-orange-600 dark:text-orange-400">
                     {progressPercent}%
                   </span>
-                  {isLocalReplay ? (
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30">
-                      Repetición local (no altera el avance real)
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300 font-medium">
-                      Demostración · 180 s
-                    </span>
-                  )}
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-400 font-medium">
+                    Demostración
+                  </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-gray-300">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 dark:text-gray-300">
                   <span className="inline-flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-orange-500" />
+                    <Clock className="h-3.5 w-3.5 text-orange-500 shrink-0" />
                     <strong>{formatCountdown(remainingSeconds)}</strong>
                   </span>
                   <span className="inline-flex items-center gap-1">
-                    <Navigation className="h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
+                    <Navigation className="h-3.5 w-3.5 text-slate-400 dark:text-gray-500 shrink-0" />
                     <span>{formatDistance(remainingDistanceMeters)}</span>
                   </span>
                 </div>
@@ -483,19 +438,6 @@ export default function LiveTrackingMap({
                   style={{ width: `${Math.max(2, Math.min(100, progressPercent))}%` }}
                 />
               </div>
-
-              {isLocalReplay && hasSharedAnchor && (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg px-2.5 py-1.5">
-                  <span>Visualizando repetición local desde la base sin desincronizar el avance compartido.</span>
-                  <button
-                    type="button"
-                    onClick={handleRestoreShared}
-                    className="font-semibold underline hover:no-underline cursor-pointer shrink-0"
-                  >
-                    Volver al avance compartido
-                  </button>
-                </div>
-              )}
             </>
           )}
         </div>
@@ -716,9 +658,7 @@ export default function LiveTrackingMap({
               ? lastGpsUpdateAt
                 ? "GPS en Vivo · Línea de referencia directa (sin ruta vial)"
                 : "GPS en Vivo · Señal satelital activa"
-              : isLocalReplay
-              ? "Modo Demostración (Repetición local) · No altera el avance compartido"
-              : "Modo Demostración (180 s) · Sincronizado con inicio de ruta"}
+              : "Recorrido simulado de demostración (180 s)"}
           </span>
         </div>
         {technicianName && (
