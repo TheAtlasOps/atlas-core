@@ -277,13 +277,86 @@ if (typeof document !== "undefined") {
  * Inicia el seguimiento automático simulado para una orden en ruta.
  * Si ya se encuentra en seguimiento, conserva el `startedAt` original.
  */
+function parseSharedTimestampMs(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.min(value, Date.now());
+  }
+  const parsed = Date.parse(String(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(parsed, Date.now());
+}
+
+/**
+ * Extrae el timestamp compartido de inicio de ruta (EN_RUTA) desde el backend/historial.
+ * Permite que Admin y Portal Cliente compartan exactamente el mismo avance de 3 minutos.
+ */
+export function extractSharedRouteStartedAt(order) {
+  if (!order || typeof order !== "object") return null;
+
+  const directTs = parseSharedTimestampMs(order.route_started_at);
+  if (directTs !== null) return directTs;
+
+  if (Array.isArray(order.status_history) && order.status_history.length > 0) {
+    let latestEnRutaTs = null;
+    for (const item of order.status_history) {
+      const status = String(item?.new_status || item?.status || "").toUpperCase();
+      if (status !== "EN_RUTA") continue;
+      const ts = parseSharedTimestampMs(item?.created_at || item?.timestamp);
+      if (ts !== null && (latestEnRutaTs === null || ts > latestEnRutaTs)) {
+        latestEnRutaTs = ts;
+      }
+    }
+    if (latestEnRutaTs !== null) return latestEnRutaTs;
+  }
+
+  const timeline = Array.isArray(order.timeline_steps)
+    ? order.timeline_steps
+    : Array.isArray(order.steps)
+      ? order.steps
+      : [];
+  for (const step of timeline) {
+    if (String(step?.key || "").toLowerCase() === "en_ruta") {
+      const ts = parseSharedTimestampMs(step?.raw_timestamp || step?.timestamp);
+      if (ts !== null) return ts;
+    }
+  }
+
+  return null;
+}
+
 export function startTracking(order, { isInitialLoad = false } = {}) {
   const orderId = getSafeOrderId(order);
   if (!orderId) return null;
 
+  const sharedStartedAt = extractSharedRouteStartedAt(order);
+  const storageKey = `atlas_sim_started_at_${orderId}`;
+
   if (activeTrackings.has(orderId)) {
+    const existing = activeTrackings.get(orderId);
+    if (
+      sharedStartedAt !== null &&
+      !existing.isManualReplay &&
+      Math.abs(existing.startedAt - sharedStartedAt) > 1000
+    ) {
+      existing.startedAt = sharedStartedAt;
+      const elapsed = Math.max(0, Date.now() - sharedStartedAt);
+      existing.isArrived = elapsed >= existing.durationMs;
+      existing.hasNotifiedCompletion = existing.isArrived;
+      if (typeof window !== "undefined" && window.localStorage) {
+        try {
+          window.localStorage.setItem(storageKey, String(sharedStartedAt));
+        } catch {
+          // Ignorar restricciones en entornos con storage deshabilitado
+        }
+      }
+      notifyListeners();
+    }
+    if (order && typeof order === "object") {
+      existing.rawOrder = { ...(existing.rawOrder || {}), ...order };
+    }
     ensureEngineRunning();
-    return activeTrackings.get(orderId);
+    return existing;
   }
 
   const { lat, lng, isValid } = extractOrderCoordinates(order);
@@ -291,9 +364,17 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     return null;
   }
 
-  const storageKey = `atlas_sim_started_at_${orderId}`;
   let initialStartedAt = Date.now();
-  if (typeof window !== "undefined" && window.localStorage) {
+  if (sharedStartedAt !== null) {
+    initialStartedAt = sharedStartedAt;
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem(storageKey, String(initialStartedAt));
+      } catch {
+        // Ignorar restricciones en entornos con storage deshabilitado
+      }
+    }
+  } else if (typeof window !== "undefined" && window.localStorage) {
     try {
       const saved = window.localStorage.getItem(storageKey);
       if (saved) {
@@ -311,6 +392,9 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     }
   }
 
+  const elapsedOnInit = Math.max(0, Date.now() - initialStartedAt);
+  const arrivedOnInit = elapsedOnInit >= SIMULATION_DURATION_MS;
+
   const record = {
     orderId,
     orderNumber: getSafeOrderNumber(order),
@@ -325,8 +409,9 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     isLoadingRoute: true,
     routeError: null,
     isInitialLoad: Boolean(isInitialLoad),
-    hasNotifiedCompletion: false,
-    isArrived: false,
+    isManualReplay: false,
+    hasNotifiedCompletion: arrivedOnInit,
+    isArrived: arrivedOnInit,
     lastBearing: null,
     rawOrder: order,
   };
@@ -398,6 +483,7 @@ export function restartTracking(orderId) {
   const current = activeTrackings.get(safeId);
   if (!current) return null;
   current.startedAt = Date.now();
+  current.isManualReplay = true;
   current.hasNotifiedCompletion = false;
   current.isArrived = false;
   current.lastBearing = null;
@@ -532,9 +618,7 @@ export function syncOrdersWithTracking(orders, { isInitial = false } = {}) {
     if (!orderId) continue;
 
     if (isEnRutaStatus(o.status)) {
-      if (!activeTrackings.has(orderId)) {
-        startTracking(o, { isInitialLoad: isInitial });
-      }
+      startTracking(o, { isInitialLoad: isInitial });
     }
   }
 

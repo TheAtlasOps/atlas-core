@@ -86,6 +86,38 @@ export function matchesFallbackRoute(origin, destination, toleranceDeg = FALLBAC
 }
 
 /**
+ * Calcula la distancia geodésica aproximada en metros (Haversine) entre dos coordenadas
+ * en formato [lat, lng] o { lat, lng }.
+ */
+export function calculateHaversineDistanceMeters(start, end) {
+  const toPair = (point) => {
+    if (Array.isArray(point) && point.length >= 2) {
+      return [Number(point[0]), Number(point[1])];
+    }
+    if (point && typeof point === "object") {
+      return [Number(point.lat), Number(point.lng)];
+    }
+    return [NaN, NaN];
+  };
+
+  const [lat1, lon1] = toPair(start);
+  const [lat2, lon2] = toPair(end);
+  if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return 0;
+
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+
+/**
  * Calcula el ángulo de rumbo (bearing en grados 0-360) entre dos coordenadas [lat, lng].
  * Permite orientar el icono del vehículo según el sentido de avance en la calle.
  */

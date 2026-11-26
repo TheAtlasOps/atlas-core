@@ -31,6 +31,7 @@ from app.services.client_service import (
     _build_summary_response,
     compute_timeline_steps,
     confirm_client_visit,
+    get_client_live_tracking,
     submit_client_signature,
     validate_magic_link_token,
 )
@@ -484,3 +485,42 @@ def test_order_signed_at_preserves_utc_timezone_when_naive():
     assert resp.signed_at.tzinfo == timezone.utc
     assert resp.signed_at.hour == 23
     assert resp.signed_at.minute == 17
+
+
+# ─── 7. Sincronización de Inicio de Ruta (Seguimiento V2 Portal Cliente) ───────
+
+@pytest.mark.asyncio
+async def test_route_started_at_synced_across_summary_and_tracking():
+    """Confirma que EN_RUTA exponga el último route_started_at en UTC sin usar endpoints admin."""
+    first_en_ruta = datetime(2026, 11, 26, 10, 0, 0, tzinfo=timezone.utc)
+    latest_en_ruta = datetime(2026, 11, 26, 10, 15, 0)  # naive para validar normalización UTC
+
+    order = make_test_order(status=OrderStatusEnum.EN_RUTA)
+    order.status_history = [
+        SimpleNamespace(new_status=OrderStatusEnum.CONFIRMADA, created_at=first_en_ruta - timedelta(minutes=20), comment=None),
+        SimpleNamespace(new_status=OrderStatusEnum.EN_RUTA, created_at=first_en_ruta, comment=None),
+        SimpleNamespace(new_status=OrderStatusEnum.EN_RUTA, created_at=latest_en_ruta, comment=None),
+    ]
+    link = make_test_link(order, is_active=True)
+
+    summary = _build_summary_response(order, link)
+    assert summary.route_started_at is not None
+    assert summary.route_started_at.tzinfo == timezone.utc
+    assert summary.route_started_at.minute == 15
+
+    db = MagicMock(spec=AsyncSession)
+    res_mock = MagicMock()
+    res_mock.scalar_one_or_none.return_value = link
+    db.execute = AsyncMock(return_value=res_mock)
+
+    tracking = await get_client_live_tracking(db, link.token)
+    assert tracking.order_id == order.id
+    assert tracking.route_started_at == summary.route_started_at
+    assert tracking.is_live is False
+
+    # Cuando no está EN_RUTA, route_started_at no debe exponerse
+    confirm_order = make_test_order(status=OrderStatusEnum.CONFIRMADA)
+    confirm_order.status_history = order.status_history
+    confirm_link = make_test_link(confirm_order, is_active=True)
+    confirm_summary = _build_summary_response(confirm_order, confirm_link)
+    assert confirm_summary.route_started_at is None

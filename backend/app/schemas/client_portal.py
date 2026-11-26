@@ -39,6 +39,7 @@ class ClientTrackingLocationResponse(BaseModel):
     lng: Optional[Decimal] = None
     last_updated_at: Optional[datetime] = None
     is_live: bool = False
+    route_started_at: Optional[datetime] = None
     message: Optional[str] = None
 
 
@@ -63,6 +64,7 @@ class ClientOrderSummaryResponse(BaseModel):
     contact_phone: Optional[str] = None
     technician: Optional[ClientTechnicianBadge] = None
     technician_location: Optional[ClientTechnicianLocation] = None
+    route_started_at: Optional[datetime] = None
     timeline_steps: List[TimelineStepItem]
     client_confirmed_at: Optional[datetime] = None
     is_confirmed: bool

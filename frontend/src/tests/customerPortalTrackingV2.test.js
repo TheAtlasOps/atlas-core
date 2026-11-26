@@ -19,12 +19,14 @@ import { fileURLToPath } from "node:url";
 
 import {
   DEMO_ORIGIN,
+  calculateHaversineDistanceMeters,
   makeVehicleIcon,
   makeOriginIcon,
   makeDestinationIcon,
 } from "../lib/routeSimulation.js";
 
 import {
+  extractSharedRouteStartedAt,
   startTracking,
   restartTracking,
   resetAllTrackings,
@@ -214,10 +216,16 @@ describe("ATLAS FSM — Seguimiento V2 en Portal Cliente", () => {
       "Debe identificar el modo GPS satelital cuando exists señal real verificada"
     );
 
-    // Verificación de controles interactivos
-    assert.ok(content.includes("Seguir móvil"), "Debe tener botón de seguimiento de cámara");
-    assert.ok(content.includes("Ver ruta"), "Debe tener botón para encuadrar la ruta completa");
+    // Verificación de controles interactivos visibles y etiquetas consistentes con V2
+    assert.ok(content.includes("Seguir vehículo"), "Debe tener botón Seguir vehículo");
+    assert.ok(content.includes("Siguiendo vehículo"), "Debe reflejar estado Siguiendo vehículo");
+    assert.ok(content.includes("Ver ruta completa"), "Debe tener botón Ver ruta completa siempre visible");
+    assert.ok(!content.includes('hidden sm:inline">Ver ruta'), "No debe ocultar la etiqueta Ver ruta completa en móviles");
     assert.ok(content.includes("Repetir"), "Debe tener botón para reiniciar la demostración");
+
+    // Verificación de contraste en popups para tema claro/oscuro
+    assert.ok(content.includes("dark:text-white"), "Los popups deben incluir texto contrastado para modo oscuro");
+    assert.ok(content.includes("dark:text-gray-300"), "Los detalles en popups deben ser legibles en modo oscuro");
   });
 
   test("8. CustomerTrackingView.jsx integra LiveTrackingMap con toggle de previsualización para órdenes en cualquier estado", () => {
@@ -237,5 +245,71 @@ describe("ATLAS FSM — Seguimiento V2 en Portal Cliente", () => {
     // Verificación de que no expone acciones mutables de órdenes ni controles de edición
     assert.ok(!content.includes("api.orders.updateStatus"), "Portal Cliente no debe permitir modificar estados de órdenes");
     assert.ok(!content.includes("api.orders.delete"), "Portal Cliente no debe permitir eliminar órdenes");
+  });
+
+  test("9. Sincronización cross-sesión con route_started_at y status_history sin reiniciar al abrir Magic Link", () => {
+    const startedMs = Date.now() - 90_000;
+    const orderFromPortal = {
+      id: "8501",
+      order_number: "#OT-8501",
+      lat: -33.43,
+      lng: -70.61,
+      route_started_at: new Date(startedMs).toISOString(),
+    };
+    const orderFromAdmin = {
+      id: "8501",
+      order_number: "#OT-8501",
+      lat: -33.43,
+      lng: -70.61,
+      status_history: [
+        { new_status: "CONFIRMADA", created_at: new Date(startedMs - 300_000).toISOString() },
+        { new_status: "EN_RUTA", created_at: new Date(startedMs).toISOString() },
+      ],
+    };
+
+    const portalRec = startTracking(orderFromPortal);
+    assert.ok(portalRec);
+    assert.equal(portalRec.startedAt, extractSharedRouteStartedAt(orderFromAdmin));
+
+    // Ruta completada (>= 180s) debe permanecer al 100% / arribado sin reiniciarse a 0%
+    resetAllTrackings();
+    const expiredMs = Date.now() - 240_000;
+    const finishedRec = startTracking({
+      id: "8502",
+      order_number: "#OT-8502",
+      lat: -33.43,
+      lng: -70.61,
+      route_started_at: new Date(expiredMs).toISOString(),
+    });
+    assert.ok(finishedRec);
+    assert.equal(finishedRec.startedAt, expiredMs);
+    assert.equal(finishedRec.isArrived, true);
+
+    const snap = computeTrackingSnapshot(finishedRec, Date.now());
+    assert.equal(snap.progressPercent, 100);
+    assert.equal(snap.isArrived, true);
+
+    // Reinicio manual no debe ser sobrescrito por polling posterior
+    const replayed = restartTracking("8502");
+    assert.ok(replayed.isManualReplay);
+    const afterPoll = startTracking({
+      id: "8502",
+      order_number: "#OT-8502",
+      lat: -33.43,
+      lng: -70.61,
+      route_started_at: new Date(expiredMs).toISOString(),
+    });
+    assert.equal(afterPoll.startedAt, replayed.startedAt);
+  });
+
+  test("10. calculateHaversineDistanceMeters calcula distancia métrica consistente para GPS real", () => {
+    const samePointDist = calculateHaversineDistanceMeters(DEMO_ORIGIN, DEMO_ORIGIN);
+    assert.equal(samePointDist, 0);
+
+    const provToLasCondes = calculateHaversineDistanceMeters(DEMO_ORIGIN, {
+      lat: -33.4092,
+      lng: -70.5675,
+    });
+    assert.ok(provToLasCondes > 3000 && provToLasCondes < 6000, "Distancia estimada Providencia-Las Condes debe ser realista");
   });
 });

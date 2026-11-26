@@ -287,6 +287,12 @@ export function mapApiSummaryToTrackingOrder(summary) {
       ? null
       : summary.eta || "Por confirmar";
 
+  const enRutaStep = timelineSteps.find((s) => s.key === "en_ruta");
+  const routeStartedAt =
+    summary.route_started_at ||
+    enRutaStep?.raw_timestamp ||
+    null;
+
   return {
     id: summary.order_id,
     order_id: summary.order_id,
@@ -310,6 +316,7 @@ export function mapApiSummaryToTrackingOrder(summary) {
         : "seguimiento",
     lat: summary.lat !== null && summary.lat !== undefined ? parseFloat(summary.lat) : null,
     lng: summary.lng !== null && summary.lng !== undefined ? parseFloat(summary.lng) : null,
+    route_started_at: routeStartedAt,
     technician_location: summary.technician_location
       ? {
           lat: parseFloat(summary.technician_location.lat),

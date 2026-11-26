@@ -177,13 +177,22 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                 setLiveTechLocation(null);
               }
             }
-          } else if (tracking?.lat != null && tracking?.lng != null) {
-            setLiveTechLocation({
-              lat: parseFloat(tracking.lat),
-              lng: parseFloat(tracking.lng),
-              last_updated_at: tracking.last_updated_at,
-              is_live: Boolean(tracking.is_live),
-            });
+          } else {
+            if (tracking?.route_started_at) {
+              setApiSummary((prev) =>
+                prev && prev.route_started_at !== tracking.route_started_at
+                  ? { ...prev, route_started_at: tracking.route_started_at }
+                  : prev
+              );
+            }
+            if (tracking?.lat != null && tracking?.lng != null) {
+              setLiveTechLocation({
+                lat: parseFloat(tracking.lat),
+                lng: parseFloat(tracking.lng),
+                last_updated_at: tracking.last_updated_at,
+                is_live: Boolean(tracking.is_live),
+              });
+            }
           }
         } else {
           // Para órdenes confirmadas o en sitio, refrescar resumen periódicamente
@@ -423,25 +432,25 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
       <main className="w-full max-w-lg mx-auto px-4 py-5 sm:py-6 flex flex-col gap-5 flex-1">
         {/* Banner de Estado en Tiempo Real & ETA */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-5 shadow-sm overflow-hidden relative transition-colors">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-3 mb-4">
+            <div className="min-w-0">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500">
                 Orden {order.order_number} · Requerimiento
               </span>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug break-words">
                 {order.serviceType}
               </h2>
             </div>
 
             {/* Badge de Estado */}
             {order.is_audited ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 self-start bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                 Servicio finalizado y auditado
               </span>
             ) : (
               <span
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 self-start ${
                   isCancelledStatus
                     ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800"
                     : isCompletedStatus
@@ -466,13 +475,13 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
 
           {/* Bloque ETA Destacado */}
           <div
-            className={`rounded-xl p-4 text-white shadow-sm flex items-center justify-between gap-4 ${
+            className={`rounded-xl p-4 text-white shadow-sm flex flex-wrap items-center justify-between gap-3 ${
               isCancelledStatus
                 ? "bg-gradient-to-br from-rose-600 to-rose-700"
                 : "bg-gradient-to-br from-orange-500 to-orange-600"
             }`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="h-11 w-11 rounded-lg bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
                 <Clock className="h-6 w-6 text-white" />
               </div>
@@ -530,13 +539,13 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
 
         {/* ── BOTÓN DE PREVISUALIZACIÓN DE SEGUIMIENTO (MODO DEMOSTRACIÓN) ── */}
         {!isEnRuta && (clientPos || order?.lat) && (
-          <div className="flex justify-end">
+          <div className="flex justify-start sm:justify-end">
             <button
               type="button"
               onClick={() => setIsDemoPreviewActive((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors cursor-pointer shadow-2xs"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl text-xs font-semibold bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/60 hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors cursor-pointer shadow-2xs"
             >
-              <Sparkles className="h-3.5 w-3.5 text-orange-500" />
+              <Sparkles className="h-3.5 w-3.5 text-orange-500 shrink-0" />
               <span>
                 {isDemoPreviewActive
                   ? "Ocultar simulación demostrativa"
@@ -549,10 +558,10 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
         {/* ── MAPA EN VIVO LEAFLET Y SIMULACIÓN INTERACTIVA V2 ── */}
         {(isEnRuta || isDemoPreviewActive || Boolean(liveTechLocation?.is_live)) &&
           (clientPos || techPos || order?.lat) && (
-            <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-4 shadow-sm overflow-hidden transition-colors">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-2.5 w-2.5">
+            <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-3.5 sm:p-4 shadow-sm overflow-hidden transition-colors">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="relative flex h-2.5 w-2.5 shrink-0">
                     <span
                       className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
                         liveTechLocation?.is_live ? "bg-emerald-400" : "bg-orange-400"
@@ -572,9 +581,9 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                 </div>
                 <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
                   {liveTechLocation?.is_live
-                    ? "GPS activo"
+                    ? "GPS en Vivo"
                     : isEnRuta
-                    ? "Móvil en tránsito"
+                    ? "Móvil en tránsito · Simulación V2"
                     : "Modo Demostración"}
                 </span>
               </div>
@@ -592,6 +601,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                   clientPos={clientPos}
                   techPos={techPos}
                   isLiveGps={Boolean(liveTechLocation?.is_live)}
+                  lastGpsUpdateAt={liveTechLocation?.last_updated_at || null}
                   address={order.address}
                   technicianName={order.technician?.name}
                   isDemoActive={isEnRuta || isDemoPreviewActive}
@@ -854,7 +864,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
 
         {/* ── 4. CONFIRMACIÓN DE VISITA Y FIRMA DIGITAL DE CONFORMIDAD ── */}
         <section className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-slate-200 dark:border-gray-800 p-5 space-y-4 transition-colors">
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-gray-800 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-gray-800 pb-3">
             <div className="flex items-center gap-2">
               <FileSignature className="h-5 w-5 text-orange-500" />
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">

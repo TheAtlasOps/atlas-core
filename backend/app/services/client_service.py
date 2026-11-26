@@ -164,6 +164,35 @@ def compute_timeline_steps(order: WorkOrder) -> List[TimelineStepItem]:
     return items
 
 
+def _extract_route_started_at(order: WorkOrder) -> Optional[datetime]:
+    """
+    Obtiene el timestamp UTC en que la orden pasó a EN_RUTA desde su historial real.
+    Permite sincronizar la simulación V2 entre administrador y Portal Cliente sin migraciones.
+    """
+    if order.status != OrderStatusEnum.EN_RUTA:
+        return None
+
+    latest_en_ruta: Optional[datetime] = None
+    if getattr(order, "status_history", None):
+        for entry in order.status_history:
+            if entry.new_status == OrderStatusEnum.EN_RUTA and entry.created_at:
+                dt = (
+                    entry.created_at
+                    if entry.created_at.tzinfo
+                    else entry.created_at.replace(tzinfo=timezone.utc)
+                )
+                if latest_en_ruta is None or dt > latest_en_ruta:
+                    latest_en_ruta = dt
+
+    if latest_en_ruta is not None:
+        return latest_en_ruta
+
+    updated_at = getattr(order, "updated_at", None)
+    if updated_at:
+        return updated_at if updated_at.tzinfo else updated_at.replace(tzinfo=timezone.utc)
+    return None
+
+
 def _build_summary_response(
     order: WorkOrder, magic_link: Optional[MagicLink] = None
 ) -> ClientOrderSummaryResponse:
@@ -310,6 +339,8 @@ def _build_summary_response(
                 is_live=is_recent,
             )
 
+    route_started_at = _extract_route_started_at(order)
+
     return ClientOrderSummaryResponse(
         order_id=order.id,
         order_number=order.order_number,
@@ -330,6 +361,7 @@ def _build_summary_response(
         contact_phone=contact_phone,
         technician=tech_badge,
         technician_location=technician_loc,
+        route_started_at=route_started_at,
         timeline_steps=timeline,
         client_confirmed_at=confirmed_at,
         is_confirmed=is_confirmed,
@@ -353,6 +385,7 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
     """
     magic_link = await validate_magic_link_token(db, token)
     order = magic_link.work_order
+    route_started_at = _extract_route_started_at(order)
 
     if order.status == OrderStatusEnum.EN_RUTA and order.technician:
         t = order.technician
@@ -367,6 +400,7 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
                 lng=t.current_lng,
                 last_updated_at=real_last_gps,
                 is_live=is_recent,
+                route_started_at=route_started_at,
                 message="Técnico en ruta hacia tu dirección" if is_recent else "Técnico en camino. Señal GPS en espera de actualización.",
             )
         return ClientTrackingLocationResponse(
@@ -376,6 +410,7 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
             lng=None,
             last_updated_at=None,
             is_live=False,
+            route_started_at=route_started_at,
             message="Técnico en camino. Esperando señal de geolocalización.",
         )
 
@@ -386,6 +421,7 @@ async def get_client_live_tracking(db: AsyncSession, token: str) -> ClientTracki
         lng=None,
         last_updated_at=None,
         is_live=False,
+        route_started_at=route_started_at,
         message="Seguimiento GPS no disponible para el estado actual de la visita.",
     )
 
