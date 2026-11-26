@@ -282,7 +282,11 @@ function parseSharedTimestampMs(value) {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.min(value, Date.now());
   }
-  const parsed = Date.parse(String(value));
+  let rawStr = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(rawStr)) {
+    rawStr = `${rawStr.replace(" ", "T")}Z`;
+  }
+  const parsed = Date.parse(rawStr);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.min(parsed, Date.now());
 }
@@ -334,6 +338,9 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
 
   if (activeTrackings.has(orderId)) {
     const existing = activeTrackings.get(orderId);
+    if (sharedStartedAt !== null) {
+      existing.sharedStartedAt = sharedStartedAt;
+    }
     if (
       sharedStartedAt !== null &&
       !existing.isManualReplay &&
@@ -404,12 +411,14 @@ export function startTracking(order, { isInitialLoad = false } = {}) {
     origin: DEMO_ORIGIN,
     destination: { lat, lng },
     startedAt: initialStartedAt,
+    sharedStartedAt: sharedStartedAt ?? null,
     durationMs: SIMULATION_DURATION_MS,
     routeData: null,
     isLoadingRoute: true,
     routeError: null,
     isInitialLoad: Boolean(isInitialLoad),
     isManualReplay: false,
+    isLocalReplay: false,
     hasNotifiedCompletion: arrivedOnInit,
     isArrived: arrivedOnInit,
     lastBearing: null,
@@ -474,26 +483,70 @@ export function retryTrackingRoute(orderId) {
 }
 
 /**
- * Reinicia la simulación local de una orden (botón 'Repetir demo').
+ * Reinicia la simulación local de una orden (botón 'Repetir').
  * No modifica BD, Neon ni estados operativos reales.
+ * Cuando es localOnly o existe sharedStartedAt desde backend, no sobrescribe
+ * la clave compartida en localStorage para evitar desincronizar otras sesiones.
  */
-export function restartTracking(orderId) {
+export function restartTracking(orderId, { localOnly = false } = {}) {
   if (!orderId) return null;
   const safeId = String(orderId);
   const current = activeTrackings.get(safeId);
   if (!current) return null;
+
+  const hasSharedAnchor = current.sharedStartedAt !== null && current.sharedStartedAt !== undefined;
+  const isLocalOnly = Boolean(localOnly || hasSharedAnchor);
+
   current.startedAt = Date.now();
   current.isManualReplay = true;
+  current.isLocalReplay = isLocalOnly;
   current.hasNotifiedCompletion = false;
   current.isArrived = false;
   current.lastBearing = null;
-  if (typeof window !== "undefined" && window.localStorage) {
+
+  if (!isLocalOnly && typeof window !== "undefined" && window.localStorage) {
     try {
       window.localStorage.setItem(`atlas_sim_started_at_${safeId}`, String(current.startedAt));
     } catch {
       // Ignorar restricciones en entornos con storage deshabilitado
     }
   }
+  ensureEngineRunning();
+  notifyListeners();
+  return current;
+}
+
+/** Restaura la reproducción al timestamp compartido real (descarta repetición local) */
+export function restoreSharedTracking(orderId) {
+  if (!orderId) return null;
+  const safeId = String(orderId);
+  const current = activeTrackings.get(safeId);
+  if (!current) return null;
+
+  let restoredTs = current.sharedStartedAt ?? null;
+  if (restoredTs === null && typeof window !== "undefined" && window.localStorage) {
+    try {
+      const saved = window.localStorage.getItem(`atlas_sim_started_at_${safeId}`);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed > 0 && Date.now() >= parsed) {
+          restoredTs = parsed;
+        }
+      }
+    } catch {
+      // Ignorar
+    }
+  }
+
+  current.isManualReplay = false;
+  current.isLocalReplay = false;
+  if (restoredTs !== null) {
+    current.startedAt = restoredTs;
+    const elapsed = Math.max(0, Date.now() - restoredTs);
+    current.isArrived = elapsed >= current.durationMs;
+    current.hasNotifiedCompletion = current.isArrived;
+  }
+  current.lastBearing = null;
   ensureEngineRunning();
   notifyListeners();
   return current;
@@ -593,6 +646,9 @@ export function computeTrackingSnapshot(record, now = Date.now()) {
     progress,
     progressPercent: Math.round(progress * 100),
     isArrived,
+    isLocalReplay: Boolean(record.isLocalReplay),
+    hasSharedStartedAt:
+      record.sharedStartedAt !== null && record.sharedStartedAt !== undefined,
     remainingSeconds,
     remainingDistanceMeters,
     currentIndex,

@@ -132,14 +132,18 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
     return idx >= 0 ? idx : 0;
   }, [timelineSteps, order]);
 
-  // Seguimiento GPS en vivo (exclusivo para EN_RUTA con refresco cada 30s)
+  // Seguimiento GPS en vivo y selector explícito GPS real vs. Simulación V2
   const [liveTechLocation, setLiveTechLocation] = useState(null);
+  const [preferredTrackingMode, setPreferredTrackingMode] = useState("auto");
 
   useEffect(() => {
     if (apiSummary?.technician_location) {
       setLiveTechLocation(apiSummary.technician_location);
     }
   }, [apiSummary?.technician_location]);
+
+  const hasLiveGps = Boolean(liveTechLocation?.is_live);
+  const effectiveIsLiveGps = hasLiveGps && preferredTrackingMode !== "demo";
 
   const statusKey = (order?.status_key || order?.statusKey || "").toLowerCase();
   const isTerminal = statusKey === "completada" || statusKey === "cancelada";
@@ -538,7 +542,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
         </section>
 
         {/* ── BOTÓN DE PREVISUALIZACIÓN DE SEGUIMIENTO (MODO DEMOSTRACIÓN) ── */}
-        {!isEnRuta && (clientPos || order?.lat) && (
+        {!isEnRuta && !hasLiveGps && (clientPos || order?.lat) && (
           <div className="flex justify-start sm:justify-end">
             <button
               type="button"
@@ -556,7 +560,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
         )}
 
         {/* ── MAPA EN VIVO LEAFLET Y SIMULACIÓN INTERACTIVA V2 ── */}
-        {(isEnRuta || isDemoPreviewActive || Boolean(liveTechLocation?.is_live)) &&
+        {(isEnRuta || isDemoPreviewActive || hasLiveGps) &&
           (clientPos || techPos || order?.lat) && (
             <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-3.5 sm:p-4 shadow-sm overflow-hidden transition-colors">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -564,28 +568,60 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                   <span className="relative flex h-2.5 w-2.5 shrink-0">
                     <span
                       className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                        liveTechLocation?.is_live ? "bg-emerald-400" : "bg-orange-400"
+                        effectiveIsLiveGps ? "bg-emerald-400" : "bg-orange-400"
                       }`}
                     ></span>
                     <span
                       className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                        liveTechLocation?.is_live ? "bg-emerald-500" : "bg-orange-500"
+                        effectiveIsLiveGps ? "bg-emerald-500" : "bg-orange-500"
                       }`}
                     ></span>
                   </span>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
-                    {liveTechLocation?.is_live
+                    {effectiveIsLiveGps
                       ? "Ubicación en vivo del especialista"
                       : "Seguimiento de trayecto del especialista"}
                   </h3>
                 </div>
-                <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
-                  {liveTechLocation?.is_live
-                    ? "GPS en Vivo"
-                    : isEnRuta
-                    ? "Móvil en tránsito · Simulación V2"
-                    : "Modo Demostración"}
-                </span>
+
+                {hasLiveGps && (clientPos || order?.lat) ? (
+                  <div
+                    className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-gray-800/90 border border-slate-200 dark:border-gray-700"
+                    role="group"
+                    aria-label="Selector de modo de seguimiento"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPreferredTrackingMode("gps")}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                        effectiveIsLiveGps
+                          ? "bg-emerald-600 text-white shadow-2xs"
+                          : "text-slate-600 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      GPS en Vivo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreferredTrackingMode("demo")}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                        !effectiveIsLiveGps
+                          ? "bg-orange-500 text-white shadow-2xs"
+                          : "text-slate-600 dark:text-gray-300 hover:bg-white/70 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      Simulación V2 (Demo)
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
+                    {effectiveIsLiveGps
+                      ? "GPS en Vivo"
+                      : isEnRuta
+                      ? "Móvil en tránsito · Simulación V2"
+                      : "Modo Demostración"}
+                  </span>
+                )}
               </div>
 
               <Suspense
@@ -600,11 +636,13 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                   order={order}
                   clientPos={clientPos}
                   techPos={techPos}
-                  isLiveGps={Boolean(liveTechLocation?.is_live)}
+                  isLiveGps={effectiveIsLiveGps}
                   lastGpsUpdateAt={liveTechLocation?.last_updated_at || null}
                   address={order.address}
                   technicianName={order.technician?.name}
-                  isDemoActive={isEnRuta || isDemoPreviewActive}
+                  isDemoActive={
+                    isEnRuta || isDemoPreviewActive || (hasLiveGps && preferredTrackingMode === "demo")
+                  }
                 />
               </Suspense>
             </section>

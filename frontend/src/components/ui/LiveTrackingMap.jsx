@@ -37,6 +37,7 @@ import {
   getSafeOrderId,
   startTracking,
   restartTracking,
+  restoreSharedTracking,
   getTracking,
   retryTrackingRoute,
   formatCountdown,
@@ -222,14 +223,22 @@ export default function LiveTrackingMap({
     }
   }, [safeOrderId]);
 
-  // Manejador para reiniciar la simulación
+  // Manejador para reiniciar únicamente la vista local de demostración sin alterar el avance compartido
   const handleRestart = useCallback(() => {
     if (safeOrderId) {
-      restartTracking(safeOrderId);
+      restartTracking(safeOrderId, { localOnly: true });
       setFollowVehicle(true);
       if (onRestartDemo) onRestartDemo();
     }
   }, [safeOrderId, onRestartDemo]);
+
+  // Manejador para volver al avance compartido real de 180s
+  const handleRestoreShared = useCallback(() => {
+    if (safeOrderId) {
+      restoreSharedTracking(safeOrderId);
+      setFollowVehicle(true);
+    }
+  }, [safeOrderId]);
 
   const isLoadingRoute = Boolean(trackingRecord?.isLoadingRoute && !isLiveGps);
   const routeError = !destinationCoords
@@ -275,21 +284,6 @@ export default function LiveTrackingMap({
     );
   }, [isLiveGps, currentCoord, destinationCoords]);
 
-  const liveTotalReferenceMeters = useMemo(() => {
-    if (!isLiveGps || !destinationCoords) return 1;
-    const baseDist = calculateHaversineDistanceMeters(DEMO_ORIGIN, destinationCoords);
-    return Math.max(liveDistanceMeters, baseDist || 1);
-  }, [isLiveGps, destinationCoords, liveDistanceMeters]);
-
-  const liveProgressPercent = isLiveGps
-    ? liveDistanceMeters <= 80
-      ? 100
-      : Math.max(
-          5,
-          Math.min(99, Math.round((1 - liveDistanceMeters / liveTotalReferenceMeters) * 100))
-        )
-    : 0;
-
   const liveEtaMinutes =
     isLiveGps && liveDistanceMeters > 80 ? Math.max(1, Math.round(liveDistanceMeters / 500)) : 0;
 
@@ -299,17 +293,34 @@ export default function LiveTrackingMap({
       : 0
     : snapshot?.bearing || 0;
   const isArrived = isLiveGps ? liveDistanceMeters <= 80 : Boolean(snapshot?.isArrived);
-  const progressPercent = isLiveGps ? liveProgressPercent : snapshot?.progressPercent || 0;
-  const remainingSeconds = isLiveGps ? liveEtaMinutes * 60 : snapshot?.remainingSeconds || 0;
-  const remainingDistanceMeters = isLiveGps
-    ? liveDistanceMeters
-    : snapshot?.remainingDistanceMeters || 0;
-  const traveledSegment = isLiveGps ? [] : snapshot?.traveledSegment || [];
-  const pendingSegment = isLiveGps ? [] : snapshot?.pendingSegment || [];
+  const progressPercent = isSimulated ? snapshot?.progressPercent || 0 : 0;
+  const remainingSeconds = isSimulated ? snapshot?.remainingSeconds || 0 : 0;
+  const remainingDistanceMeters = isSimulated ? snapshot?.remainingDistanceMeters || 0 : 0;
+  const traveledSegment = isSimulated ? snapshot?.traveledSegment || [] : [];
+  const pendingSegment = isSimulated ? snapshot?.pendingSegment || [] : [];
+  const isLocalReplay = Boolean(isSimulated && snapshot?.isLocalReplay);
+  const hasSharedAnchor = Boolean(
+    isSimulated && (snapshot?.hasSharedStartedAt || trackingRecord?.sharedStartedAt)
+  );
   const hasTelemetry =
     (isSimulated && Boolean(snapshot)) || (isLiveGps && Boolean(currentCoord && destinationCoords));
 
-  const liveRouteLine = useMemo(() => {
+  const formattedGpsTimestamp = useMemo(() => {
+    if (!isLiveGps || !lastGpsUpdateAt) return null;
+    const parsed = Date.parse(lastGpsUpdateAt);
+    if (!Number.isFinite(parsed)) return null;
+    try {
+      return new Intl.DateTimeFormat("es-CL", {
+        timeZone: "America/Santiago",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(parsed));
+    } catch {
+      return null;
+    }
+  }, [isLiveGps, lastGpsUpdateAt]);
+
+  const liveReferenceLine = useMemo(() => {
     if (!isLiveGps || !currentCoord || !destinationCoords) return [];
     return [currentCoord, [destinationCoords.lat, destinationCoords.lng]];
   }, [isLiveGps, currentCoord, destinationCoords]);
@@ -393,58 +404,100 @@ export default function LiveTrackingMap({
       {/* ── TARJETA DE PROGRESO Y TELEMETRÍA ── */}
       {hasTelemetry && (
         <div className="p-3.5 rounded-xl bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 shadow-2xs flex flex-col gap-2.5 transition-colors">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
-              <span className="font-semibold text-slate-900 dark:text-white">
-                {isLiveGps
-                  ? isArrived
-                    ? "Especialista próximo al domicilio"
-                    : "Especialista en ruta (GPS real)"
-                  : isArrived
-                  ? "Especialista en destino"
-                  : "En camino al domicilio"}
-              </span>
-              <span
-                className={`text-[11px] font-mono font-bold ${
-                  isLiveGps
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-orange-600 dark:text-orange-400"
-                }`}
-              >
-                {progressPercent}%
-              </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300 font-medium">
-                {isLiveGps ? "Señal real" : "Demostración"}
-              </span>
-            </div>
+          {isLiveGps ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {isArrived
+                      ? "Especialista próximo al domicilio"
+                      : "Especialista en ruta (GPS real)"}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-500/25">
+                    Estimación directa · No es ruta vial
+                  </span>
+                </div>
 
-            <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-gray-300">
-              <span className="inline-flex items-center gap-1">
-                <Clock className={`h-3.5 w-3.5 ${isLiveGps ? "text-emerald-500" : "text-orange-500"}`} />
-                <strong>
-                  {isLiveGps
-                    ? isArrived
-                      ? "< 1 min"
-                      : `~${liveEtaMinutes} min`
-                    : formatCountdown(remainingSeconds)}
-                </strong>
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <Navigation className="h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
-                <span>{formatDistance(remainingDistanceMeters)}</span>
-              </span>
-            </div>
-          </div>
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-gray-300">
+                  <span className="inline-flex items-center gap-1" title="Tiempo estimado en línea recta">
+                    <Clock className="h-3.5 w-3.5 text-emerald-500" />
+                    <strong>
+                      {isArrived ? "< 1 min aprox." : `~${liveEtaMinutes} min aprox.`}
+                    </strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1" title="Distancia geodésica directa entre técnico y domicilio">
+                    <Navigation className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>{formatDistance(liveDistanceMeters)} (en línea recta aprox.)</span>
+                  </span>
+                </div>
+              </div>
 
-          {/* Barra de progreso visual continua */}
-          <div className="w-full bg-slate-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all duration-300 ease-out ${
-                isArrived || isLiveGps ? "bg-emerald-500" : "bg-orange-500"
-              }`}
-              style={{ width: `${Math.max(2, Math.min(100, progressPercent))}%` }}
-            />
-          </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-gray-400 pt-1 border-t border-slate-100 dark:border-gray-800">
+                <span>Posición reportada directamente por dispositivo GPS del especialista.</span>
+                {formattedGpsTimestamp && (
+                  <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                    Última señal: {formattedGpsTimestamp} hrs
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {isArrived ? "Especialista en destino" : "En camino al domicilio"}
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-orange-600 dark:text-orange-400">
+                    {progressPercent}%
+                  </span>
+                  {isLocalReplay ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30">
+                      Repetición local (no altera el avance real)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300 font-medium">
+                      Demostración · 180 s
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 dark:text-gray-300">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5 text-orange-500" />
+                    <strong>{formatCountdown(remainingSeconds)}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Navigation className="h-3.5 w-3.5 text-slate-400 dark:text-gray-500" />
+                    <span>{formatDistance(remainingDistanceMeters)}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Barra de progreso visual continua (exclusiva de simulación V2) */}
+              <div className="w-full bg-slate-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-300 ease-out ${
+                    isArrived ? "bg-emerald-500" : "bg-orange-500"
+                  }`}
+                  style={{ width: `${Math.max(2, Math.min(100, progressPercent))}%` }}
+                />
+              </div>
+
+              {isLocalReplay && hasSharedAnchor && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg px-2.5 py-1.5">
+                  <span>Visualizando repetición local desde la base sin desincronizar el avance compartido.</span>
+                  <button
+                    type="button"
+                    onClick={handleRestoreShared}
+                    className="font-semibold underline hover:no-underline cursor-pointer shrink-0"
+                  >
+                    Volver al avance compartido
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -530,14 +583,14 @@ export default function LiveTrackingMap({
             />
           )}
 
-          {isLiveGps && liveRouteLine.length > 1 && (
+          {isLiveGps && liveReferenceLine.length > 1 && (
             <Polyline
-              positions={liveRouteLine}
+              positions={liveReferenceLine}
               pathOptions={{
                 color: "#10b981",
-                weight: 3.5,
-                opacity: 0.8,
-                dashArray: "6 8",
+                weight: 3,
+                opacity: 0.75,
+                dashArray: "4 8",
                 lineCap: "round",
                 lineJoin: "round",
                 interactive: false,
@@ -661,9 +714,11 @@ export default function LiveTrackingMap({
           <span>
             {isLiveGps
               ? lastGpsUpdateAt
-                ? "GPS en Vivo · Actualización periódica vía telemetría móvil"
+                ? "GPS en Vivo · Línea de referencia directa (sin ruta vial)"
                 : "GPS en Vivo · Señal satelital activa"
-              : "Modo Demostración (3 min) · Sincronizado con inicio de ruta"}
+              : isLocalReplay
+              ? "Modo Demostración (Repetición local) · No altera el avance compartido"
+              : "Modo Demostración (180 s) · Sincronizado con inicio de ruta"}
           </span>
         </div>
         {technicianName && (
