@@ -549,7 +549,7 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
           (effectiveIsLiveGps || isSimulationActive) &&
           (clientPos || techPos || order?.lat) && (
             <section className="bg-white dark:bg-[#1e1e1e] rounded-2xl border border-slate-200 dark:border-gray-800 p-3.5 sm:p-4 shadow-sm overflow-hidden transition-colors">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="relative flex h-2.5 w-2.5 shrink-0">
                     <span
@@ -563,17 +563,19 @@ export default function CustomerTrackingView({ initialSummary = null } = {}) {
                       }`}
                     ></span>
                   </span>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-gray-300 leading-snug">
                     {effectiveIsLiveGps
                       ? "Ubicación en vivo del especialista"
                       : "Seguimiento de trayecto del especialista"}
                   </h3>
                 </div>
 
-                <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-gray-400 shrink-0">
                   {effectiveIsLiveGps
-                    ? "GPS en Vivo"
-                    : "Recorrido en curso · Demostración"}
+                    ? "GPS activo"
+                    : isEnRuta
+                    ? "En tránsito"
+                    : "Seguimiento activo"}
                 </span>
               </div>
 
