@@ -267,8 +267,53 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 );
 
 -- =============================================================================
+-- 4.1 EVOLUCIÓN IDEMPOTENTE DE ESQUEMAS EXISTENTES
+-- Garantiza que bases de datos ya creadas reciban columnas e índices nuevos
+-- sin fallar cuando CREATE TABLE IF NOT EXISTS omite tablas existentes.
+-- =============================================================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE technicians ADD COLUMN IF NOT EXISTS last_location_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) NOT NULL DEFAULT 'EMPRESARIAL';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS secondary_phone VARCHAR(50);
+
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'clients'::regclass
+          AND contype = 'c'
+          AND pg_get_constraintdef(oid) ILIKE '%client_type%'
+    ) THEN
+        ALTER TABLE clients
+            ADD CONSTRAINT clients_client_type_check
+            CHECK (client_type IN ('EMPRESARIAL', 'RESIDENCIAL'));
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'work_orders'
+          AND column_name = 'scheduled_date'
+          AND is_nullable = 'NO'
+    ) THEN
+        ALTER TABLE work_orders ALTER COLUMN scheduled_date DROP NOT NULL;
+    END IF;
+END $$;
+
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS is_audited BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audited_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audited_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS audit_notes TEXT;
+
+-- =============================================================================
 -- 5. ÍNDICES DE OPTIMIZACIÓN (QUERY PERFORMANCE)
 -- =============================================================================
+CREATE INDEX IF NOT EXISTS ix_clients_client_type ON clients(client_type);
 CREATE INDEX IF NOT EXISTS idx_work_orders_status ON work_orders(status);
 CREATE INDEX IF NOT EXISTS idx_work_orders_technician ON work_orders(technician_id);
 CREATE INDEX IF NOT EXISTS idx_work_orders_client ON work_orders(client_id);
