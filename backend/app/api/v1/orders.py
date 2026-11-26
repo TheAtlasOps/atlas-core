@@ -205,6 +205,9 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
             if (h.changed_by_user and hasattr(h.changed_by_user.role, "value"))
             else (str(h.changed_by_user.role) if h.changed_by_user else None)
         )
+        created_at_val = h.created_at
+        if created_at_val and created_at_val.tzinfo is None:
+            created_at_val = created_at_val.replace(tzinfo=timezone.utc)
         history_responses.append(
             OrderStatusHistoryResponse(
                 id=h.id,
@@ -216,7 +219,7 @@ def build_order_response(order: WorkOrder, include_token: bool = False) -> WorkO
                 lat=h.lat,
                 lng=h.lng,
                 comment=h.comment,
-                created_at=h.created_at,
+                created_at=created_at_val,
             )
         )
 
